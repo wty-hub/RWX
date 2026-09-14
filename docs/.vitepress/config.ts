@@ -67,7 +67,7 @@ export default withMermaid(defineConfig({
              ]
            },
            socialLinks: [
-             { icon: 'github', link: 'https://github.com/eam2539/RWX' }
+             { icon: 'github', link: 'https://github.com/yomi2539/RWX' }
            ],
            footer: {
              message: 'Released under AGPL-3.0',
@@ -138,7 +138,7 @@ export default withMermaid(defineConfig({
           ]
         },
         socialLinks: [
-          { icon: 'github', link: 'https://github.com/eam2539/RWX' }
+          {icon: 'github', link: 'https://github.com/yomi2539/RWX'}
         ],
         footer: {
           message: '使用 AGPL-3.0 协议发布',

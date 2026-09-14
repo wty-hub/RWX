@@ -26,7 +26,8 @@
 ### 提交问题
 
 发现 bug 或有新功能建议？请在 GitHub 上提交 issue：
-1. 访问 [GitHub Issues](https://github.com/eam2539/RWX/issues)
+
+1. 访问 [GitHub Issues](https://github.com/yomi2539/RWX/issues)
 2. 点击 "New Issue"
 3. 选择适当的模板
 4. 详细描述你的问题或建议

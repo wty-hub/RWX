@@ -1,6 +1,6 @@
 # RWX Docs
 
-Official documentation site for [RWX](https://github.com/eam2539/RWX).
+Official documentation site for [RWX](https://github.com/yomi2539/RWX).
 
 - Live site: <https://rwx-docs.netlify.app>
 - Stack: VitePress + Mermaid

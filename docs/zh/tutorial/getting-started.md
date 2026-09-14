@@ -19,7 +19,7 @@ RWX 支持：
 | Android                            | 已支持 |
 
 发行包由项目 CI
-构建。当前打包矩阵见 [GitHub Actions 工作流](https://github.com/eam2539/RWX/blob/main/.github/workflows/ci.yml)。
+构建。当前打包矩阵见 [GitHub Actions 工作流](https://github.com/yomi2539/RWX/blob/main/.github/workflows/ci.yml)。
 
 ## 特性一览
 
@@ -32,7 +32,7 @@ RWX 支持：
 ## 从源码构建
 
 1. 安装 JDK 25。
-2. 克隆 [RWX](https://github.com/eam2539/RWX)。
+2. 克隆 [RWX](https://github.com/yomi2539/RWX)。
 3. 使用仓库 Gradle 任务构建 Desktop / Android。
 4. 对外分发时优先对齐 CI 流程。
 

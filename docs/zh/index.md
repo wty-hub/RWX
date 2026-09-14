@@ -16,7 +16,7 @@ hero:
       link: /zh/tutorial/getting-started
     - theme: alt
       text: 在 GitHub 上查看
-      link: https://github.com/eam2539/RWX
+      link: https://github.com/yomi2539/RWX
 
 features:
   - icon: 🎮
