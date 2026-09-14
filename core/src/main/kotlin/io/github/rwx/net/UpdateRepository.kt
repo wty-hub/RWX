@@ -124,5 +124,5 @@ private val updateJson = Json {
     ignoreUnknownKeys = true
 }
 
-private const val GITHUB_RELEASES_API_URL = "https://api.github.com/repos/eam2539/RWX/releases"
+private const val GITHUB_RELEASES_API_URL = "https://api.github.com/repos/yomi2539/RWX/releases"
 private const val UPDATE_CHECK_TIMEOUT_MS: Long = 10000L
