@@ -13,7 +13,7 @@ hero:
   actions:
     - theme: brand
       text: 快速开始
-      link: /zh/tutorial/getting-started
+      link: /tutorial/getting-started
     - theme: alt
       text: 在 GitHub 上查看
       link: https://github.com/yomi2539/RWX
@@ -25,21 +25,21 @@ features:
   - icon: 🌐
     title: P2P 联机
     details: WebRTC DataChannel 传输，配合 libp2p 房间发现与信令。
-    link: /zh/tutorial/p2p
+    link: /tutorial/p2p
     linkText: 了解联机机制
   - icon: 🏁
     title: 区域控制
     details: 占领区域、持续计分，改写传统胜负条件。
-    link: /zh/tutorial/area-control
+    link: /tutorial/area-control
     linkText: 模式说明
   - icon: 🗺️
     title: 地图联通
     details: 用传送门连接多张地图，单位可跨图转移。
-    link: /zh/tutorial/linked-maps
+    link: /tutorial/linked-maps
     linkText: 传送门配置
   - icon: 🛠️
     title: JVM 模组
     details: 使用 Java/Kotlin 扩展玩法。
-    link: /zh/modding/introduction
+    link: /modding/introduction
     linkText: 开始模组开发
 ---
