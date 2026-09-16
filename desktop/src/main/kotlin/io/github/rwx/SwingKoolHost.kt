@@ -31,7 +31,7 @@ class SwingKoolHost private constructor(
 ) : PlatformFilePickerHost {
     private val panel = JPanel(null)
     private val frame = JFrame(windowTitle())
-    private val overlayPanel = JPanel(null)
+    private val overlayPanel = JPanel(BorderLayout())
     private val overlayWindow = JWindow(frame)
     private val textInputController: DesktopTextInputController
     val windowSize: Vec2i
@@ -63,7 +63,21 @@ class SwingKoolHost private constructor(
         koolCanvas.isFocusable = true
         koolCanvas.ignoreRepaint = true
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
-        textInputController = DesktopTextInputController(overlayPanel, koolCanvas)
+        textInputController = DesktopTextInputController(
+            editorHost = panel,
+            activateForEditing = {
+                // Keep clicks on the Kool canvas from stealing AWT focus back from the editor,
+                // which would drop an in-progress input method composition.
+                koolCanvas.isFocusable = false
+                frame.requestFocus()
+            },
+            restoreFocus = {
+                koolCanvas.isFocusable = true
+                overlayWindow.toFront()
+                overlayWindow.requestFocus()
+                koolCanvas.requestFocusInWindow()
+            },
+        )
         PlatformTextInputBridge.install(textInputController)
         gameCanvas.name = GAME_CARD
         gameCanvas.background = Color.BLACK

@@ -10,13 +10,15 @@ import io.github.rwx.ui.component.PlatformTextInputRequest
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.awt.Color
-import java.awt.Component
 import java.awt.Container
 import java.awt.MouseInfo
+import java.awt.event.InputMethodEvent
+import java.awt.event.InputMethodListener
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent as AwtKeyEvent
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.text.AbstractDocument
@@ -28,20 +30,23 @@ import javax.swing.text.StyleConstants
 /**
  * Desktop input-method (IME) bridge.
  *
- * AWT input methods only attach to real text components: a bare [java.awt.Canvas] never becomes an
- * active IME client, so composed and committed text never reached the Kool UI and only the raw
- * keystrokes (the pinyin letters) landed in the field. This controller keeps a 1x1, fully
- * transparent [JTextField] inside the Kool overlay window, focuses it while a Kool text field is
- * focused, and forwards the committed text to that Kool field. The input method composes into the
- * editor, so in-progress composition stays in the editor's document as marked text and never
- * reaches [PlatformTextInputRequest.onChange].
+ * AWT input methods only attach to a real, focusable text component hosted by a window that macOS
+ * lets become the key window. The Kool UI lives in a borderless, transparent `JWindow` that is
+ * owned by the game `JFrame`; an input method never attaches to it, so composition and committed
+ * text were lost and only the raw keystrokes (the pinyin letters) reached the Kool field. This
+ * controller keeps a 1x1, fully transparent [JTextField] in the **frame** instead, brings the frame
+ * forward and focuses that editor while a Kool text field is focused, and forwards the committed
+ * text to that Kool field. The input method composes into the editor, so in-progress composition
+ * stays in the editor's document as marked text and never reaches
+ * [PlatformTextInputRequest.onChange].
  *
  * This mirrors [io.github.rwx.AndroidTextInputController], which does the same with a hidden
  * `EditText`.
  */
 internal class DesktopTextInputController(
-    private val overlayPanel: Container,
-    private val koolCanvas: Component,
+    private val editorHost: Container,
+    private val activateForEditing: () -> Unit,
+    private val restoreFocus: () -> Unit,
     private val sendKey: (KeyCode, Int) -> Unit = ::dispatchKoolKey,
     private val dispatch: (() -> Unit) -> Unit = { action -> FrontendScope.launch { action() } },
 ) : PlatformTextInputController {
@@ -49,13 +54,30 @@ internal class DesktopTextInputController(
     private val editor = JTextField()
     private val maxLengthFilter = MaxLengthFilter()
 
+    override val ownsCaret: Boolean = true
+
     /** Owner of the Kool field that currently wants text input, null when nothing is edited. */
     @Volatile
     private var activeRequest: PlatformTextInputRequest? = null
 
     private var suppressTextCallback = false
     private var lastForwardedText = ""
-    private var focusFailureLogged = false
+    private var lastCaretRequestId = 0L
+    private var focusFailureReported = false
+    private var lastActivationNanos = 0L
+
+    @Volatile
+    private var lastRequestNanos = 0L
+
+    /**
+     * [showOrUpdate] is called on every frame while a Kool text field is composed. If those calls
+     * stop while a request is still active, the field was torn down without reporting focus loss
+     * (a scene change): leaving the platform editor focused would swallow all keyboard input, so
+     * editing is dropped and focus handed back.
+     */
+    private val staleEditingTimer = Timer(EDITING_STALE_CHECK_MILLIS) { dropStaleEditing() }.apply {
+        start()
+    }
 
     init {
         editor.apply {
@@ -91,31 +113,80 @@ internal class DesktopTextInputController(
                 }
             }
         })
-        overlayPanel.add(editor)
+        editor.addCaretListener {
+            val request = activeRequest ?: return@addCaretListener
+            val caret = editor.caretPosition
+            val selectionAnchor = if (caret == editor.selectionStart) editor.selectionEnd else editor.selectionStart
+            dispatch { request.onSelectionChanged?.invoke(selectionAnchor, caret) }
+        }
+        // Registering a listener makes Swing treat the editor as an active input method client and
+        // gives us visibility on the composition lifecycle.
+        editor.addInputMethodListener(object : InputMethodListener {
+            override fun inputMethodTextChanged(event: InputMethodEvent) {
+                if (logger.isDebugEnabled) {
+                    logger.debug(
+                        "IME text changed: committed={} text={}",
+                        event.committedCharacterCount,
+                        event.text?.let { text ->
+                            buildString {
+                                var character = text.first()
+                                while (character != java.text.AttributedCharacterIterator.DONE) {
+                                    append(character)
+                                    character = text.next()
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            override fun caretPositionChanged(event: InputMethodEvent) = Unit
+        })
+        editorHost.add(editor)
     }
 
     override fun showOrUpdate(request: PlatformTextInputRequest) {
         val previous = activeRequest
         val isNewOwner = previous?.owner !== request.owner
         activeRequest = request
+        lastRequestNanos = System.nanoTime()
         runOnEdt {
             if (activeRequest?.owner !== request.owner) return@runOnEdt
             maxLengthFilter.maxLength = request.maxLength.coerceAtLeast(1)
             if (isNewOwner) {
                 lastForwardedText = request.text
-                replaceEditorText(request.text)
+                lastCaretRequestId = request.caretRequest?.id ?: 0L
+                replaceEditorText(request.text, caretAtEnd = true)
                 positionEditorNearPointer()
             } else if (request.text != lastForwardedText) {
-                // The Kool side rewrote the text (send-and-clear, filtering, ...): mirror it.
+                // The Kool side rewrote the text (send-and-clear, filtering, ...): mirror it while
+                // keeping the caret the user is editing at.
                 lastForwardedText = request.text
-                replaceEditorText(request.text)
+                replaceEditorText(request.text, caretAtEnd = false)
+            }
+            request.caretRequest?.takeIf { it.id != lastCaretRequestId }?.let { caretRequest ->
+                lastCaretRequestId = caretRequest.id
+                applyEditorSelection(caretRequest.selectionStart, caretRequest.caret)
             }
             if (!editor.isFocusOwner) {
+                // The Kool overlay window cannot host an input method; hand the frame the key
+                // window role and move focus onto the editor inside it. Re-arm at most a few times
+                // a second so a stray click on the overlay cannot tear down an active composition.
+                val now = System.nanoTime()
+                if (isNewOwner || now - lastActivationNanos >= FOCUS_REARM_INTERVAL_NANOS) {
+                    lastActivationNanos = now
+                    activateForEditing()
+                }
                 if (editor.requestFocusInWindow()) {
-                    focusFailureLogged = false
-                } else if (!focusFailureLogged) {
-                    focusFailureLogged = true
-                    logger.debug("Desktop text input editor could not take focus; IME stays unavailable")
+                    focusFailureReported = false
+                } else if (!focusFailureReported) {
+                    focusFailureReported = true
+                    logger.warn(
+                        "Desktop text input editor could not take focus (showing={}, focusOwner={}); " +
+                            "the system input method stays unavailable",
+                        editor.isShowing,
+                        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.javaClass?.name,
+                    )
                 }
             }
         }
@@ -124,17 +195,32 @@ internal class DesktopTextInputController(
     override fun hide(owner: Any) {
         if (activeRequest?.owner !== owner) return
         activeRequest = null
-        runOnEdt { returnFocusToKoolCanvas() }
+        runOnEdt { restoreFocus() }
     }
 
     override fun dismissKeyboard() {
         activeRequest = null
-        runOnEdt { returnFocusToKoolCanvas() }
+        runOnEdt { restoreFocus() }
     }
 
     fun dispose() {
         activeRequest = null
-        runOnEdt { overlayPanel.remove(editor) }
+        staleEditingTimer.stop()
+        runOnEdt {
+            restoreFocus()
+            editorHost.remove(editor)
+        }
+    }
+
+    private fun dropStaleEditing() {
+        val request = activeRequest ?: return
+        if (System.nanoTime() - lastRequestNanos < STALE_EDITING_NANOS) return
+        logger.warn(
+            "Kool text field {} stopped requesting input without losing focus; ending desktop editing",
+            request.owner.javaClass.name,
+        )
+        activeRequest = null
+        restoreFocus()
     }
 
     private fun forwardCommittedText() {
@@ -204,20 +290,27 @@ internal class DesktopTextInputController(
         }
     }
 
-    private fun replaceEditorText(text: String) {
+    private fun replaceEditorText(text: String, caretAtEnd: Boolean) {
         if (editor.text == text) return
+        val requestedCaret = if (caretAtEnd) text.length else editor.caretPosition
         suppressTextCallback = true
         try {
             editor.text = text
-            editor.caretPosition = editor.text.length
+            editor.caretPosition = requestedCaret.coerceIn(0, text.length)
         } finally {
             suppressTextCallback = false
         }
     }
 
-    private fun returnFocusToKoolCanvas() {
-        if (editor.isFocusOwner) {
-            koolCanvas.requestFocusInWindow()
+    private fun applyEditorSelection(selectionStart: Int, caret: Int) {
+        val length = editor.text.length
+        val start = selectionStart.coerceIn(0, length)
+        val end = caret.coerceIn(0, length)
+        // Swing's caret (dot) is the moving end while the mark is the selection anchor; Kool models
+        // the same pair as (selectionStart, caretPosition).
+        editor.caretPosition = start
+        if (start != end) {
+            editor.moveCaretPosition(end)
         }
     }
 
@@ -225,9 +318,9 @@ internal class DesktopTextInputController(
     private fun positionEditorNearPointer() {
         val location = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull() ?: return
         runCatching {
-            SwingUtilities.convertPointFromScreen(location, overlayPanel)
-            val maxX = (overlayPanel.width - EDITOR_SIZE_PX).coerceAtLeast(0)
-            val maxY = (overlayPanel.height - EDITOR_SIZE_PX).coerceAtLeast(0)
+            SwingUtilities.convertPointFromScreen(location, editorHost)
+            val maxX = (editorHost.width - EDITOR_SIZE_PX).coerceAtLeast(0)
+            val maxY = (editorHost.height - EDITOR_SIZE_PX).coerceAtLeast(0)
             editor.setLocation(location.x.coerceIn(0, maxX), location.y.coerceIn(0, maxY))
         }
     }
@@ -266,6 +359,9 @@ internal class DesktopTextInputController(
     private companion object {
         const val EDITOR_SIZE_PX = 1
         const val KEY_MOD_SHIFT = 1
+        const val FOCUS_REARM_INTERVAL_NANOS = 300_000_000L
+        const val EDITING_STALE_CHECK_MILLIS = 500
+        const val STALE_EDITING_NANOS = 2_000_000_000L
         val Transparent: Color = Color(0, 0, 0, 0)
         val logger = LoggerFactory.getLogger("Desktop")
     }
