@@ -1,6 +1,5 @@
 package io.github.rwx
 
-import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.math.Vec2i
 import de.fabmax.kool.platform.swing.KoolGlCanvas
 import de.fabmax.kool.platform.swing.SwingWindowSubsystem
@@ -9,14 +8,11 @@ import io.github.rwx.KoolDesktopMain.getKoin
 import io.github.rwx.app.launchOnIO
 import io.github.rwx.slick.SlickAwtGLCanvas
 import io.github.rwx.slick.SlickCanvasHost
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import kotlinx.coroutines.launch
 import org.lwjgl.opengl.awt.GLData
 import java.awt.*
 import java.awt.event.*
-import java.awt.font.TextHitInfo
-import java.awt.im.InputMethodRequests
-import java.text.AttributedCharacterIterator
-import java.text.AttributedString
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import javax.swing.JFrame
@@ -35,8 +31,9 @@ class SwingKoolHost private constructor(
 ) : PlatformFilePickerHost {
     private val panel = JPanel(null)
     private val frame = JFrame(windowTitle())
-    private val overlayPanel = JPanel(BorderLayout())
+    private val overlayPanel = JPanel(null)
     private val overlayWindow = JWindow(frame)
+    private val textInputController: DesktopTextInputController
     val windowSize: Vec2i
         get() {
             val width = panel.width.takeIf { it > 0 } ?: panel.preferredSize.width
@@ -66,7 +63,8 @@ class SwingKoolHost private constructor(
         koolCanvas.isFocusable = true
         koolCanvas.ignoreRepaint = true
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
-        installKoolInputMethodListener()
+        textInputController = DesktopTextInputController(overlayPanel, koolCanvas)
+        PlatformTextInputBridge.install(textInputController)
         gameCanvas.name = GAME_CARD
         gameCanvas.background = Color.BLACK
         gameCanvas.isFocusable = true
@@ -150,6 +148,8 @@ class SwingKoolHost private constructor(
         val bridge=getKoin().get<PlatformBridge>()
         bridge.filePickerHost=null
         keyboardFocusManager.removeKeyEventDispatcher(koolTypedControlCharacterFilter)
+        PlatformTextInputBridge.uninstall(textInputController)
+        textInputController.dispose()
         // Stop the embedded Slick render thread and wait for it to release the game canvas'
         // JAWT drawing surface before disposing the window. Disposing while that thread still
         // holds the surface races the EDT inside JAWT_FreeDrawingSurface and crashes the JVM.
@@ -307,20 +307,6 @@ class SwingKoolHost private constructor(
         }
     }
 
-    private fun installKoolInputMethodListener() {
-        koolCanvas.enableInputMethods(true)
-        koolCanvas.addInputMethodListener(object : InputMethodListener {
-            override fun inputMethodTextChanged(event: InputMethodEvent) {
-                committedInputMethodText(event.text, event.committedCharacterCount).forEach {
-                    KeyboardInput.handleCharTyped(it)
-                }
-                event.consume()
-            }
-
-            override fun caretPositionChanged(event: InputMethodEvent) = Unit
-        })
-    }
-
     private fun createPointerCursor(): Cursor? =
         runCatching {
             val imageFile = DesktopPlatformStorage.resolveAssetRoot().resolve("drawable/pointer.png")
@@ -448,62 +434,12 @@ internal fun dispatchCanvasVisibilityChange(
     }
 }
 
-internal fun committedInputMethodText(
-    text: AttributedCharacterIterator?,
-    committedCharacterCount: Int,
-): String {
-    if (text == null || committedCharacterCount <= 0) return ""
-    return buildString(committedCharacterCount) {
-        var character = text.first()
-        repeat(committedCharacterCount) {
-            if (character == AttributedCharacterIterator.DONE) return@buildString
-            if (!character.isISOControl()) {
-                append(character)
-            }
-            character = text.next()
-        }
-    }
-}
-
 internal fun shouldSuppressKoolTypedCharacter(event: KeyEvent): Boolean =
     event.id == KeyEvent.KEY_TYPED && event.keyChar.isISOControl()
 
 private class PointerCursorCanvas : Canvas() {
     var pointerCursor: Cursor? = null
     var inGamePointerCursorActive: Boolean = false
-    private val imeRequests = object : InputMethodRequests {
-        override fun getTextLocation(offset: TextHitInfo?): Rectangle {
-            val screenLocation = runCatching { locationOnScreen }.getOrDefault(Point())
-            return Rectangle(
-                screenLocation.x + IME_CANDIDATE_OFFSET_PX,
-                screenLocation.y + height - IME_CANDIDATE_OFFSET_PX,
-                0,
-                0,
-            )
-        }
-
-        override fun getLocationOffset(x: Int, y: Int): TextHitInfo? = null
-
-        override fun getInsertPositionOffset(): Int = 0
-
-        override fun getCommittedText(
-            beginIndex: Int,
-            endIndex: Int,
-            attributes: Array<out AttributedCharacterIterator.Attribute>?,
-        ): AttributedCharacterIterator = AttributedString("").iterator
-
-        override fun getCommittedTextLength(): Int = 0
-
-        override fun cancelLatestCommittedText(
-            attributes: Array<out AttributedCharacterIterator.Attribute>?,
-        ): AttributedCharacterIterator? = null
-
-        override fun getSelectedText(
-            attributes: Array<out AttributedCharacterIterator.Attribute>?,
-        ): AttributedCharacterIterator? = null
-    }
-
-    override fun getInputMethodRequests(): InputMethodRequests = imeRequests
 
     override fun setCursor(cursor: Cursor?) {
         if (inGamePointerCursorActive && cursor?.type == Cursor.DEFAULT_CURSOR) {
@@ -513,5 +449,3 @@ private class PointerCursorCanvas : Canvas() {
         }
     }
 }
-
-private const val IME_CANDIDATE_OFFSET_PX = 24
