@@ -91,29 +91,9 @@ fun UiScope.RwxTextField(
 ): TextFieldScope {
     val owner = remember(Any())
     val wasFocused = remember(false)
-    val textField = TextField(text, scopeName, block)
-    val isFocused = textField.isFocused.use()
-    val modifier = textField.modifier
-
-    if (!PlatformTextInputBridge.ownsCaret()) {
-        if (isFocused) {
-            PlatformTextInputBridge.showOrUpdate(
-                PlatformTextInputRequest(
-                    owner = owner.value,
-                    text = text,
-                    hint = modifier.hint,
-                    maxLength = modifier.maxLength,
-                    onChange = { modifier.onChange?.invoke(it) },
-                    onEnter = modifier.onEnterPressed,
-                )
-            )
-        } else if (wasFocused.value) {
-            PlatformTextInputBridge.hide(owner.value)
-        }
-        wasFocused.value = isFocused
-        return textField
-    }
-
+    // Kool stores remembered values in per-type slots that are consumed in call order and rewound
+    // every frame (WeakMemory), so this composable must call remember() the same number of times,
+    // in the same order, on every frame -- independent of whether the platform owns the caret.
     val caret = remember(text.length)
     val selection = remember(text.length)
     val pendingCaret = remember(null as PlatformCaretRequest?)
@@ -121,48 +101,55 @@ fun UiScope.RwxTextField(
     val dragAnchor = remember(-1)
     val reported = remember(PlatformSelection())
 
+    val textField = TextField(text, scopeName, block)
+    val isFocused = textField.isFocused.use()
+    val modifier = textField.modifier
+    val caretOwned = PlatformTextInputBridge.ownsCaret()
+
     val reportedSelection = reported.use()
     if (reportedSelection.caret >= 0) {
         if (caret.value != reportedSelection.caret) caret.value = reportedSelection.caret
         if (selection.value != reportedSelection.selectionStart) selection.value = reportedSelection.selectionStart
     }
 
-    val currentCaret = caret.use().coerceIn(0, text.length)
-    val currentSelection = selection.use().coerceIn(0, text.length)
-    // The native editor is authoritative: always feed its caret and selection back for rendering.
-    modifier.selectionRange(currentSelection, currentCaret)
+    if (caretOwned) {
+        val currentCaret = caret.use().coerceIn(0, text.length)
+        val currentSelection = selection.use().coerceIn(0, text.length)
+        // The native editor is authoritative: always feed its caret and selection back for rendering.
+        modifier.selectionRange(currentSelection, currentCaret)
 
-    (textField as? UiNode)?.let { node ->
-        fun requestCaret(selectionStart: Int, caretPosition: Int) {
-            val start = selectionStart.coerceIn(0, text.length)
-            val position = caretPosition.coerceIn(0, text.length)
-            selection.value = start
-            caret.value = position
-            // Keep the buffered report in sync too, otherwise a report that is still in flight from
-            // the editor would overwrite the click we just registered for one frame.
-            reported.value.update(position, start)
-            requestId.value += 1
-            pendingCaret.value = PlatformCaretRequest(requestId.value, start, position)
-        }
+        (textField as? UiNode)?.let { node ->
+            fun requestCaret(selectionStart: Int, caretPosition: Int) {
+                val start = selectionStart.coerceIn(0, text.length)
+                val position = caretPosition.coerceIn(0, text.length)
+                selection.value = start
+                caret.value = position
+                // Keep the buffered report in sync too, otherwise a report that is still in flight
+                // from the editor would overwrite the click we just registered for one frame.
+                reported.value.update(position, start)
+                requestId.value += 1
+                pendingCaret.value = PlatformCaretRequest(requestId.value, start, position)
+            }
 
-        modifier.onClick += { event ->
-            val index = node.platformCaretIndex(modifier.font, text, event.position.x)
-            if (event.pointer.leftButtonRepeatedClickCount > 1) {
-                val bounds = text.wordBoundsAt(index)
-                requestCaret(bounds.first, bounds.second)
-            } else {
+            modifier.onClick += { event ->
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                if (event.pointer.leftButtonRepeatedClickCount > 1) {
+                    val bounds = text.wordBoundsAt(index)
+                    requestCaret(bounds.first, bounds.second)
+                } else {
+                    requestCaret(index, index)
+                }
+            }
+            modifier.onDragStart += { event ->
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                dragAnchor.value = index
                 requestCaret(index, index)
             }
-        }
-        modifier.onDragStart += { event ->
-            val index = node.platformCaretIndex(modifier.font, text, event.position.x)
-            dragAnchor.value = index
-            requestCaret(index, index)
-        }
-        modifier.onDrag += { event ->
-            val anchor = dragAnchor.value.coerceAtLeast(0)
-            val index = node.platformCaretIndex(modifier.font, text, event.position.x)
-            requestCaret(anchor, index)
+            modifier.onDrag += { event ->
+                val anchor = dragAnchor.value.coerceAtLeast(0)
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                requestCaret(anchor, index)
+            }
         }
     }
 
@@ -175,9 +162,11 @@ fun UiScope.RwxTextField(
                 maxLength = modifier.maxLength,
                 onChange = { modifier.onChange?.invoke(it) },
                 onEnter = modifier.onEnterPressed,
-                caretRequest = pendingCaret.use(),
-                onSelectionChanged = { selectionStart, caretPosition ->
-                    reported.value.update(caretPosition, selectionStart)
+                caretRequest = if (caretOwned) pendingCaret.use() else null,
+                onSelectionChanged = if (caretOwned) {
+                    { selectionStart, caretPosition -> reported.value.update(caretPosition, selectionStart) }
+                } else {
+                    null
                 },
             )
         )

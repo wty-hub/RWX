@@ -109,6 +109,20 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `caret ownership is only claimed while the platform editor holds focus`() {
+        var activations = 0
+        withController(activateEditorWindow = { activations += 1 }) { controller, editor ->
+            controller.showOrUpdate(request(Any(), "abc"))
+
+            // No showing window in this test, so the editor cannot take focus and the Kool field
+            // must keep its own editing instead of silently swallowing every keystroke.
+            assertTrue(!editor.isFocusOwner)
+            assertTrue(!controller.ownsCaret, "ownsCaret must not be claimed without editor focus")
+            assertTrue(activations > 0, "the controller should have asked for the editor window")
+        }
+    }
+
+    @Test
     fun `in-progress composition stays out of the kool field`() {
         withController { controller, editor ->
             val received = mutableListOf<String>()
@@ -193,6 +207,8 @@ class DesktopTextInputControllerTest {
 
     private fun withController(
         sendKey: (KeyCode, Int) -> Unit = { _, _ -> },
+        activateEditorWindow: () -> Unit = {},
+        restoreFocus: () -> Unit = {},
         block: (DesktopTextInputController, JTextField) -> Unit,
     ) {
         if (GraphicsEnvironment.isHeadless()) return
@@ -200,8 +216,9 @@ class DesktopTextInputControllerTest {
             val editorHost = JPanel(null)
             val controller = DesktopTextInputController(
                 editorHost = editorHost,
-                activateForEditing = {},
-                restoreFocus = {},
+                activateEditorWindow = activateEditorWindow,
+                setEditorHasFocus = {},
+                restoreFocus = restoreFocus,
                 sendKey = sendKey,
                 dispatch = { action -> action() },
             )

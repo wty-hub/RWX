@@ -45,7 +45,8 @@ import javax.swing.text.StyleConstants
  */
 internal class DesktopTextInputController(
     private val editorHost: Container,
-    private val activateForEditing: () -> Unit,
+    private val activateEditorWindow: () -> Unit,
+    private val setEditorHasFocus: (Boolean) -> Unit,
     private val restoreFocus: () -> Unit,
     private val sendKey: (KeyCode, Int) -> Unit = ::dispatchKoolKey,
     private val dispatch: (() -> Unit) -> Unit = { action -> FrontendScope.launch { action() } },
@@ -54,7 +55,15 @@ internal class DesktopTextInputController(
     private val editor = JTextField()
     private val maxLengthFilter = MaxLengthFilter()
 
-    override val ownsCaret: Boolean = true
+    /**
+     * The Kool field only hands over its editing state while the platform editor really holds
+     * focus. If the window manager never grants focus (focus-stealing prevention on some Linux
+     * desktops), the field keeps Kool's own editing instead of becoming unusable.
+     */
+    @Volatile
+    private var editorHasFocus = false
+
+    override val ownsCaret: Boolean get() = editorHasFocus
 
     /** Owner of the Kool field that currently wants text input, null when nothing is edited. */
     @Volatile
@@ -63,8 +72,9 @@ internal class DesktopTextInputController(
     private var suppressTextCallback = false
     private var lastForwardedText = ""
     private var lastCaretRequestId = 0L
-    private var focusFailureReported = false
     private var lastActivationNanos = 0L
+    private var focusAttempts = 0
+    private var editorAbandoned = false
 
     @Volatile
     private var lastRequestNanos = 0L
@@ -156,6 +166,8 @@ internal class DesktopTextInputController(
             if (isNewOwner) {
                 lastForwardedText = request.text
                 lastCaretRequestId = request.caretRequest?.id ?: 0L
+                focusAttempts = 0
+                editorAbandoned = false
                 replaceEditorText(request.text, caretAtEnd = true)
                 positionEditorNearPointer()
             } else if (request.text != lastForwardedText) {
@@ -168,25 +180,42 @@ internal class DesktopTextInputController(
                 lastCaretRequestId = caretRequest.id
                 applyEditorSelection(caretRequest.selectionStart, caretRequest.caret)
             }
-            if (!editor.isFocusOwner) {
+
+            val editorFocused = editor.isFocusOwner
+            if (editorHasFocus != editorFocused) {
+                editorHasFocus = editorFocused
+                setEditorHasFocus(editorFocused)
+                if (editorFocused) focusAttempts = 0
+            }
+            if (!editorFocused && !editorAbandoned) {
                 // The Kool overlay window cannot host an input method; hand the frame the key
                 // window role and move focus onto the editor inside it. Re-arm at most a few times
-                // a second so a stray click on the overlay cannot tear down an active composition.
+                // a second so a stray click on the overlay cannot tear down an active composition,
+                // and give up after a few attempts so a platform that refuses the focus request
+                // falls back to Kool's own editing instead of losing text input entirely.
                 val now = System.nanoTime()
                 if (isNewOwner || now - lastActivationNanos >= FOCUS_REARM_INTERVAL_NANOS) {
                     lastActivationNanos = now
-                    activateForEditing()
-                }
-                if (editor.requestFocusInWindow()) {
-                    focusFailureReported = false
-                } else if (!focusFailureReported) {
-                    focusFailureReported = true
-                    logger.warn(
-                        "Desktop text input editor could not take focus (showing={}, focusOwner={}); " +
-                            "the system input method stays unavailable",
-                        editor.isShowing,
-                        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.javaClass?.name,
-                    )
+                    focusAttempts += 1
+                    activateEditorWindow()
+                    if (editor.requestFocusInWindow()) {
+                        editorHasFocus = true
+                        focusAttempts = 0
+                        setEditorHasFocus(true)
+                    } else if (focusAttempts >= MAX_FOCUS_ATTEMPTS) {
+                        editorAbandoned = true
+                        logger.warn(
+                            "Desktop text input editor could not take focus after {} attempts " +
+                                "(showing={}, focusOwner={}); falling back to Kool's own text editing, " +
+                                "system input method stays unavailable",
+                            focusAttempts,
+                            editor.isShowing,
+                            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                                .focusOwner?.javaClass?.name,
+                        )
+                        setEditorHasFocus(false)
+                        restoreFocus()
+                    }
                 }
             }
         }
@@ -195,21 +224,28 @@ internal class DesktopTextInputController(
     override fun hide(owner: Any) {
         if (activeRequest?.owner !== owner) return
         activeRequest = null
-        runOnEdt { restoreFocus() }
+        runOnEdt { endEditing() }
     }
 
     override fun dismissKeyboard() {
         activeRequest = null
-        runOnEdt { restoreFocus() }
+        runOnEdt { endEditing() }
     }
 
     fun dispose() {
         activeRequest = null
         staleEditingTimer.stop()
         runOnEdt {
-            restoreFocus()
+            endEditing()
             editorHost.remove(editor)
         }
+    }
+
+    private fun endEditing() {
+        editorHasFocus = false
+        focusAttempts = 0
+        editorAbandoned = false
+        restoreFocus()
     }
 
     private fun dropStaleEditing() {
@@ -220,7 +256,7 @@ internal class DesktopTextInputController(
             request.owner.javaClass.name,
         )
         activeRequest = null
-        restoreFocus()
+        endEditing()
     }
 
     private fun forwardCommittedText() {
@@ -360,6 +396,7 @@ internal class DesktopTextInputController(
         const val EDITOR_SIZE_PX = 1
         const val KEY_MOD_SHIFT = 1
         const val FOCUS_REARM_INTERVAL_NANOS = 300_000_000L
+        const val MAX_FOCUS_ATTEMPTS = 3
         const val EDITING_STALE_CHECK_MILLIS = 500
         const val STALE_EDITING_NANOS = 2_000_000_000L
         val Transparent: Color = Color(0, 0, 0, 0)

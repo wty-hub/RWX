@@ -65,11 +65,11 @@ class SwingKoolHost private constructor(
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
         textInputController = DesktopTextInputController(
             editorHost = panel,
-            activateForEditing = {
-                // Keep clicks on the Kool canvas from stealing AWT focus back from the editor,
-                // which would drop an in-progress input method composition.
-                koolCanvas.isFocusable = false
-                frame.requestFocus()
+            activateEditorWindow = { frame.requestFocus() },
+            setEditorHasFocus = { hasFocus ->
+                // While the editor owns AWT focus, clicks on the Kool canvas must not take it back:
+                // that would drop an in-progress input method composition.
+                koolCanvas.isFocusable = !hasFocus
             },
             restoreFocus = {
                 koolCanvas.isFocusable = true
