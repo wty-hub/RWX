@@ -41,6 +41,9 @@ bin/
 ### Mac OS ###
 .DS_Store
 
+### Android ###
+local.properties
+
 ### Release signing and generated packages ###
 /android/release/
 *.jks

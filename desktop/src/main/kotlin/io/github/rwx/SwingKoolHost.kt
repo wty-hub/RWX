@@ -9,6 +9,7 @@ import io.github.rwx.app.launchOnIO
 import io.github.rwx.slick.SlickAwtGLCanvas
 import io.github.rwx.slick.SlickCanvasHost
 import io.github.rwx.ui.component.PlatformTextInputBridge
+import io.github.rwx.ui.emoji.EmojiRasterizerBridge
 import kotlinx.coroutines.launch
 import org.lwjgl.opengl.awt.GLData
 import java.awt.*
@@ -34,6 +35,7 @@ class SwingKoolHost private constructor(
     private val overlayPanel = JPanel(BorderLayout())
     private val overlayWindow = JWindow(frame)
     private val textInputController: DesktopTextInputController
+    private val emojiRasterizer = DesktopEmojiRasterizer()
     val windowSize: Vec2i
         get() {
             val width = panel.width.takeIf { it > 0 } ?: panel.preferredSize.width
@@ -65,11 +67,23 @@ class SwingKoolHost private constructor(
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
         textInputController = DesktopTextInputController(
             editorHost = panel,
-            activateEditorWindow = { frame.requestFocus() },
+            activateEditorWindow = {
+                // IME clients must live in the key window (the frame). Bring the frame forward
+                // without requestFocus(), which on some Linux WMs drops the owned overlay JWindow
+                // and looks like a flash-quit when the user starts typing.
+                if (!frame.isActive) {
+                    frame.toFront()
+                }
+            },
             setEditorHasFocus = { hasFocus ->
                 // While the editor owns AWT focus, clicks on the Kool canvas must not take it back:
                 // that would drop an in-progress input method composition.
                 koolCanvas.isFocusable = !hasFocus
+                if (hasFocus && overlayWindow.isVisible) {
+                    // Keep the transparent UI overlay painted above the game canvas while the
+                    // hidden frame editor holds keyboard focus for the input method.
+                    overlayWindow.toFront()
+                }
             },
             restoreFocus = {
                 koolCanvas.isFocusable = true
@@ -79,6 +93,7 @@ class SwingKoolHost private constructor(
             },
         )
         PlatformTextInputBridge.install(textInputController)
+        EmojiRasterizerBridge.install(emojiRasterizer)
         gameCanvas.name = GAME_CARD
         gameCanvas.background = Color.BLACK
         gameCanvas.isFocusable = true
@@ -163,6 +178,7 @@ class SwingKoolHost private constructor(
         bridge.filePickerHost=null
         keyboardFocusManager.removeKeyEventDispatcher(koolTypedControlCharacterFilter)
         PlatformTextInputBridge.uninstall(textInputController)
+        EmojiRasterizerBridge.uninstall(emojiRasterizer)
         textInputController.dispose()
         // Stop the embedded Slick render thread and wait for it to release the game canvas'
         // JAWT drawing surface before disposing the window. Disposing while that thread still

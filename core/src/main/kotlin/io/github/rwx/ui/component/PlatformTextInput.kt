@@ -27,6 +27,7 @@ data class PlatformTextInputRequest(
     val maxLength: Int,
     val onChange: (String) -> Unit,
     val onEnter: ((String) -> Unit)?,
+    val onCancel: (() -> Unit)? = null,
     val caretRequest: PlatformCaretRequest? = null,
     val onSelectionChanged: ((selectionStart: Int, caret: Int) -> Unit)? = null,
 )
@@ -38,6 +39,9 @@ interface PlatformTextInputController {
      * editor next to the Kool field (Android) leave this false and keep Kool's own editing.
      */
     val ownsCaret: Boolean get() = false
+
+    /** True while a Kool text field has an active platform editing session. */
+    val isEditing: Boolean get() = false
 
     fun showOrUpdate(request: PlatformTextInputRequest)
     fun hide(owner: Any)
@@ -60,6 +64,9 @@ object PlatformTextInputBridge {
 
     /** Whether the installed controller drives the caret and selection of the Kool text field. */
     fun ownsCaret(): Boolean = controller?.ownsCaret == true
+
+    /** Whether a platform text editor is currently active for a Kool field. */
+    fun isEditing(): Boolean = controller?.isEditing == true
 
     internal fun showOrUpdate(request: PlatformTextInputRequest): Boolean {
         val activeController = controller ?: return false
@@ -162,6 +169,11 @@ fun UiScope.RwxTextField(
                 maxLength = modifier.maxLength,
                 onChange = { modifier.onChange?.invoke(it) },
                 onEnter = modifier.onEnterPressed,
+                // Unfocus the Kool field without synthesizing Esc into the global input stack:
+                // while the platform editor holds AWT focus the Kool canvas is unfocused, so a
+                // synthetic Esc would miss the focused TextField and hit the app-wide back handler
+                // (leave battleroom / jump to main menu) instead.
+                onCancel = { textField.surface.requestFocus(null) },
                 caretRequest = if (caretOwned) pendingCaret.use() else null,
                 onSelectionChanged = if (caretOwned) {
                     { selectionStart, caretPosition -> reported.value.update(caretPosition, selectionStart) }

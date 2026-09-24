@@ -31,6 +31,7 @@ import io.github.rwx.session.GameSession
 import io.github.rwx.settings.KEY_ANDROID_OPENGL_RENDERER
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.component.*
+import io.github.rwx.ui.emoji.EmojiRasterizerBridge
 import io.github.rwx.ui.host.LoadingSceneHost
 import io.github.rwx.ui.host.invalidateResourceBrowserPreviewTextureCache
 import io.github.rwx.ui.model.LevelSelectMode
@@ -86,6 +87,7 @@ class MainActivity : Activity(), PlatformFilePickerHost, KoinComponent {
         textInputController = AndroidTextInputController(this, root, ctx.surfaceView).also {
             PlatformTextInputBridge.install(it)
         }
+        EmojiRasterizerBridge.install(AndroidEmojiRasterizer())
         setContentView(root)
         enterImmersiveMode()
 

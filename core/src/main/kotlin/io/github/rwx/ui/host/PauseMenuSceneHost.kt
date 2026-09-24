@@ -7,7 +7,6 @@ import de.fabmax.kool.scene.Scene
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.component.*
 import io.github.rwx.ui.model.*
-import io.github.rwx.ui.remainingAfter
 
 /**
  * Renders the pause menu in pure Kool DSL: a centered button stack (Resume, Save?, Settings,
@@ -38,24 +37,14 @@ class PauseMenuSceneHost(
 
     fun createScene(): Scene = UiScene(PAUSE_SCENE_NAME) {
         addPanelSurface(PanelStyle.Pause, "pause-panel", model) { theme ->
-            val actions = menuItems.use().filterNot { it.action == PauseMenuAction.Resume }
-            actions.firstOrNull()?.let { item ->
-                Row(width = UiTheme.Layout.menuButtonWidth, height = UiTheme.Layout.menuButtonHeight) {
-                    IconButton(Icon.Back, theme) {
-                        dispatch(PauseMenuAction.Resume)
-                    }
-                    TextIconButton(
-                        label = item.label,
-                        icon = item.action.pauseIcon,
-                        width = UiTheme.Layout.menuButtonWidth.remainingAfter(UiTheme.Layout.iconButtonSize),
-                        theme = theme,
-                    ) {
-                        dispatch(item.action)
-                    }
-                }
-            }
-            actions.drop(1).forEach { item ->
-                TextIconButton(item.label, item.action.pauseIcon, UiTheme.Layout.menuButtonWidth, theme) {
+            menuItems.use().forEach { item ->
+                TextIconButton(
+                    label = item.label,
+                    icon = item.action.pauseIcon,
+                    width = UiTheme.Layout.menuButtonWidth,
+                    theme = theme,
+                    showIcon = false,
+                ) {
                     dispatch(item.action)
                 }
             }

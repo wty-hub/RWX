@@ -59,6 +59,7 @@ class SlickGraphicsEngine private constructor(
     private val awtFontCache = mutableMapOf<SlickFontKey, AwtFont>()
     private val fontCache = mutableMapOf<SlickFontKey, UnicodeFont>()
     private val recentUnicodeTexts = mutableMapOf<SlickFontKey, ArrayDeque<String>>()
+    private val fontMetricsCache = IdentityHashMap<AwtFont, java.awt.FontMetrics>()
     private val fallbackTexture: SlickTexture by lazy {
         SlickTexture(Image(ImageBuffer(1, 1)), "fallback")
     }
@@ -347,7 +348,9 @@ class SlickGraphicsEngine private constructor(
         val oldFont = g.font
         withPaint(paint) {
             g.font = font
-            g.drawString(text, transform.x(alignedX(text, f, paint)), transform.y(f2 - (paint?.k() ?: 16f)))
+            val awtFont = awtFontFor((paint?.k() ?: 16f).roundToInt().coerceAtLeast(1), fontFamilyFor(text))
+            val ascent = awtFontMetrics(awtFont).ascent.toFloat()
+            g.drawString(text, transform.x(alignedX(text, f, paint)), transform.y(f2 - ascent))
         }
         g.font = oldFont
     }
@@ -500,8 +503,11 @@ class SlickGraphicsEngine private constructor(
     override fun a(str: String?, paint: KoolPaint?): Int =
         fontForText(paint, str ?: "").getLineHeight()
 
-    override fun b(str: String?, paint: KoolPaint?): Int =
-        fontForText(paint, str ?: "").getWidth(str ?: "")
+    override fun b(str: String?, paint: KoolPaint?): Int {
+        val text = str ?: ""
+        val awtFont = awtFontFor((paint?.k() ?: 16f).roundToInt().coerceAtLeast(1), fontFamilyFor(text))
+        return awtFontMetrics(awtFont).stringWidth(text)
+    }
 
     override fun r(): Texture = fallbackTexture
 
@@ -1191,6 +1197,7 @@ class SlickGraphicsEngine private constructor(
     private enum class SlickFontFamily {
         Roboto,
         DroidSansFallback,
+        Emoji,
     }
 
     private data class SlickFontKey(
@@ -1200,11 +1207,7 @@ class SlickGraphicsEngine private constructor(
 
     private fun fontForText(paint: KoolPaint?, text: String): Font {
         val size = (paint?.k() ?: 16f).roundToInt().coerceAtLeast(1)
-        val family = if (needsUnicodeFont(text)) {
-            SlickFontFamily.DroidSansFallback
-        } else {
-            SlickFontFamily.Roboto
-        }
+        val family = fontFamilyFor(text)
         val key = SlickFontKey(size, family)
         val unicodeFont = fontCache.getOrPut(key) {
             val awtFont = awtFontFor(size, family)
@@ -1214,7 +1217,7 @@ class SlickGraphicsEngine private constructor(
                 runCatching { it.loadGlyphs() }
             }
         }
-        if (text.isNotEmpty() && family == SlickFontFamily.DroidSansFallback) {
+        if (text.isNotEmpty() && family != SlickFontFamily.Roboto) {
             val recentTexts = recentUnicodeTexts.getOrPut(key) { ArrayDeque() }
             if (text !in recentTexts) {
                 val loaded = runCatching {
@@ -1234,16 +1237,54 @@ class SlickGraphicsEngine private constructor(
 
     private fun awtFontFor(size: Int, family: SlickFontFamily): AwtFont =
         awtFontCache.getOrPut(SlickFontKey(size, family)) {
-            val path = when (family) {
-                SlickFontFamily.Roboto -> "font/Roboto-Regular.ttf"
-                SlickFontFamily.DroidSansFallback -> "font/DroidSansFallback.ttf"
+            when (family) {
+                SlickFontFamily.Roboto -> loadAssetFont("font/Roboto-Regular.ttf", size)
+                    ?: AwtFont("SansSerif", AwtFont.PLAIN, size)
+                SlickFontFamily.DroidSansFallback -> loadAssetFont("font/DroidSansFallback.ttf", size)
+                    ?: AwtFont("SansSerif", AwtFont.PLAIN, size)
+                SlickFontFamily.Emoji -> resolveEmojiAwtFont(size)
             }
-            val fontBytes = storage.readAssetBytes(path)
-            if (fontBytes != null) {
-                AwtFont.createFont(AwtFont.TRUETYPE_FONT, ByteArrayInputStream(fontBytes)).deriveFont(size.toFloat())
-            } else {
-                AwtFont("SansSerif", AwtFont.PLAIN, size)
+        }
+
+    private fun loadAssetFont(path: String, size: Int): AwtFont? {
+        val fontBytes = storage.readAssetBytes(path) ?: return null
+        return AwtFont.createFont(AwtFont.TRUETYPE_FONT, ByteArrayInputStream(fontBytes)).deriveFont(size.toFloat())
+    }
+
+    private fun resolveEmojiAwtFont(size: Int): AwtFont {
+        val candidates = listOf(
+            System.getProperty("user.home") + "/.local/share/fonts/ImportedFonts/seguiemj.ttf",
+            "C:/Windows/Fonts/seguiemj.ttf",
+        )
+        for (path in candidates) {
+            val file = java.io.File(path)
+            if (!file.isFile) continue
+            val font = runCatching {
+                AwtFont.createFont(AwtFont.TRUETYPE_FONT, file).deriveFont(size.toFloat())
+            }.getOrNull()
+            if (font != null && font.canDisplay(0x1F34E)) return font
+        }
+        for (name in listOf("Segoe UI Emoji", "Apple Color Emoji")) {
+            val font = AwtFont(name, AwtFont.PLAIN, size)
+            if (font.family.equals(name, ignoreCase = true) && font.canDisplay(0x1F34E)) {
+                return font
             }
+        }
+        return AwtFont(AwtFont.DIALOG, AwtFont.PLAIN, size)
+    }
+
+    private fun fontFamilyFor(text: String): SlickFontFamily = when {
+        needsEmojiFont(text) -> SlickFontFamily.Emoji
+        needsUnicodeFont(text) -> SlickFontFamily.DroidSansFallback
+        else -> SlickFontFamily.Roboto
+    }
+
+    private fun awtFontMetrics(font: AwtFont): java.awt.FontMetrics =
+        fontMetricsCache.getOrPut(font) {
+            java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+                .createGraphics()
+                .also { it.font = font }
+                .fontMetrics
         }
 
     private fun needsUnicodeFont(text: String): Boolean {
@@ -1251,6 +1292,16 @@ class SlickGraphicsEngine private constructor(
             if (text[index].code > 255) {
                 return true
             }
+        }
+        return false
+    }
+
+    private fun needsEmojiFont(text: String): Boolean {
+        var index = 0
+        while (index < text.length) {
+            val cp = text.codePointAt(index)
+            if (cp > 0xFFFF || cp in 0x2600..0x27BF) return true
+            index += Character.charCount(cp)
         }
         return false
     }

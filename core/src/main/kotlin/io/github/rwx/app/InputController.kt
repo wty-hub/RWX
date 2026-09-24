@@ -6,6 +6,7 @@ import de.fabmax.kool.input.PointerInput
 import io.github.rwx.mod.registry.UiRegistry
 import io.github.rwx.session.GameSession
 import io.github.rwx.ui.AppScreen
+import io.github.rwx.ui.component.PlatformTextInputBridge
 
 internal class InputController(
     private val gameSession: GameSession,
@@ -27,7 +28,14 @@ internal class InputController(
             name = "rwx-escape",
             filter = InputStack.KEY_FILTER_ALL,
         ) { event ->
-            if (event.isPressed && !UiRegistry.cancelWorldPositionSelection()) navigateBack()
+            if (!event.isPressed) return@addKeyListener
+            // While a platform IME editor is active (or was just cancelled), Esc must not leave
+            // the screen — Chinese IME users cancel composition with Esc constantly.
+            if (PlatformTextInputBridge.isEditing()) {
+                PlatformTextInputBridge.dismissKeyboard()
+                return@addKeyListener
+            }
+            if (!UiRegistry.cancelWorldPositionSelection()) navigateBack()
         }
         InputStack.defaultInputHandler.pointerListeners += GatedPointerListener(
             { shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) },

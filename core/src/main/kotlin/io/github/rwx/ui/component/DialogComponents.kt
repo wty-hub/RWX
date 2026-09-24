@@ -12,7 +12,17 @@ fun UiScope.MessageDialog(
     onDismiss: () -> Unit,
 ) {
     val compact = dialog.compactOnAndroid && GameEngine.isAndroidPlatform()
-    val inputValue = remember(dialog.textInput?.initialText.orEmpty())
+    val inputValue = remember("")
+    val inputKey = remember("")
+    val nextInputKey = listOf(
+        dialog.title,
+        dialog.textInput?.hint.orEmpty(),
+        dialog.textInput?.initialText.orEmpty(),
+    ).joinToString("\u0000")
+    if (inputKey.value != nextInputKey) {
+        inputKey.value = nextInputKey
+        inputValue.value = dialog.textInput?.initialText.orEmpty()
+    }
     val formValues = remember(dialog.form?.fields?.associate { field ->
         field.id to field.initialFormValue()
     }.orEmpty())

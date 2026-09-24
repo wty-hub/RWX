@@ -195,7 +195,7 @@ class SlickGame(
         System.out.flush()
     },
     private val onLoadingStatus: (String) -> Unit = {},
-) : BasicGame("RWX") {
+) : BasicGame("RWXX") {
     private val view = SlickCoreGameView(gameSession.inGameMenuController)
     private val debugSlickMenuInput = System.getenv("RWX_DEBUG_SLICK_MENU") == "1"
     private val keyStates = BooleanArray(SLICK_KEY_COUNT)

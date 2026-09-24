@@ -39,15 +39,14 @@ fun UiScope.MultiplayerRoomRow(
                 .onExit { hovered.value = false }
                 .onClick { onPressed() }
 
-            Text("${room.hostName} | ${room.mapName}") {
-                modifier
-                    .width(Grow.Std)
-                    .height(Dp(34f))
-                    .font(UiTheme.Fonts.bodySmall)
-                    .textAlign(AlignmentX.Start, AlignmentY.Center)
-                    .isWrapText(true)
-                    .textColor(theme.palette.textPrimary)
-            }
+            EmojiAwareText(
+                text = "${room.hostName} | ${room.mapName}",
+                textFont = UiTheme.Fonts.bodySmall,
+                textColor = theme.palette.textPrimary,
+                contentWidth = Grow.Std,
+                contentHeight = Dp(34f),
+                wrap = true,
+            )
             Text(roomStatusLabel(room)) {
                 modifier
                     .width(Grow.Std)
@@ -162,17 +161,19 @@ private fun UiScope.MultiplayerLobbySwitcher(
     onConfigure: () -> Unit,
     onSelected: (MultiplayerLobbyKind) -> Unit,
 ) {
-    val buttonsWidth = contentWidth.remainingAfter(Dp(UiTheme.Layout.iconButtonSize.value * 2f))
+    val kinds = MultiplayerLobbyKind.entries.filter { it != MultiplayerLobbyKind.P2P }
+    val nameButtonWidth = Dp(196f)
+    val buttonsWidth = contentWidth.remainingAfter(Dp(UiTheme.Layout.iconButtonSize.value + nameButtonWidth.value))
     val buttonWidth = buttonsWidth.splitEvenly(
-        count = MultiplayerLobbyKind.entries.size,
-        totalGap = Dp(MultiplayerLobbyKind.entries.size * UiTheme.Spacing.sm.value),
+        count = kinds.size,
+        totalGap = Dp(kinds.size * UiTheme.Spacing.sm.value),
         minWidth = if (contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP) Dp(88f) else Dp(140f),
         maxWidth = UiTheme.Layout.menuButtonWidth,
     )
     Row(width = contentWidth, height = UiTheme.Layout.menuButtonHeight) {
         modifier.margin(bottom = UiTheme.Spacing.sm)
         IconButton(Icon.Back, theme, onPressed = onBack)
-        MultiplayerLobbyKind.entries.forEach { kind ->
+        kinds.forEach { kind ->
             val active = kind == selected
             TextIconButton(
                 label = kind.label,
@@ -185,10 +186,12 @@ private fun UiScope.MultiplayerLobbySwitcher(
                 onSelected(kind)
             }
         }
-        IconButton(
+        TextIconButton(
+            label = I18n.multiplayer.configurePlayerName(),
             icon = Icon.Settings,
+            width = nameButtonWidth,
             theme = theme,
-            tooltip = I18n.multiplayer.configurePlayerName(),
+            font = UiTheme.Fonts.bodySmall,
             onPressed = onConfigure,
         )
     }
@@ -200,16 +203,16 @@ private fun UiScope.multiplayerCell(
     theme: ColorSchemeDefinition,
     align: AlignmentX,
 ) {
-    Text(text) {
-        modifier
-            .width(width)
-            .height(UiTheme.Layout.menuButtonHeight)
-            .padding(horizontal = UiTheme.Spacing.xs)
-            .font(UiTheme.Fonts.bodySmall)
-            .textAlign(align, AlignmentY.Center)
-            .clipToBounds(true)
-            .textColor(theme.palette.textPrimary)
-    }
+    EmojiAwareText(
+        text = text,
+        textFont = UiTheme.Fonts.bodySmall,
+        textColor = theme.palette.textPrimary,
+        contentWidth = width,
+        contentHeight = UiTheme.Layout.menuButtonHeight,
+        alignX = align,
+        alignY = AlignmentY.Center,
+        clip = true,
+    )
 }
 
 private fun roomStatusLabel(room: MultiplayerRoomItem): String =

@@ -400,15 +400,13 @@ private fun UiScope.BattleRoomChatPanel(
                 val color = battleRoomChatColorIndexFor(line, players)
                     ?.let { BattleRoomTeamColors.colorFor(it, theme.palette.textPrimary) }
                     ?: theme.palette.textSecondary
-                Text(line.text) {
-                    modifier
-                        .width(Grow.Std)
-                        .margin(vertical = Dp(2f))
-                        .padding(horizontal = UiTheme.Spacing.xs)
-                        .font(UiTheme.Fonts.bodySmall)
-                        .isWrapText(true)
-                        .textColor(color)
-                }
+                EmojiAwareText(
+                    text = line.text,
+                    textFont = UiTheme.Fonts.bodySmall,
+                    textColor = color,
+                    contentWidth = Grow.Std,
+                    wrap = true,
+                )
             }
         }
 

@@ -349,8 +349,8 @@ object I18n {
             val title = entry(
                 key = "mainmenu.about.title",
                 translations = linkedMapOf(
-                    "en" to "About RWX",
-                    "zh-CN" to "关于 RWX",
+                    "en" to "About RWXX",
+                    "zh-CN" to "关于 RWXX",
                 ),
             )
 
@@ -624,8 +624,8 @@ object I18n {
         val configurePlayerName = entry(
             key = "multiplayer.configurePlayerName",
             translations = linkedMapOf(
-                "en" to "Configure Player Name",
-                "zh-CN" to "设置玩家名称",
+                "en" to "Player Name",
+                "zh-CN" to "玩家名称设置",
             ),
         )
 

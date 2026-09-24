@@ -6,7 +6,6 @@ import de.fabmax.kool.util.Color
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.component.*
 import io.github.rwx.ui.model.*
-import io.github.rwx.ui.splitEvenly
 
 class MainMenuSceneHost(
     private val model: SettingsModel = SettingsModel(),
@@ -60,7 +59,7 @@ class MainMenuSceneHost(
 
     companion object {
         const val MAIN_MENU_SCENE_NAME: String = "main-menu"
-        const val MENU_TITLE: String = "RWX"
+        const val MENU_TITLE: String = "RWXX"
         const val MENU_SUBTITLE: String = "Rusted Warfare Extension"
     }
 }
@@ -71,8 +70,6 @@ private const val MAIN_MENU_SURFACE_ALPHA: Float = 0.52f
 private const val MAIN_MENU_PANEL_START_ALPHA: Float = 0.68f
 private const val MAIN_MENU_PANEL_END_ALPHA: Float = 0.58f
 private const val MAIN_MENU_HORIZONTAL_MARGIN_DP: Float = 48f
-private const val MAIN_MENU_VERTICAL_CHROME_DP: Float = 260f
-private const val MAIN_MENU_COLUMN_COUNT: Int = 2
 private val MAIN_MENU_FOOTER_BUTTON_WIDTH: Dp = Dp(220f)
 private val MAIN_MENU_FOOTER_HEIGHT: Dp = Dp(64f)
 
@@ -88,31 +85,17 @@ private fun UiScope.MainMenuLauncher(
     onAction: (MainMenuAction) -> Unit,
 ) {
     val metrics = mainMenuLayoutMetrics()
-    val menuWidth = mainMenuPanelWidth(metrics.contentWidth)
     val primaryItems = items.filterNot { it.action == MainMenuAction.About || it.action == MainMenuAction.Exit }
     val footerItems = items.filter { it.action == MainMenuAction.About || it.action == MainMenuAction.Exit }
 
     MainMenuHeader(metrics.contentWidth, theme, metrics.isShortLandscape)
-    if (metrics.isShortLandscape) {
-        MainMenuHorizontal(
-            items = primaryItems,
-            theme = theme,
-            width = metrics.contentWidth,
-            height = metrics.menuViewportHeight,
-            onAction = onAction,
-        )
-    } else {
-        MainMenuColumns(
-            primaryItems,
-            theme,
-            width = menuWidth,
-            height = metrics.menuViewportHeight,
-        ) { item ->
-            mainMenuTileCard(item, theme) {
-                onAction(item.action)
-            }
-        }
-    }
+    MainMenuHorizontal(
+        items = primaryItems,
+        theme = theme,
+        width = metrics.contentWidth,
+        height = metrics.menuViewportHeight,
+        onAction = onAction,
+    )
     MainMenuFooter(footerItems, theme, metrics.contentWidth, onAction)
 }
 
@@ -147,12 +130,6 @@ private fun UiScope.MainMenuHorizontal(
     height: Dp,
     onAction: (MainMenuAction) -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-    val initialized = remember(false)
-    if (!initialized.use()) {
-        scrollState.scrollRelativeX(0f, smooth = false)
-        initialized.value = true
-    }
     Box(width = width, height = height) {
         modifier
             .alignX(AlignmentX.Center)
@@ -165,130 +142,19 @@ private fun UiScope.MainMenuHorizontal(
                 )
             )
             .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
-            .padding(horizontal = UiTheme.Spacing.sm, vertical = UiTheme.Spacing.xs)
+            .padding(horizontal = UiTheme.Spacing.sm, vertical = UiTheme.Spacing.sm)
 
-        ScrollArea(
-            width = Grow.Std,
-            height = Grow.Std,
-            withVerticalScrollbar = false,
-            withHorizontalScrollbar = true,
-            isScrollableVertical = false,
-            isScrollableHorizontal = true,
-            scrollbarColor = theme.palette.primary,
-            state = scrollState,
-            containerModifier = {
-                it
-                    .backgroundColor(null)
-                    .onDrag { event ->
-                        scrollState.scrollDpX(Dp.fromPx(-event.pointer.delta.x).value)
-                    }
-            },
-        ) {
-            modifier.width(FitContent).height(Grow.Std)
-            Row(width = FitContent, height = Grow.Std) {
-                items.forEach { item ->
-                    Box(width = UiTheme.Layout.mainMenuTileWidth, height = Grow.Std) {
-                        mainMenuTileCard(item, theme) {
-                            onAction(item.action)
-                        }
+        Row(width = Grow.Std, height = Grow.Std) {
+            items.forEach { item ->
+                Box(width = Grow.Std, height = Grow.Std) {
+                    mainMenuTileCard(item, theme) {
+                        onAction(item.action)
                     }
                 }
             }
         }
     }
 }
-
-private fun UiScope.MainMenuColumns(
-    items: List<MainMenuItem>,
-    theme: io.github.rwx.ui.ColorSchemeDefinition,
-    width: Dp,
-    height: Dp,
-    itemContent: UiScope.(MainMenuItem) -> Unit,
-) {
-    val leftItems = items.filterIndexed { index, _ -> index % MAIN_MENU_COLUMN_COUNT == 0 }
-    val rightItems = items.filterIndexed { index, _ -> index % MAIN_MENU_COLUMN_COUNT == 1 }
-    val columnWidth = mainMenuColumnWidth(width)
-    val columnsWidth = mainMenuColumnsContentWidth(columnWidth)
-    val scrollState = rememberScrollState()
-
-    Box(width = width, height = height) {
-        modifier
-            .alignX(AlignmentX.Center)
-            .margin(top = UiTheme.Spacing.md, bottom = UiTheme.Spacing.lg)
-            .background(
-                LinearGradientBackground(
-                    theme.palette.surfaceBase.withAlpha(MAIN_MENU_PANEL_START_ALPHA),
-                    theme.palette.panelOverlayDark.withAlpha(MAIN_MENU_PANEL_END_ALPHA),
-                    cornerRadius = UiTheme.Spacing.sm,
-                )
-            )
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
-            .padding(vertical = UiTheme.Spacing.md)
-
-        ScrollArea(
-            width = Grow.Std,
-            height = Grow.Std,
-            withVerticalScrollbar = true,
-            withHorizontalScrollbar = false,
-            isScrollableVertical = true,
-            isScrollableHorizontal = false,
-            scrollbarColor = theme.palette.primary,
-            state = scrollState,
-            containerModifier = {
-                it
-                    .backgroundColor(null)
-                    .onDrag { event ->
-                        scrollState.scrollDpY(Dp.fromPx(-event.pointer.delta.y).value)
-                    }
-            },
-        ) {
-            modifier.width(Grow.Std).height(FitContent)
-
-            Box(width = Grow.Std, height = FitContent) {
-                Row(width = columnsWidth, height = FitContent) {
-                    modifier.align(AlignmentX.Center, AlignmentY.Top)
-                    MainMenuColumn(leftItems, columnWidth, Dp.ZERO, Dp.ZERO, itemContent)
-                    MainMenuColumn(
-                        rightItems,
-                        columnWidth,
-                        UiTheme.Layout.mainMenuColumnGap,
-                        UiTheme.Layout.mainMenuColumnStagger,
-                        itemContent,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun UiScope.MainMenuColumn(
-    items: List<MainMenuItem>,
-    width: Dp,
-    startOffset: Dp,
-    topOffset: Dp,
-    itemContent: UiScope.(MainMenuItem) -> Unit,
-) {
-    Column(width = width, height = FitContent) {
-        modifier.margin(start = startOffset, top = topOffset)
-        items.forEach { item ->
-            itemContent(item)
-        }
-    }
-}
-
-private fun mainMenuPanelWidth(contentWidth: Dp): Dp =
-    Dp(mainMenuColumnsContentWidth(UiTheme.Layout.mainMenuTileWidth).value.coerceAtMost(contentWidth.value))
-
-private fun mainMenuColumnWidth(contentWidth: Dp): Dp =
-    contentWidth.splitEvenly(
-        count = MAIN_MENU_COLUMN_COUNT,
-        totalGap = UiTheme.Layout.mainMenuColumnGap,
-        minWidth = UiTheme.Layout.mainMenuTileMinWidth,
-        maxWidth = UiTheme.Layout.mainMenuTileMaxWidth,
-    )
-
-private fun mainMenuColumnsContentWidth(columnWidth: Dp): Dp =
-    Dp(columnWidth.value * MAIN_MENU_COLUMN_COUNT + UiTheme.Layout.mainMenuColumnGap.value)
 
 private fun UiScope.mainMenuTileCard(
     item: MainMenuItem,
@@ -302,7 +168,7 @@ private fun UiScope.mainMenuTileCard(
     val iconColor = if (isHovered) theme.palette.secondary else theme.palette.primary
     val textColor = if (isHovered) theme.palette.primary else theme.palette.textPrimary
 
-    Box(width = Grow.Std, height = UiTheme.Layout.mainMenuTileHeight) {
+    Box(width = Grow.Std, height = Grow.Std) {
         modifier
             .margin(UiTheme.Spacing.xs)
             .background(RoundRectBackground(background, UiTheme.Spacing.sm))
@@ -386,19 +252,7 @@ private fun UiScope.mainMenuLayoutMetrics(): MainMenuLayoutMetrics {
     } else {
         UiTheme.Layout.mainMenuContentWidth
     }
-    val viewportHeight = if (isShortLandscape) {
-        Dp(UiTheme.Layout.mainMenuTileHeight.value + MAIN_MENU_HORIZONTAL_SCROLLBAR_CHROME_DP)
-    } else if (viewportHeightDp > 0f) {
-        Dp(
-            (viewportHeightDp - MAIN_MENU_VERTICAL_CHROME_DP)
-                .coerceIn(
-                    UiTheme.Layout.mainMenuMinViewportHeight.value,
-                    UiTheme.Layout.mainMenuMaxViewportHeight.value,
-                )
-        )
-    } else {
-        UiTheme.Layout.mainMenuViewportHeight
-    }
+    val viewportHeight = Dp(UiTheme.Layout.mainMenuTileHeight.value + MAIN_MENU_TILE_CHROME_DP)
     return MainMenuLayoutMetrics(
         contentWidth = contentWidth,
         menuViewportHeight = viewportHeight,
@@ -407,7 +261,7 @@ private fun UiScope.mainMenuLayoutMetrics(): MainMenuLayoutMetrics {
 }
 
 private const val MAIN_MENU_SHORT_LANDSCAPE_HEIGHT_DP: Float = 520f
-private const val MAIN_MENU_HORIZONTAL_SCROLLBAR_CHROME_DP: Float = 28f
+private const val MAIN_MENU_TILE_CHROME_DP: Float = 16f
 
 private val MainMenuAction.menuIcon: Icon
     get() = when (this) {

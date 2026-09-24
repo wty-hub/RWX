@@ -65,6 +65,8 @@ internal class DesktopTextInputController(
 
     override val ownsCaret: Boolean get() = editorHasFocus
 
+    override val isEditing: Boolean get() = activeRequest != null
+
     /** Owner of the Kool field that currently wants text input, null when nothing is edited. */
     @Volatile
     private var activeRequest: PlatformTextInputRequest? = null
@@ -228,8 +230,13 @@ internal class DesktopTextInputController(
     }
 
     override fun dismissKeyboard() {
+        val request = activeRequest
         activeRequest = null
         runOnEdt { endEditing() }
+        // Clear Kool field focus so the next frame does not immediately re-attach the editor.
+        if (request != null) {
+            dispatch { request.onCancel?.invoke() }
+        }
     }
 
     fun dispose() {
@@ -272,8 +279,14 @@ internal class DesktopTextInputController(
         when (event.keyCode) {
             AwtKeyEvent.VK_ESCAPE -> {
                 event.consume()
-                // Let the Kool UI unfocus the field (and close popups) with its normal escape path.
-                sendKey(KeyboardInput.KEY_ESC, 0)
+                // Do not synthesize Esc into Kool's global input stack. While this editor holds AWT
+                // focus the Kool canvas is unfocused, so Esc would skip the focused TextField and
+                // hit the app-wide back handler (leave battleroom / jump to main menu). Cancel via
+                // the request callback instead, which only clears the field's focus.
+                val request = activeRequest
+                activeRequest = null
+                endEditing()
+                dispatch { request?.onCancel?.invoke() }
             }
 
             AwtKeyEvent.VK_TAB -> {

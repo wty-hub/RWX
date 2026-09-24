@@ -168,14 +168,17 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
-    fun `escape is forwarded to the kool input stack`() {
+    fun `escape cancels editing without synthesizing a kool Esc key`() {
         val keys = mutableListOf<Pair<KeyCode, Int>>()
+        var cancelled = 0
         withController(sendKey = { code, modifiers -> keys += code to modifiers }) { controller, editor ->
-            controller.showOrUpdate(request(Any(), ""))
+            controller.showOrUpdate(request(Any(), "", onCancel = { cancelled += 1 }))
 
             pressKey(editor, KeyEvent.VK_ESCAPE)
 
-            assertEquals(listOf<Pair<KeyCode, Int>>(KeyboardInput.KEY_ESC to 0), keys)
+            assertEquals(emptyList<Pair<KeyCode, Int>>(), keys)
+            assertEquals(1, cancelled)
+            assertTrue(!controller.isEditing)
         }
     }
 
@@ -236,6 +239,7 @@ class DesktopTextInputControllerTest {
         text: String,
         maxLength: Int = 100,
         onEnter: ((String) -> Unit)? = null,
+        onCancel: (() -> Unit)? = null,
         caretRequest: PlatformCaretRequest? = null,
         onSelectionChanged: ((Int, Int) -> Unit)? = null,
         onChange: (String) -> Unit = {},
@@ -246,6 +250,7 @@ class DesktopTextInputControllerTest {
         maxLength = maxLength,
         onChange = onChange,
         onEnter = onEnter,
+        onCancel = onCancel,
         caretRequest = caretRequest,
         onSelectionChanged = onSelectionChanged,
     )

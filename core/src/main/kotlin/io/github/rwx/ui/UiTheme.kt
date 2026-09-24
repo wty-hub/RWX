@@ -44,7 +44,7 @@ object ColorSchemeRegistry {
     val schemes: List<ColorSchemeDefinition> = listOf(
         scheme(
             id = "rwx",
-            displayName = "RWX",
+            displayName = "RWXX",
             scheme = ColorScheme(
                 surface = Color("1b1212ff"),
                 surfaceContainer = Color("444444ff"),

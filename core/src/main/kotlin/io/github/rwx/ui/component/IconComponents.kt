@@ -113,6 +113,7 @@ fun UiScope.TextIconButton(
     emphasized: Boolean = false,
     font: Font = UiTheme.Fonts.bodySmall,
     height: Dp = UiTheme.Layout.menuButtonHeight,
+    showIcon: Boolean = true,
     onPressed: () -> Unit,
 ) {
     val hovered = remember(false)
@@ -138,9 +139,11 @@ fun UiScope.TextIconButton(
 
         Row(width = Grow.Std, height = Grow.Std) {
             modifier.align(AlignmentX.Center, AlignmentY.Center)
-            Box(width = UiTheme.Layout.textButtonIconSlotSize, height = Grow.Std) {
-                Icon(icon, UiTheme.Layout.textButtonGlyphSize, iconColor).modifier
-                    .align(AlignmentX.Center, AlignmentY.Center)
+            if (showIcon) {
+                Box(width = UiTheme.Layout.textButtonIconSlotSize, height = Grow.Std) {
+                    Icon(icon, UiTheme.Layout.textButtonGlyphSize, iconColor).modifier
+                        .align(AlignmentX.Center, AlignmentY.Center)
+                }
             }
             Text(label) {
                 modifier

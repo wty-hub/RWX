@@ -26,9 +26,12 @@ import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.context.GlobalContext
+import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
 
 object KoolDesktopMain : KoinComponent {
+    private val logger = LoggerFactory.getLogger("Desktop")
+
     @JvmStatic
     fun main(args: Array<String>) {
         configureDesktopLogging()
@@ -81,34 +84,39 @@ object KoolDesktopMain : KoinComponent {
         renderBackend: BackendProvider,
     ): KoolConfigJvm = KoolConfigJvm(
         defaultAssetLoader = NativeAssetLoader(DesktopPlatformStorage.resolveAssetRoot().absolutePath),
-        windowTitle = "RWX Kool",
+        windowTitle = "RWXX",
         windowSize = swingHost.windowSize,
         renderBackend = renderBackend,
         windowSubsystem = swingHost.windowSubsystem,
         asyncSceneUpdate = false,
-        useOpenGlFallback = false,
+        useOpenGlFallback = true,
     )
 
     private fun selectedRenderBackend(): BackendProvider = resolveDesktopRenderBackend(
         System.getProperty(RENDER_BACKEND_PROPERTY) ?: System.getenv(RENDER_BACKEND_ENV),
     )
 
+    /**
+     * Default is OpenGL: the desktop host composites a Kool UI overlay with a Slick/OpenGL game
+     * canvas. Vulkan+OpenGL coexistence regularly aborts the JVM with exit code 1 and no Java
+     * stacktrace on Intel Iris Xe (and similar) drivers. Force Vulkan with
+     * `-Drwx.kool.backend=vulkan` / `-PrwxKoolBackend=vulkan` when desired.
+     */
     internal fun resolveDesktopRenderBackend(requestedBackend: String?): BackendProvider {
-        val requested = requestedBackend ?: return RenderBackendVk.Companion
-        return when (requested.lowercase()) {
+        val backend = when (requestedBackend?.lowercase()) {
+            null, "", "opengl", "gl" -> RenderBackendGl.Companion
             "vulkan", "vk" -> RenderBackendVk.Companion
-            "opengl", "gl" -> RenderBackendGl.Companion
             "webgpu", "wgpu" -> throw IllegalArgumentException(
                 "Kool WebGPU backend is not available in kool-core-desktop 0.19.0; " +
                         "available JVM backends are Vulkan and OpenGL.",
             )
 
             else -> throw IllegalArgumentException(
-                "Unsupported Kool render backend '$requested'. Supported values: vulkan, opengl.",
+                "Unsupported Kool render backend '$requestedBackend'. Supported values: vulkan, opengl.",
             )
-        }.also { backend ->
-            logger.info { "Using Kool render backend: ${backend.displayName}" }
         }
+        logger.info("Using Kool render backend: ${backend.displayName}")
+        return backend
     }
 
     private suspend fun installMsdfFonts() {

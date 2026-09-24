@@ -38,6 +38,8 @@ internal class AndroidTextInputController(
     @Volatile
     private var activeRequest: PlatformTextInputRequest? = null
 
+    override val isEditing: Boolean get() = activeRequest != null
+
     @Volatile
     private var suppressedOwner: Any? = null
 

@@ -343,7 +343,7 @@ val createJpackageImage by tasks.registering(Exec::class) {
             "--type", "app-image",
             "--name", appName,
             "--app-version", jpackageVersion,
-            "--vendor", "RWX",
+            "--vendor", "RWXX",
             "--description", "Cross-platform real-time strategy game",
             "--dest", jpackageImageDir.get().asFile.absolutePath,
             "--input", jpackageInputDir.get().asFile.absolutePath,
