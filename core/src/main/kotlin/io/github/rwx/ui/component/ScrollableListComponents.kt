@@ -14,8 +14,13 @@ fun <T> UiScope.ScrollableVerticalList(
     framed: Boolean = false,
     contentPadding: Dp = Dp.ZERO,
     bottomContentPadding: Dp = Dp.ZERO,
+    stickToEnd: Boolean = false,
     itemContent: UiScope.(T) -> Unit,
 ) {
+    val listState = if (stickToEnd) rememberListState() else null
+    if (listState != null) {
+        followListEnd(listState, items.size)
+    }
     if (framed) {
         Box(width = width, height = height) {
             modifier
@@ -30,6 +35,7 @@ fun <T> UiScope.ScrollableVerticalList(
                 height = Grow.Std,
                 isScrollByDrag = isScrollByDrag,
                 bottomContentPadding = bottomContentPadding,
+                state = listState,
                 itemContent = itemContent,
             )
         }
@@ -41,9 +47,25 @@ fun <T> UiScope.ScrollableVerticalList(
             height = height,
             isScrollByDrag = isScrollByDrag,
             bottomContentPadding = bottomContentPadding,
+            state = listState,
             itemContent = itemContent,
         )
     }
+}
+
+private fun UiScope.followListEnd(listState: LazyListState, itemCount: Int) {
+    val follow = remember(ListEndFollow())
+    val from = listState.itemsFrom.use()
+    val laidOut = listState.numVisibleItems > 0 && listState.numTotalItems > 0
+    val atEnd = laidOut && from + listState.numVisibleItems >= listState.numTotalItems
+    val decision = nextListEndFollow(
+        follow = follow.value,
+        itemCount = itemCount,
+        laidOut = laidOut,
+        atEnd = atEnd,
+    )
+    follow.value = decision.follow
+    decision.scrollToIndex?.let { listState.scrollToItem.set(it) }
 }
 
 private fun <T> UiScope.LazyColumn(
@@ -53,6 +75,7 @@ private fun <T> UiScope.LazyColumn(
     height: Dimension,
     isScrollByDrag: Boolean,
     bottomContentPadding: Dp,
+    state: LazyListState? = null,
     itemContent: UiScope.(T) -> Unit,
 ) {
     LazyColumn(
@@ -62,6 +85,7 @@ private fun <T> UiScope.LazyColumn(
         withHorizontalScrollbar = false,
         isScrollableHorizontal = false,
         isScrollByDrag = isScrollByDrag,
+        state = state ?: rememberListState(),
         scrollbarColor = theme.palette.primary,
         containerModifier = { it.backgroundColor(null) },
         scrollPaneModifier = { it.allowOverScroll(x = false, y = false) },
@@ -75,4 +99,42 @@ private fun <T> UiScope.LazyColumn(
             }
         }
     }
+}
+
+internal data class ListEndFollow(
+    val itemCount: Int = 0,
+    val pinnedToEnd: Boolean = true,
+    val reachedEnd: Boolean = false,
+)
+
+internal data class ListEndFollowDecision(
+    val follow: ListEndFollow,
+    val scrollToIndex: Int?,
+)
+
+internal fun nextListEndFollow(
+    follow: ListEndFollow,
+    itemCount: Int,
+    laidOut: Boolean,
+    atEnd: Boolean,
+): ListEndFollowDecision {
+    if (itemCount <= 0) {
+        return ListEndFollowDecision(
+            follow = ListEndFollow(),
+            scrollToIndex = null,
+        )
+    }
+    val scrollToEnd = !laidOut || !follow.reachedEnd || (itemCount > follow.itemCount && follow.pinnedToEnd)
+    val pinnedToEnd = when {
+        !laidOut || scrollToEnd -> true
+        else -> atEnd
+    }
+    return ListEndFollowDecision(
+        follow = ListEndFollow(
+            itemCount = itemCount,
+            pinnedToEnd = pinnedToEnd,
+            reachedEnd = follow.reachedEnd || (laidOut && atEnd),
+        ),
+        scrollToIndex = if (scrollToEnd) itemCount - 1 else null,
+    )
 }

@@ -396,6 +396,7 @@ private fun UiScope.BattleRoomChatPanel(
                 theme = theme,
                 width = metrics.actionAreaWidth,
                 height = metrics.chatViewportHeight,
+                stickToEnd = true,
             ) { line ->
                 val color = battleRoomChatColorIndexFor(line, players)
                     ?.let { BattleRoomTeamColors.colorFor(it, theme.palette.textPrimary) }
