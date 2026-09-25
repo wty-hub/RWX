@@ -1,5 +1,6 @@
 package io.github.rwx.ui.component
 
+import de.fabmax.kool.modules.ui2.AlignmentX
 import de.fabmax.kool.modules.ui2.TextField
 import de.fabmax.kool.modules.ui2.TextFieldScope
 import de.fabmax.kool.modules.ui2.UiNode
@@ -20,6 +21,17 @@ data class PlatformCaretRequest(
     val caret: Int,
 )
 
+/**
+ * Caret rectangle in Kool window pixels. Desktop uses it to place the input-method candidate
+ * window; the origin is the top-left of the caret and [height] reaches its baseline.
+ */
+data class PlatformCaretRect(
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+)
+
 data class PlatformTextInputRequest(
     val owner: Any,
     val text: String,
@@ -30,6 +42,7 @@ data class PlatformTextInputRequest(
     val onCancel: (() -> Unit)? = null,
     val caretRequest: PlatformCaretRequest? = null,
     val onSelectionChanged: ((selectionStart: Int, caret: Int) -> Unit)? = null,
+    val caretRect: PlatformCaretRect? = null,
 )
 
 interface PlatformTextInputController {
@@ -161,6 +174,10 @@ fun UiScope.RwxTextField(
     }
 
     if (isFocused) {
+        val caretIndex = if (caretOwned) caret.value.coerceIn(0, text.length) else text.length
+        val caretRect = (textField as? UiNode)?.let { node ->
+            platformCaretRect(node, modifier.font, text, caretIndex, modifier.textAlignX)
+        }
         PlatformTextInputBridge.showOrUpdate(
             PlatformTextInputRequest(
                 owner = owner.value,
@@ -180,6 +197,7 @@ fun UiScope.RwxTextField(
                 } else {
                     null
                 },
+                caretRect = caretRect,
             )
         )
     } else if (wasFocused.value) {
@@ -205,6 +223,38 @@ private class PlatformSelection {
         this.caret = caret
         this.selectionStart = selectionStart
     }
+}
+
+private fun UiScope.platformCaretRect(
+    node: UiNode,
+    font: Font,
+    text: String,
+    caret: Int,
+    alignX: AlignmentX,
+): PlatformCaretRect {
+    var textWidth = 0f
+    var caretOffset = 0f
+    val end = caret.coerceIn(0, text.length)
+    for (index in text.indices) {
+        val width = font.charWidth(text[index])
+        if (index < end) caretOffset += width
+        textWidth += width
+    }
+    val originX = when (alignX) {
+        AlignmentX.Start -> node.paddingStartPx
+        AlignmentX.Center -> (node.widthPx - textWidth) / 2f
+        AlignmentX.End -> node.widthPx - textWidth - node.paddingEndPx
+    }
+    // Same caret box Kool draws: font size plus a few dp, vertically centered in the field.
+    val caretHeight = (font.sizePts + 4f).dp.px
+    val top = ((node.heightPx - caretHeight) / 2f).coerceAtLeast(0f)
+    val localX = (originX + caretOffset).coerceIn(0f, node.widthPx.coerceAtLeast(0f))
+    return PlatformCaretRect(
+        x = node.leftPx + localX,
+        y = node.topPx + top,
+        width = 1f,
+        height = caretHeight.coerceIn(1f, node.heightPx.coerceAtLeast(1f)),
+    )
 }
 
 private fun UiNode.platformCaretIndex(font: Font, text: String, localX: Float): Int {

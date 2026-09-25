@@ -30,6 +30,13 @@ class DialogSceneHost(
         onVisibilityChanged(false)
     }
 
+    /** Closes the dialog without running a button action. Returns false when nothing is open. */
+    fun dismissIfShowing(): Boolean {
+        if (dialogState.value == null) return false
+        hide()
+        return true
+    }
+
     fun createScene(): Scene = UiScene(ERROR_DIALOG_SCENE_NAME) {
         dialogSurface = addPanelSurface(PanelStyle.Dialog, "dialog-panel", model) { theme ->
             val dialog = dialogState.use() ?: return@addPanelSurface

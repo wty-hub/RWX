@@ -5,13 +5,17 @@ import de.fabmax.kool.input.KeyEvent
 import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.input.LocalKeyCode
 import de.fabmax.kool.util.FrontendScope
+import io.github.rwx.ui.component.PlatformCaretRect
 import io.github.rwx.ui.component.PlatformTextInputController
 import io.github.rwx.ui.component.PlatformTextInputRequest
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.awt.Color
+import java.awt.Component
 import java.awt.Container
 import java.awt.MouseInfo
+import java.awt.Point
+import java.awt.Window
 import java.awt.event.InputMethodEvent
 import java.awt.event.InputMethodListener
 import java.awt.event.KeyAdapter
@@ -50,6 +54,7 @@ internal class DesktopTextInputController(
     private val restoreFocus: () -> Unit,
     private val sendKey: (KeyCode, Int) -> Unit = ::dispatchKoolKey,
     private val dispatch: (() -> Unit) -> Unit = { action -> FrontendScope.launch { action() } },
+    private val moveImeSpot: (Int, Int) -> Unit = LinuxImeCandidateSpot::move,
 ) : PlatformTextInputController {
 
     private val editor = JTextField()
@@ -74,6 +79,8 @@ internal class DesktopTextInputController(
     private var suppressTextCallback = false
     private var lastForwardedText = ""
     private var lastCaretRequestId = 0L
+    private var lastCaretRect: PlatformCaretRect? = null
+    private var lastSpot: Point? = null
     private var lastActivationNanos = 0L
     private var focusAttempts = 0
     private var editorAbandoned = false
@@ -98,7 +105,9 @@ internal class DesktopTextInputController(
             isOpaque = false
             border = null
             highlighter = null
-            isFocusable = true
+            // Focusable only while a Kool field is actually editing. Left focusable at rest, this
+            // 1×1 field is the first component in the game frame and keeps every shortcut.
+            isFocusable = false
             isRequestFocusEnabled = true
             caretColor = Transparent
             foreground = Transparent
@@ -116,7 +125,11 @@ internal class DesktopTextInputController(
             override fun changedUpdate(e: DocumentEvent) = forwardCommittedText()
         })
         editor.addKeyListener(object : KeyAdapter() {
-            override fun keyPressed(event: AwtKeyEvent) = handleEditorKeyPressed(event)
+            override fun keyPressed(event: AwtKeyEvent) {
+                // IBus drops the spot when composition starts, so repeat the last caret on each key.
+                lastSpot?.let { publishSpot(it.x, it.y, force = true) }
+                handleEditorKeyPressed(event)
+            }
 
             override fun keyTyped(event: AwtKeyEvent) {
                 // The platform editor is single line: never let a newline reach its document.
@@ -171,7 +184,6 @@ internal class DesktopTextInputController(
                 focusAttempts = 0
                 editorAbandoned = false
                 replaceEditorText(request.text, caretAtEnd = true)
-                positionEditorNearPointer()
             } else if (request.text != lastForwardedText) {
                 // The Kool side rewrote the text (send-and-clear, filtering, ...): mirror it while
                 // keeping the caret the user is editing at.
@@ -181,6 +193,10 @@ internal class DesktopTextInputController(
             request.caretRequest?.takeIf { it.id != lastCaretRequestId }?.let { caretRequest ->
                 lastCaretRequestId = caretRequest.id
                 applyEditorSelection(caretRequest.selectionStart, caretRequest.caret)
+            }
+            if (isNewOwner || request.caretRect != lastCaretRect) {
+                lastCaretRect = request.caretRect
+                placeEditor(request.caretRect)
             }
 
             val editorFocused = editor.isFocusOwner
@@ -200,11 +216,13 @@ internal class DesktopTextInputController(
                     lastActivationNanos = now
                     focusAttempts += 1
                     activateEditorWindow()
+                    editor.isFocusable = true
                     if (editor.requestFocusInWindow()) {
                         editorHasFocus = true
                         focusAttempts = 0
                         setEditorHasFocus(true)
                     } else if (focusAttempts >= MAX_FOCUS_ATTEMPTS) {
+                        editor.isFocusable = false
                         editorAbandoned = true
                         logger.warn(
                             "Desktop text input editor could not take focus after {} attempts " +
@@ -252,6 +270,11 @@ internal class DesktopTextInputController(
         editorHasFocus = false
         focusAttempts = 0
         editorAbandoned = false
+        lastCaretRect = null
+        lastSpot = null
+        // Drop focus before restoring it. A non-focusable editor cannot remain the key target,
+        // which is what was swallowing in-game shortcuts after a text field closed.
+        editor.isFocusable = false
         restoreFocus()
     }
 
@@ -363,15 +386,56 @@ internal class DesktopTextInputController(
         }
     }
 
+    /** Moves the hidden editor onto the Kool caret, falling back to the pointer when no rect is known. */
+    private fun placeEditor(rect: PlatformCaretRect?) {
+        if (rect == null) {
+            positionEditorNearPointer()
+            return
+        }
+        val x = rect.x.toInt()
+        val top = rect.y.toInt()
+        positionEditor(x, top)
+        val spot = contentWindowPoint(x, (rect.y + rect.height).toInt())
+        publishSpot(spot.x, spot.y)
+    }
+
     /** Puts the editor where the user clicked, so the IME candidate window shows up near the field. */
     private fun positionEditorNearPointer() {
         val location = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull() ?: return
         runCatching {
             SwingUtilities.convertPointFromScreen(location, editorHost)
-            val maxX = (editorHost.width - EDITOR_SIZE_PX).coerceAtLeast(0)
-            val maxY = (editorHost.height - EDITOR_SIZE_PX).coerceAtLeast(0)
-            editor.setLocation(location.x.coerceIn(0, maxX), location.y.coerceIn(0, maxY))
+            positionEditor(location.x, location.y)
+            val spot = contentWindowPoint(editor.x, editor.y + EDITOR_SIZE_PX)
+            publishSpot(spot.x, spot.y)
         }
+    }
+
+    private fun positionEditor(x: Int, y: Int) {
+        val maxX = (editorHost.width - EDITOR_SIZE_PX).coerceAtLeast(0)
+        val maxY = (editorHost.height - EDITOR_SIZE_PX).coerceAtLeast(0)
+        editor.setLocation(x.coerceIn(0, maxX), y.coerceIn(0, maxY))
+    }
+
+    /** Caret position relative to the frame content window, which is the XIC focus window. */
+    private fun contentWindowPoint(xInHost: Int, yInHost: Int): Point {
+        var x = xInHost
+        var y = yInHost
+        var current: Component? = editorHost
+        while (current != null) {
+            val parent = current.parent ?: break
+            if (parent is Window) break
+            x += current.x
+            y += current.y
+            current = parent
+        }
+        return Point(x, y)
+    }
+
+    private fun publishSpot(x: Int, y: Int, force: Boolean = false) {
+        val previous = lastSpot
+        if (!force && previous != null && previous.x == x && previous.y == y) return
+        lastSpot = Point(x, y)
+        moveImeSpot(x, y)
     }
 
     private fun runOnEdt(action: () -> Unit) {

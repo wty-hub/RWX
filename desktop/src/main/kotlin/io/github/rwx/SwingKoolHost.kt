@@ -87,9 +87,15 @@ class SwingKoolHost private constructor(
             },
             restoreFocus = {
                 koolCanvas.isFocusable = true
-                overlayWindow.toFront()
-                overlayWindow.requestFocus()
-                koolCanvas.requestFocusInWindow()
+                if (overlayWindow.isVisible) {
+                    overlayWindow.toFront()
+                    overlayWindow.requestFocus()
+                    koolCanvas.requestFocusInWindow()
+                } else if (gameCanvas.isShowing) {
+                    // In a match the overlay is hidden, so keyboard focus belongs on the game
+                    // canvas. Sending it to the hidden overlay left the IME editor holding every key.
+                    gameCanvas.requestFocusInWindow()
+                }
             },
         )
         PlatformTextInputBridge.install(textInputController)

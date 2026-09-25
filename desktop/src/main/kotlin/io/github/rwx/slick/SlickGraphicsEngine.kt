@@ -1273,11 +1273,8 @@ class SlickGraphicsEngine private constructor(
         return AwtFont(AwtFont.DIALOG, AwtFont.PLAIN, size)
     }
 
-    private fun fontFamilyFor(text: String): SlickFontFamily = when {
-        needsEmojiFont(text) -> SlickFontFamily.Emoji
-        needsUnicodeFont(text) -> SlickFontFamily.DroidSansFallback
-        else -> SlickFontFamily.Roboto
-    }
+    private fun fontFamilyFor(text: String): SlickFontFamily =
+        if (needsEmojiFont(text)) SlickFontFamily.Emoji else SlickFontFamily.DroidSansFallback
 
     private fun awtFontMetrics(font: AwtFont): java.awt.FontMetrics =
         fontMetricsCache.getOrPut(font) {
@@ -1286,15 +1283,6 @@ class SlickGraphicsEngine private constructor(
                 .also { it.font = font }
                 .fontMetrics
         }
-
-    private fun needsUnicodeFont(text: String): Boolean {
-        for (index in text.indices) {
-            if (text[index].code > 255) {
-                return true
-            }
-        }
-        return false
-    }
 
     private fun needsEmojiFont(text: String): Boolean {
         var index = 0

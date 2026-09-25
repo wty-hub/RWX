@@ -2,6 +2,7 @@ package io.github.rwx
 
 import de.fabmax.kool.input.KeyCode
 import de.fabmax.kool.input.KeyboardInput
+import io.github.rwx.ui.component.PlatformCaretRect
 import io.github.rwx.ui.component.PlatformCaretRequest
 import io.github.rwx.ui.component.PlatformTextInputRequest
 import java.awt.GraphicsEnvironment
@@ -197,6 +198,33 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `caret rect moves the editor and the candidate spot follows its bottom edge`() {
+        val spots = mutableListOf<Pair<Int, Int>>()
+        withController(moveImeSpot = { x, y -> spots += x to y }) { controller, editor ->
+            editor.parent.setSize(800, 600)
+            val owner = Any()
+            val rect = PlatformCaretRect(x = 120f, y = 40f, width = 1f, height = 18f)
+            controller.showOrUpdate(request(owner, "ab", caretRect = rect))
+
+            assertEquals(120, editor.x)
+            assertEquals(40, editor.y)
+            assertEquals(listOf(120 to 58), spots)
+
+            controller.showOrUpdate(request(owner, "ab", caretRect = rect))
+            assertEquals(listOf(120 to 58), spots)
+
+            pressKey(editor, KeyEvent.VK_A)
+            assertEquals(listOf(120 to 58, 120 to 58), spots)
+
+            val moved = PlatformCaretRect(x = 200f, y = 80f, width = 1f, height = 18f)
+            controller.showOrUpdate(request(owner, "ab", caretRect = moved))
+            assertEquals(200, editor.x)
+            assertEquals(80, editor.y)
+            assertEquals(200 to 98, spots.last())
+        }
+    }
+
+    @Test
     fun `tab is forwarded with the shift modifier`() {
         val keys = mutableListOf<Pair<KeyCode, Int>>()
         withController(sendKey = { code, modifiers -> keys += code to modifiers }) { controller, editor ->
@@ -212,6 +240,7 @@ class DesktopTextInputControllerTest {
         sendKey: (KeyCode, Int) -> Unit = { _, _ -> },
         activateEditorWindow: () -> Unit = {},
         restoreFocus: () -> Unit = {},
+        moveImeSpot: (Int, Int) -> Unit = { _, _ -> },
         block: (DesktopTextInputController, JTextField) -> Unit,
     ) {
         if (GraphicsEnvironment.isHeadless()) return
@@ -224,6 +253,7 @@ class DesktopTextInputControllerTest {
                 restoreFocus = restoreFocus,
                 sendKey = sendKey,
                 dispatch = { action -> action() },
+                moveImeSpot = moveImeSpot,
             )
             try {
                 val editor = editorHost.components.filterIsInstance<JTextField>().single()
@@ -241,6 +271,7 @@ class DesktopTextInputControllerTest {
         onEnter: ((String) -> Unit)? = null,
         onCancel: (() -> Unit)? = null,
         caretRequest: PlatformCaretRequest? = null,
+        caretRect: PlatformCaretRect? = null,
         onSelectionChanged: ((Int, Int) -> Unit)? = null,
         onChange: (String) -> Unit = {},
     ) = PlatformTextInputRequest(
@@ -253,6 +284,7 @@ class DesktopTextInputControllerTest {
         onCancel = onCancel,
         caretRequest = caretRequest,
         onSelectionChanged = onSelectionChanged,
+        caretRect = caretRect,
     )
 
     private fun pressKey(editor: JTextField, keyCode: Int, shift: Boolean = false) {

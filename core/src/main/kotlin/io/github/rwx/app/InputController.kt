@@ -13,6 +13,7 @@ internal class InputController(
     private val currentScreen: () -> AppScreen,
     screenScale: () -> Float,
     private val navigateBack: () -> Unit,
+    private val dismissDialog: () -> Boolean = { false },
 ) {
     private val legacyPointerSink = LegacyGamePointerSink(
         gameSession = gameSession,
@@ -35,6 +36,7 @@ internal class InputController(
                 PlatformTextInputBridge.dismissKeyboard()
                 return@addKeyListener
             }
+            if (dismissDialog()) return@addKeyListener
             if (!UiRegistry.cancelWorldPositionSelection()) navigateBack()
         }
         InputStack.defaultInputHandler.pointerListeners += GatedPointerListener(

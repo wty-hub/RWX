@@ -421,6 +421,7 @@ fun installApp(
         currentScreen = { navigator.current },
         screenScale = { context.window.parentScreenScale },
         navigateBack = session::navigateBack,
+        dismissDialog = dialogSceneHost::dismissIfShowing,
     ).also { it.install() }
     screenPresenter.apply(navigator.current, lastExternalGameFrame)
 

@@ -150,6 +150,8 @@ application {
         "-Dorg.lwjgl.system.stackSize=512",
         "--enable-native-access=ALL-UNNAMED",
         "--sun-misc-unsafe-memory-access=allow",
+        "--add-opens", "java.desktop/sun.awt=ALL-UNNAMED",
+        "--add-opens", "java.desktop/sun.awt.im=ALL-UNNAMED",
     )
 }
 
@@ -352,7 +354,10 @@ val createJpackageImage by tasks.registering(Exec::class) {
             "--java-options", "-Dfile.encoding=UTF-8",
             "--java-options", "-Dorg.lwjgl.opengl.contextAPI=native",
             "--java-options", "-Dorg.lwjgl.system.stackSize=512",
-            "--java-options", "-Dlaunch.dir=\$ROOTDIR"
+            "--java-options", "-Dlaunch.dir=\$ROOTDIR",
+            "--java-options", "--enable-native-access=ALL-UNNAMED",
+            "--java-options", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--java-options", "--add-opens=java.desktop/sun.awt.im=ALL-UNNAMED",
         )
         val icon = if (targetPlatform.osName == "macos") {
             generatedMacIcon.get().asFile
@@ -388,6 +393,9 @@ if (targetPlatform.osName == "windows") {
                 "-Dfile.encoding=UTF-8",
                 "-Dorg.lwjgl.opengl.contextAPI=native",
                 "-Dorg.lwjgl.system.stackSize=512",
+                "--enable-native-access=ALL-UNNAMED",
+                "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+                "--add-opens=java.desktop/sun.awt.im=ALL-UNNAMED",
             ),
         )
         productName.set(appName)

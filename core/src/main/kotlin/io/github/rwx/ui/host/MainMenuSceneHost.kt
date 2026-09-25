@@ -225,13 +225,15 @@ internal fun UiScope.GradientMainTitle(
             .width(contentWidth)
             .margin(bottom = UiTheme.Spacing.xs)
 
-        GradientText(text) {
-            modifier
-                .height(Grow.Std)
-                .align(AlignmentX.Center, AlignmentY.Center)
-                .font(UiTheme.Fonts.displayTitle)
-                .textAlign(AlignmentX.Center, AlignmentY.Center)
-                .gradientColors(theme.palette.secondary, theme.palette.primary)
+        if (UiTheme.Fonts.titleInstalledState().use()) {
+            GradientText(text) {
+                modifier
+                    .height(Grow.Std)
+                    .align(AlignmentX.Center, AlignmentY.Center)
+                    .font(UiTheme.Fonts.displayTitle)
+                    .textAlign(AlignmentX.Center, AlignmentY.Center)
+                    .gradientColors(theme.palette.secondary, theme.palette.primary)
+            }
         }
     }
 }

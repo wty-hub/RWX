@@ -3,6 +3,7 @@ package io.github.rwx.ui
 import de.fabmax.kool.modules.ui2.Colors
 import de.fabmax.kool.modules.ui2.Dp
 import de.fabmax.kool.modules.ui2.Sizes
+import de.fabmax.kool.modules.ui2.mutableStateOf
 import de.fabmax.kool.util.Color
 import de.fabmax.kool.util.Font
 import de.fabmax.kool.util.MsdfFont
@@ -477,8 +478,15 @@ object UiTheme {
         @Volatile
         private var installedTitleBase: MsdfFont? = null
 
+        private val titleInstalled = mutableStateOf(false)
+
         val titleBase: MsdfFont
             get() = installedTitleBase ?: defaultFont()
+
+        val isTitleInstalled: Boolean
+            get() = titleInstalled.value
+
+        fun titleInstalledState() = titleInstalled
 
         /** Installs the pre-baked Latin+CJK atlas as the [base] font once it has finished loading. */
         fun installBaseFont(font: MsdfFont) {
@@ -488,11 +496,14 @@ object UiTheme {
 
         fun installTitleFont(font: MsdfFont) {
             installedTitleBase = font
+            titleInstalled.set(true)
         }
 
         suspend fun install(maxTextureSize: Int = PORTABLE_MAX_ATLAS_DIMENSION) {
-            installBaseFont(loadAtlas(CJK_MSDF_FONT_PATH, maxTextureSize))
+            // Title first, so the loading screen never paints RWXX in the fallback face
+            // and then swaps to Zen Dots after the CJK atlas finishes.
             installTitleFont(loadAtlas(TITLE_MSDF_FONT_PATH, maxTextureSize))
+            installBaseFont(loadAtlas(CJK_MSDF_FONT_PATH, maxTextureSize))
         }
 
         private suspend fun loadAtlas(path: String, maxTextureSize: Int): MsdfFont {
