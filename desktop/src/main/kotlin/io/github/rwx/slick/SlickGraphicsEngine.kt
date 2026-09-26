@@ -1358,7 +1358,10 @@ class SlickGraphicsEngine private constructor(
             UnicodeFont(awtFont).also {
                 it.effects.add(ColorEffect(AwtColor.WHITE))
                 it.addAsciiGlyphs()
-                runCatching { it.loadGlyphs() }
+                runCatching {
+                    QuadBatch.flush()
+                    it.loadGlyphs()
+                }
             }
         }
         if (text.isNotEmpty() && family != SlickFontFamily.Roboto) {
@@ -1375,6 +1378,7 @@ class SlickGraphicsEngine private constructor(
             }
             if (missing) {
                 runCatching {
+                    QuadBatch.flush()
                     unicodeFont.addGlyphs(text)
                     unicodeFont.loadGlyphs()
                 }

@@ -119,12 +119,14 @@ public final class QuadBatch {
     }
 
     /**
-     * Submits pending geometry and turns off client arrays so immediate-mode Slick draws are safe.
+     * Submits pending geometry and restores fixed-function state so immediate-mode draws
+     * (Unicode font glyphs) are not multiplied away by leftover texture units.
      */
     public static void flush() {
         submit();
         disableClientArrays();
         unbindShader();
+        disableExtraTextureUnits();
         TextureImpl.unbind();
         Color.setRebindRequired();
     }
@@ -186,6 +188,9 @@ public final class QuadBatch {
 
     private static void submitFixedFunction(int count, int primitive, int usedTextures) {
         unbindShader();
+        // Units 1..N stay enabled after a multi-texture quad draw. Fixed-function then
+        // modulates every fragment by those units, which blanks text and untextured lines.
+        disableExtraTextureUnits();
         boolean textured = primitive != GL11.GL_LINES && usedTextures > 0 && textures[0] != NO_TEXTURE;
         if (textured) {
             GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -215,6 +220,15 @@ public final class QuadBatch {
             texCoordArrayEnabled = false;
         }
         GL11.glDrawArrays(primitive, 0, count);
+    }
+
+    /** Turns off every texture unit except 0 and leaves unit 0 active for the next bind. */
+    private static void disableExtraTextureUnits() {
+        for (int i = 1; i < MAX_TEXTURES; i++) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0 + i);
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+        }
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
     }
 
     private static void bindTextures(int usedTextures) {
