@@ -498,14 +498,22 @@ public class FileLoader {
 
     public String getGameDataPath() {
         if (GameEngine.isNonAndroidVersion) {
-            return VariableScope.nullOrMissingString;
+            try {
+                String root = LegacyAssetBridge.storageRootDir().getAbsolutePath().replace('\\', '/');
+                if (!root.endsWith("/")) {
+                    root = root + "/";
+                }
+                return root;
+            } catch (Throwable ignored) {
+                return VariableScope.nullOrMissingString;
+            }
         }
         return getExternalStoragePath() + "/rustedWarfare/";
     }
 
     /* JADX INFO: renamed from: c */
     public String getCachePath() {
-        if (GameEngine.isAndroidPlatform()) {
+        if (GameEngine.isAndroidPlatform() || GameEngine.isNonAndroidVersion) {
             String absolutePath = LegacyAssetBridge.cacheDir().getAbsolutePath();
             if (!absolutePath.endsWith("/")) {
                 absolutePath = absolutePath + "/";

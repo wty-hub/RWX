@@ -10,6 +10,9 @@ object GlobalLogger {
 
     inline fun debug(tag: String? = null, crossinline message: () -> Any) = log(LogLevel.DEBUG, tag, msg = message)
     inline fun info(tag: String? = null, crossinline message: () -> Any) = log(LogLevel.INFO, tag, msg = message)
+
+    /** Non-inline so Java call sites can write a line into the desktop log. */
+    fun infoNow(tag: String, message: String) = info(tag) { message }
     inline fun warn(
         throwable: Throwable? = null,
         tag: String? = null,

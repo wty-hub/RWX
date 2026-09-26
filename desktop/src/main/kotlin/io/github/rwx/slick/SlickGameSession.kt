@@ -484,6 +484,11 @@ class SlickGameSession(
         stopAndWait(timeoutMillis)
     }
 
+    override fun setModalKeyCapture(capture: Boolean) {
+        super.setModalKeyCapture(capture)
+        activeGame()?.modalKeyCaptureRequested = capture
+    }
+
     override fun setGameVisible(
         visible: Boolean,
         viewport: KoolCanvasViewport,

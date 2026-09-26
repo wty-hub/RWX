@@ -1,5 +1,7 @@
 package io.github.rwx.slick
 
+import io.github.rwx.isSwingComponentHostActive
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import java.awt.Canvas
 import java.awt.Dimension
 import javax.swing.SwingUtilities
@@ -54,13 +56,17 @@ object SlickCanvasHost {
     }
 
     fun requestGameFocus() {
+        if (PlatformTextInputBridge.isEditing()) {
+            return
+        }
         val canvas = gameCanvas() ?: return
         val action = {
-            if (canvas.isVisible && canvas.isShowing) {
+            if (canvas.isVisible && canvas.isShowing &&
+                !PlatformTextInputBridge.isEditing() &&
+                isSwingComponentHostActive(canvas)
+            ) {
                 canvas.isFocusable = true
-                if (!canvas.requestFocusInWindow()) {
-                    canvas.requestFocus()
-                }
+                canvas.requestFocusInWindow()
             }
         }
         if (SwingUtilities.isEventDispatchThread()) {

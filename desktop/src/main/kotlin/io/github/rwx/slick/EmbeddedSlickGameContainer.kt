@@ -1,11 +1,13 @@
 package io.github.rwx.slick
 
 import com.corrodinggames.rts.gameFramework.GameEngine
+import io.github.rwx.isSwingComponentHostActive
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.awt.AWTGLCanvas
 import org.newdawn.slick.*
 import org.newdawn.slick.Image
 import org.newdawn.slick.opengl.ImageData
+import org.newdawn.slick.opengl.renderer.QuadBatch
 import org.newdawn.slick.util.Log
 import java.awt.*
 import java.awt.event.*
@@ -28,7 +30,13 @@ internal class EmbeddedSlickGameContainer(
         ?: error("Slick AWT backend requires an AWTGLCanvas parent")
     private val exitRequested = AtomicBoolean(false)
     private val inputListener = game as? InputListener
+    private val slickGame = game as? SlickGame
+    private var altReleaseDispatcher: KeyEventDispatcher? = null
+
+    /** Set when an Alt press is seen, so later events can drop it if the OS mask says it is up. */
+    private var altPressLatched = false
     private var initialized = false
+    private val frameTimeLog = SlickFrameTimeLog.fromEnvironment()
     private var terminalFailure: Throwable? = null
     private val mouseStateLock = Any()
     private var mouseX = 0
@@ -90,6 +98,7 @@ internal class EmbeddedSlickGameContainer(
             setDisplayMode(canvasWidth, canvasHeight, false)
         }
 
+        frameTimeLog?.beginFrame()
         try {
             awtCanvas.runInContext {
                 try {
@@ -112,9 +121,12 @@ internal class EmbeddedSlickGameContainer(
                         framebufferHeight = framebufferSize.height,
                     )
                     GL11.glViewport(0, 0, viewport.width, viewport.height)
+                    frameTimeLog?.beginWork()
                     updateAndRender(getDelta())
+                    frameTimeLog?.endWork()
                     updateFPS()
                     awtCanvas.swapBuffers()
+                    frameTimeLog?.endSwap()
                 } catch (error: SlickException) {
                     Log.error(error)
                     terminalFailure = error
@@ -138,6 +150,12 @@ internal class EmbeddedSlickGameContainer(
             terminalFailure = error
             running = false
         }
+        // Wait for the next frame outside runInContext: sleeping there holds the AWT lock and
+        // stalls input dispatch and the Kool overlay.
+        if (running && targetFPS != -1) {
+            syncFrame(targetFPS)
+        }
+        frameTimeLog?.endFrame()
     }
 
     override fun updateAndRender(delta: Int) {
@@ -184,14 +202,12 @@ internal class EmbeddedSlickGameContainer(
             graphics.resetLineWidth()
             graphics.setAntiAlias(false)
             game.render(this, graphics)
+            QuadBatch.flush()
             graphics.resetTransform()
             if (isShowingFPS) {
                 defaultFont.drawString(10.0f, 10.0f, "FPS: $recordedFPS")
             }
             GL11.glFlush()
-        }
-        if (targetFPS != -1) {
-            syncFrame(targetFPS)
         }
     }
 
@@ -260,6 +276,10 @@ internal class EmbeddedSlickGameContainer(
     override fun isMouseGrabbed(): Boolean = false
 
     fun destroy() {
+        altReleaseDispatcher?.let { dispatcher ->
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(dispatcher)
+            altReleaseDispatcher = null
+        }
         setDefaultMouseCursor()
         exit()
         runCatching { awtCanvas.disposeCanvas() }
@@ -313,41 +333,69 @@ internal class EmbeddedSlickGameContainer(
     private fun installAwtInput() {
         awtCanvas.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(event: KeyEvent) {
+                if (event.isAltKey()) altPressLatched = true
                 inputListener?.keyPressed(
                     event.toSlickKey(),
                     event.keyChar.takeUnless { it == KeyEvent.CHAR_UNDEFINED } ?: 0.toChar())
+                noteOsAltUnlessAltKey(event)
             }
 
             override fun keyReleased(event: KeyEvent) {
                 inputListener?.keyReleased(
                     event.toSlickKey(),
                     event.keyChar.takeUnless { it == KeyEvent.CHAR_UNDEFINED } ?: 0.toChar())
+                noteOsAltUnlessAltKey(event)
             }
         })
+        awtCanvas.addFocusListener(object : FocusAdapter() {
+            override fun focusLost(event: FocusEvent) {
+                slickGame?.noteFocusLost()
+            }
+        })
+        // Alt's key-up is often delivered to the window manager or Swing's menu focus, not this
+        // canvas. Mirror every Alt release onto the game so a press cannot stay latched.
+        val dispatcher = KeyEventDispatcher { event ->
+            if (event.id == KeyEvent.KEY_RELEASED && event.isAltKey()) {
+                altPressLatched = false
+                inputListener?.keyReleased(
+                    event.toSlickKey(),
+                    event.keyChar.takeUnless { it == KeyEvent.CHAR_UNDEFINED } ?: 0.toChar(),
+                )
+                slickGame?.noteOsAlt(false)
+            }
+            false
+        }
+        altReleaseDispatcher = dispatcher
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher)
         val mouseListener = object : MouseAdapter() {
             override fun mouseEntered(event: MouseEvent) {
                 recordAwtMousePosition(event)
+                noteOsAlt(event)
                 requestCanvasFocus()
             }
 
             override fun mouseExited(event: MouseEvent) {
                 recordAwtMousePosition(event)
+                noteOsAlt(event)
             }
 
             override fun mousePressed(event: MouseEvent) {
                 requestCanvasFocus()
+                noteOsAlt(event)
                 val button = event.toSlickButton()
                 inputListener?.mousePressed(button, event.x, event.y)
                 recordAwtMousePosition(event)
             }
 
             override fun mouseReleased(event: MouseEvent) {
+                noteOsAlt(event)
                 val button = event.toSlickButton()
                 recordAwtMousePosition(event)
                 inputListener?.mouseReleased(button, event.x, event.y)
             }
 
             override fun mouseWheelMoved(event: MouseWheelEvent) {
+                noteOsAlt(event)
                 recordAwtMousePosition(event)
                 inputListener?.mouseWheelMoved(event.toSlickDWheel())
             }
@@ -356,18 +404,40 @@ internal class EmbeddedSlickGameContainer(
         awtCanvas.addMouseWheelListener(mouseListener)
         awtCanvas.addMouseMotionListener(object : MouseMotionAdapter() {
             override fun mouseMoved(event: MouseEvent) {
+                noteOsAlt(event)
                 val oldPosition = getRecordedMousePosition()
                 inputListener?.mouseMoved(oldPosition.x, oldPosition.y, event.x, event.y)
                 recordAwtMouseMotion(event)
             }
 
             override fun mouseDragged(event: MouseEvent) {
+                noteOsAlt(event)
                 val oldPosition = getRecordedMousePosition()
                 inputListener?.mouseDragged(oldPosition.x, oldPosition.y, event.x, event.y)
                 recordAwtMouseMotion(event)
             }
         })
     }
+
+    private fun noteOsAlt(event: InputEvent) {
+        val altDown = event.modifiersEx and (InputEvent.ALT_DOWN_MASK or InputEvent.ALT_GRAPH_DOWN_MASK) != 0
+        if (altDown) {
+            altPressLatched = true
+            return
+        }
+        if (!altPressLatched) return
+        altPressLatched = false
+        slickGame?.noteOsAlt(false)
+    }
+
+    /** The Alt key's own event is not used to clear Alt; its mask is not reliable on Linux. */
+    private fun noteOsAltUnlessAltKey(event: KeyEvent) {
+        if (event.isAltKey()) return
+        noteOsAlt(event)
+    }
+
+    private fun KeyEvent.isAltKey(): Boolean =
+        keyCode == KeyEvent.VK_ALT || keyCode == KeyEvent.VK_ALT_GRAPH
 
     private fun recordAwtMouseMotion(event: MouseEvent) {
         recordAwtMousePosition(event)
@@ -387,11 +457,9 @@ internal class EmbeddedSlickGameContainer(
 
     private fun requestCanvasFocus() {
         val action = {
-            if (awtCanvas.isVisible && awtCanvas.isShowing) {
+            if (awtCanvas.isVisible && awtCanvas.isShowing && isSwingComponentHostActive(awtCanvas)) {
                 awtCanvas.isFocusable = true
-                if (!awtCanvas.requestFocusInWindow()) {
-                    awtCanvas.requestFocus()
-                }
+                awtCanvas.requestFocusInWindow()
             }
         }
         if (SwingUtilities.isEventDispatchThread()) {

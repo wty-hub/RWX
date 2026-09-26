@@ -495,7 +495,8 @@ public abstract class OrderableUnit extends UnitBase {
                     }
                     orderableUnit.nearbyCollisionSize = (byte) 0;
                     unitList.clear();
-                    gameEngine.unitSpatialIndex.b(orderableUnit.posX, orderableUnit.posY, f2, unitList);
+                    gameEngine.unitSpatialIndex.querySoftCollisionCandidates(
+                            orderableUnit, orderableUnit.posX, orderableUnit.posY, f2, unitList);
                     BaseUnit[] baseUnitArrA2 = unitList.a();
                     int i4 = unitList.b;
                     for (int i5 = 0; i5 < i4; i5++) {

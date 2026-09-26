@@ -103,6 +103,55 @@ public final class UnitSpatialIndex {
         }
     }
 
+    /**
+     * Same cells and insertion order as {@link #b(float, float, float, UnitList)}, but omits units that
+     * {@link OrderableUnit#resolveSoftCollisionWithUnit} would reject before writing nearby-unit state.
+     */
+    public final void querySoftCollisionCandidates(
+            OrderableUnit self,
+            float f,
+            float f2,
+            float f3,
+            UnitList unitList
+    ) {
+        int collisionGroup = self.collisionGroup;
+        if (collisionGroup == -1) {
+            return;
+        }
+        BaseUnit targetUnit = self.targetUnit;
+        UnitStatisticsManager[][] unitStatisticsManagerArr = this.e;
+        float f4 = f - f3;
+        float f5 = f + f3;
+        float f6 = f2 - f3;
+        float f7 = f2 + f3;
+        int iA = a(f4 - 50.0f);
+        int iA2 = a(f5 + 50.0f);
+        int iB = b(f6 - 50.0f);
+        int iB2 = b(f7 + 50.0f);
+        for (int i = iA; i <= iA2; i++) {
+            for (int i2 = iB; i2 <= iB2; i2++) {
+                com.corrodinggames.rts.game.units.management.UnitList unitList2 = unitStatisticsManagerArr[i][i2].a;
+                BaseUnit[] baseUnitArrA = unitList2.a();
+                int i3 = unitList2.size;
+                for (int i4 = 0; i4 < i3; i4++) {
+                    BaseUnit baseUnit = baseUnitArrA[i4];
+                    if (baseUnit == self
+                            || baseUnit.collisionGroup != collisionGroup
+                            || targetUnit == baseUnit
+                            || baseUnit.targetUnit == self) {
+                        continue;
+                    }
+                    float f8 = baseUnit.posX;
+                    float f9 = baseUnit.posY;
+                    float f10 = baseUnit.radius;
+                    if (f4 - f10 <= f8 && f8 <= f5 + f10 && f6 - f10 <= f9 && f9 <= f7 + f10) {
+                        unitList.b(baseUnit);
+                    }
+                }
+            }
+        }
+    }
+
     public final void a(PlayerTeam playerTeam, float f, float f2, float f3, UnitList unitList) {
         UnitStatisticsManager[][] unitStatisticsManagerArr = this.e;
         float f4 = f - f3;

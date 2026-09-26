@@ -375,27 +375,21 @@ private fun UiScope.BattleRoomChatPanel(
                 .textColor(theme.palette.primary)
         }
 
-        if (chatLines.isEmpty()) {
-            Box(
-                width = metrics.actionAreaWidth,
-                height = metrics.chatViewportHeight,
-            ) {
-                modifier.background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-                Text(I18n.battleroom.emptyChat()) {
-                    modifier
-                        .width(Grow.Std)
-                        .height(Grow.Std)
-                        .font(UiTheme.Fonts.bodySmall)
-                        .textAlign(AlignmentX.Center, AlignmentY.Center)
-                        .textColor(theme.palette.textSecondary)
-                }
-            }
-        } else {
+        // Keep draft before the chat viewport, and always compose the list (empty
+        // overlay on top). Kool keys remember() by erased MutableStateValue type, so
+        // branching around ScrollableVerticalList used to steal the draft slot and
+        // crash with ClassCastException when the first messages arrived.
+        val draft = remember("")
+        Box(
+            width = metrics.actionAreaWidth,
+            height = metrics.chatViewportHeight,
+        ) {
+            modifier.background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
             ScrollableVerticalList(
                 items = chatLines,
                 theme = theme,
-                width = metrics.actionAreaWidth,
-                height = metrics.chatViewportHeight,
+                width = Grow.Std,
+                height = Grow.Std,
                 stickToEnd = true,
             ) { line ->
                 val color = battleRoomChatColorIndexFor(line, players)
@@ -409,9 +403,18 @@ private fun UiScope.BattleRoomChatPanel(
                     wrap = true,
                 )
             }
+            if (chatLines.isEmpty()) {
+                Text(I18n.battleroom.emptyChat()) {
+                    modifier
+                        .width(Grow.Std)
+                        .height(Grow.Std)
+                        .font(UiTheme.Fonts.bodySmall)
+                        .textAlign(AlignmentX.Center, AlignmentY.Center)
+                        .textColor(theme.palette.textSecondary)
+                }
+            }
         }
 
-        val draft = remember("")
         Row(width = metrics.actionAreaWidth) {
             modifier.margin(top = UiTheme.Spacing.xs)
 

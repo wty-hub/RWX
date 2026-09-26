@@ -15,6 +15,8 @@ data class AppOptions(
     val autoStartBattleRoomTwice: Boolean = false,
     val autoReturnMainMenuAfterGameReady: Boolean = false,
     val joinServer: String? = null,
+    /** Replay file name (or a unique part of it) to open right after startup; used for benchmarks. */
+    val replay: String? = null,
     val isDesktop: Boolean = false,
 ) {
     companion object {
@@ -28,6 +30,7 @@ data class AppOptions(
         private const val AUTO_START_BATTLE_ROOM_TWICE_ARG = "--auto-start-battleroom-twice"
         private const val AUTO_RETURN_MAIN_MENU_AFTER_GAME_READY_ARG = "--auto-return-main-menu-after-game-ready"
         private const val JOIN_SERVER_PREFIX = "--join-server="
+        private const val REPLAY_PREFIX = "--replay="
 
         private val screensByArgument = mapOf(
             "main-menu" to AppScreen.MainMenu,
@@ -76,6 +79,7 @@ data class AppOptions(
             var autoStartBattleRoomTwice = false
             var autoReturnMainMenuAfterGameReady = false
             var joinServer: String? = null
+            var replay: String? = null
 
             args.forEach { arg ->
                 when {
@@ -103,6 +107,12 @@ data class AppOptions(
                         }
                     }
 
+                    arg.startsWith(REPLAY_PREFIX) -> {
+                        replay = arg.removePrefix(REPLAY_PREFIX).trim().also {
+                            require(it.isNotEmpty()) { "Replay name must not be empty" }
+                        }
+                    }
+
                     arg.startsWith(SETTINGS_PAGE_PREFIX) -> {
                         settingsPage = parseSettingsPage(arg.removePrefix(SETTINGS_PAGE_PREFIX))
                     }
@@ -122,6 +132,7 @@ data class AppOptions(
                 autoStartBattleRoomTwice = autoStartBattleRoomTwice,
                 autoReturnMainMenuAfterGameReady = autoReturnMainMenuAfterGameReady,
                 joinServer = joinServer,
+                replay = replay,
                 isDesktop = isDesktop,
             )
         }

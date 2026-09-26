@@ -7,6 +7,7 @@ import de.fabmax.kool.input.KeyEvent
 import de.fabmax.kool.input.Pointer
 import de.fabmax.kool.input.PointerState
 import io.github.rwx.input.KoolKeyCodeMapping
+import io.github.rwx.logger
 import io.github.rwx.mod.api.WorldPosition
 import io.github.rwx.mod.registry.UiRegistry
 import io.github.rwx.session.GameSession
@@ -41,6 +42,9 @@ class LegacyGamePointerSink(
         val pointerId = pointer.legacyButtonId()
         if (pointerId == NO_BUTTON_ID) {
             if (activePointerId != NO_BUTTON_ID) {
+                logger.info("RWXInput") {
+                    "pointer release synthesized id=$activePointerId xy=${screenX.toInt()},${screenY.toInt()}"
+                }
                 gameSession.submitPointer(
                     screenX = screenX,
                     screenY = screenY,
@@ -55,6 +59,9 @@ class LegacyGamePointerSink(
             return
         }
         if (activePointerId != NO_BUTTON_ID && activePointerId != pointerId) {
+            logger.info("RWXInput") {
+                "pointer switch from=$activePointerId to=$pointerId xy=${screenX.toInt()},${screenY.toInt()}"
+            }
             gameSession.submitPointer(
                 screenX = screenX,
                 screenY = screenY,
@@ -63,6 +70,11 @@ class LegacyGamePointerSink(
             )
         }
         val isDown = pointer.isValid && pointer.isLegacyButtonDown()
+        if (isDown && activePointerId != pointerId) {
+            logger.info("RWXInput") { "pointer down id=$pointerId xy=${screenX.toInt()},${screenY.toInt()}" }
+        } else if (!isDown && activePointerId == pointerId) {
+            logger.info("RWXInput") { "pointer up id=$pointerId xy=${screenX.toInt()},${screenY.toInt()}" }
+        }
         gameSession.submitPointer(
             screenX = screenX,
             screenY = screenY,
@@ -129,14 +141,24 @@ class LegacyGameKeyboardSink(
             if (event.isCharTyped) {
                 return@forEach
             }
-            val androidKeyCode = event.androidKeyCode() ?: return@forEach
+            val androidKeyCode = event.androidKeyCode()
+            if (androidKeyCode == null) {
+                if (event.isPressed) {
+                    logger.info("RWXInput") { "kool key dropped unmapped key=${event.keyCode}" }
+                }
+                return@forEach
+            }
             when {
                 event.isPressed || event.isRepeated -> {
+                    if (event.isPressed) {
+                        logger.info("RWXInput") { "kool key down android=$androidKeyCode" }
+                    }
                     gameSession.submitKey(androidKeyCode, true)
                     event.isConsumed = true
                 }
 
                 event.isReleased -> {
+                    logger.info("RWXInput") { "kool key up android=$androidKeyCode" }
                     gameSession.submitKey(androidKeyCode, false)
                     event.isConsumed = true
                 }

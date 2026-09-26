@@ -209,6 +209,18 @@ abstract class GameSession {
         }
     }
 
+    /**
+     * A modal dialog has taken keyboard focus away from the match. Key-ups for Enter and Shift are
+     * delivered to that dialog instead of the game, so the match must drop latched keys and ignore
+     * new key-downs until the dialog is gone.
+     */
+    open fun setModalKeyCapture(capture: Boolean) {
+        if (isEngineBusyForUiReads()) return
+        postEngineCommand("modal key capture") { engine ->
+            if (capture) engine.beginModalKeyCapture() else engine.endModalKeyCapture()
+        }
+    }
+
     open fun submitMouseWheel(amount: Int) {
         if (amount == 0) return
         if (isEngineBusyForUiReads()) return

@@ -707,6 +707,15 @@ public abstract class GameEngine {
     /* JADX INFO: renamed from: d */
     private boolean[] keyPressPendingStates = new boolean[512];
 
+    /**
+     * While a modal UI (chat, pause dialog) holds keyboard focus, key-up events never reach the
+     * game. New key-downs are ignored, and keys that were already down stay ignored until a real
+     * key-up arrives so Enter cannot reopen chat and Shift cannot stay latched.
+     */
+    private boolean blockKeyDown;
+
+    private boolean[] suppressKeyDownUntilRelease = new boolean[512];
+
     /* JADX INFO: renamed from: dZ */
     public byte memoryProbeWriteByte = 42;
 
@@ -1957,14 +1966,47 @@ public abstract class GameEngine {
     /* JADX INFO: renamed from: b */
     public void setKeyState(int i, boolean z) {
         if (i >= 0 && i < this.keyDownStates.length) {
-            this.keyDownStates[i] = z;
-            if (z) {
-                this.keyPressPendingStates[i] = z;
+            if (!z) {
+                this.suppressKeyDownUntilRelease[i] = false;
+                this.keyDownStates[i] = false;
+                this.keyPressPendingStates[i] = false;
                 return;
             }
+            if (this.blockKeyDown) {
+                io.github.rwx.GlobalLogger.INSTANCE.infoNow("RWXInput", "key down blocked by modal capture android=" + i);
+                this.suppressKeyDownUntilRelease[i] = true;
+                return;
+            }
+            if (this.suppressKeyDownUntilRelease[i]) {
+                io.github.rwx.GlobalLogger.INSTANCE.infoNow("RWXInput", "key down ignored until release android=" + i);
+                return;
+            }
+            this.keyDownStates[i] = true;
+            this.keyPressPendingStates[i] = true;
             return;
         }
         log("setKeyState: Key out of range:" + i);
+    }
+
+    /** Drops every latched key and ignores further key-downs until [endModalKeyCapture]. */
+    public void beginModalKeyCapture() {
+        this.blockKeyDown = true;
+        for (int i = 0; i < this.keyDownStates.length; i++) {
+            if (this.keyDownStates[i]) {
+                this.suppressKeyDownUntilRelease[i] = true;
+            }
+            this.keyDownStates[i] = false;
+            this.keyPressPendingStates[i] = false;
+        }
+    }
+
+    /** Lets keys through again. Keys held across the modal stay ignored until they are released. */
+    public void endModalKeyCapture() {
+        this.blockKeyDown = false;
+        for (int i = 0; i < this.keyDownStates.length; i++) {
+            this.keyDownStates[i] = false;
+            this.keyPressPendingStates[i] = false;
+        }
     }
 
     /* JADX INFO: renamed from: aE */

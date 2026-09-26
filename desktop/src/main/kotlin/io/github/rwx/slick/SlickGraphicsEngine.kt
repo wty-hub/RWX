@@ -1,13 +1,17 @@
 package io.github.rwx.slick
 
 import com.corrodinggames.rts.R
+import com.corrodinggames.rts.game.ColorMode
 import com.corrodinggames.rts.gameFramework.Utility
 import com.corrodinggames.rts.gameFramework.graphics.*
 import com.corrodinggames.rts.gameFramework.utility.AssetInputStream
+import io.github.rwx.DesktopEmojiRasterizer
 import io.github.rwx.PlatformStorage
 import io.github.rwx.geometry.Rect
 import io.github.rwx.geometry.RectF
 import io.github.rwx.render.canvas.*
+import io.github.rwx.ui.emoji.TextRun
+import io.github.rwx.ui.emoji.toTextRuns
 import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL13
@@ -15,13 +19,16 @@ import org.lwjgl.opengl.GL20
 import org.newdawn.slick.*
 import org.newdawn.slick.font.effects.ColorEffect
 import org.newdawn.slick.imageout.ImageOut
-import org.newdawn.slick.opengl.renderer.Renderer
+import org.newdawn.slick.opengl.renderer.QuadBatch
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.IdentityHashMap
 import java.util.concurrent.locks.Lock
 import kotlin.collections.ArrayDeque
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 import java.awt.Color as AwtColor
@@ -58,7 +65,14 @@ class SlickGraphicsEngine private constructor(
     private val clearColorScratch = Color(1f, 1f, 1f, 1f)
     private val awtFontCache = mutableMapOf<SlickFontKey, AwtFont>()
     private val fontCache = mutableMapOf<SlickFontKey, UnicodeFont>()
-    private val recentUnicodeTexts = mutableMapOf<SlickFontKey, ArrayDeque<String>>()
+    private val loadedFontCodePoints = mutableMapOf<SlickFontKey, MutableSet<Int>>()
+    private var lastClipLeft = Int.MIN_VALUE
+    private var lastClipTop = Int.MIN_VALUE
+    private var lastClipWidth = Int.MIN_VALUE
+    private var lastClipHeight = Int.MIN_VALUE
+    private var lastClipEnabled = false
+    private val emojiRasterizer = DesktopEmojiRasterizer()
+    private val emojiImageCache = mutableMapOf<String, Image>()
     private val fontMetricsCache = IdentityHashMap<AwtFont, java.awt.FontMetrics>()
     private val fallbackTexture: SlickTexture by lazy {
         SlickTexture(Image(ImageBuffer(1, 1)), "fallback")
@@ -344,13 +358,31 @@ class SlickGraphicsEngine private constructor(
     override fun a(str: String?, f: Float, f2: Float, paint: KoolPaint?) {
         val g = activeGraphics() ?: return
         val text = str ?: return
-        val font = fontForText(paint, text)
         val oldFont = g.font
         withPaint(paint) {
-            g.font = font
-            val awtFont = awtFontFor((paint?.k() ?: 16f).roundToInt().coerceAtLeast(1), fontFamilyFor(text))
-            val ascent = awtFontMetrics(awtFont).ascent.toFloat()
-            g.drawString(text, transform.x(alignedX(text, f, paint)), transform.y(f2 - ascent))
+            val size = (paint?.k() ?: 16f).roundToInt().coerceAtLeast(1)
+            val metrics = awtFontMetrics(awtFontFor(size, SlickFontFamily.DroidSansFallback))
+            var x = transform.x(alignedX(text, f, paint))
+            val y = transform.y(f2 - metrics.ascent.toFloat())
+            for (run in text.toTextRuns()) {
+                when (run) {
+                    is TextRun.Plain -> {
+                        g.font = fontForText(paint, run.value, SlickFontFamily.DroidSansFallback)
+                        g.drawString(run.value, x, y)
+                        x += metrics.stringWidth(run.value)
+                    }
+                    is TextRun.Emoji -> {
+                        val image = emojiImage(run.value, metrics.height)
+                        if (image != null) {
+                            val previous = g.color
+                            g.setColorRaw(Color.white)
+                            g.drawImage(image, x, y)
+                            g.setColorRaw(previous)
+                            x += image.width
+                        }
+                    }
+                }
+            }
         }
         g.font = oldFont
     }
@@ -385,15 +417,23 @@ class SlickGraphicsEngine private constructor(
 
     override fun a(f: Float, f2: Float, f3: Float, paint: KoolPaint?) {
         val g = activeGraphics() ?: return
+        val radiusX = abs(f3 * transform.scaleX)
+        val radiusY = abs(f3 * transform.scaleY)
         withPaint(paint) {
-            g.drawOval(
-                transform.x(f - f3),
-                transform.y(f2 - f3),
-                f3 * 2f * transform.scaleX,
-                f3 * 2f * transform.scaleY
+            g.drawEllipseOutlineBatched(
+                transform.x(f),
+                transform.y(f2),
+                radiusX,
+                radiusY,
+                circleSegmentsFor(max(radiusX, radiusY)),
             )
         }
     }
+
+    /** About one segment per few screen pixels of circumference, never more than Slick's old 50. */
+    private fun circleSegmentsFor(screenRadius: Float): Int =
+        ceil(2.0 * PI * screenRadius / CIRCLE_SEGMENT_PIXELS).toInt()
+            .coerceIn(MIN_CIRCLE_SEGMENTS, MAX_CIRCLE_SEGMENTS)
 
     override fun b(f: Float, f2: Float, f3: Float, paint: KoolPaint?) {
         a(f, f2, f3, paint)
@@ -425,9 +465,20 @@ class SlickGraphicsEngine private constructor(
 
     override fun j() {
         if (transformStack.isNotEmpty()) {
+            val previousClip = transform.clip
             transform = transformStack.removeLast()
-            applyClip()
+            // Every unit draw pushes and pops the transform; re-applying an unchanged clip would end
+            // the sprite batch each time.
+            if (!sameClip(previousClip, transform.clip)) {
+                applyClip()
+            }
         }
+    }
+
+    private fun sameClip(first: RectF?, second: RectF?): Boolean {
+        if (first === second) return true
+        if (first == null || second == null) return false
+        return first.a == second.a && first.b == second.b && first.c == second.c && first.d == second.d
     }
 
     override fun k() = i()
@@ -501,12 +552,18 @@ class SlickGraphicsEngine private constructor(
     }
 
     override fun a(str: String?, paint: KoolPaint?): Int =
-        fontForText(paint, str ?: "").getLineHeight()
+        fontForText(paint, str ?: "", SlickFontFamily.DroidSansFallback).getLineHeight()
 
     override fun b(str: String?, paint: KoolPaint?): Int {
         val text = str ?: ""
-        val awtFont = awtFontFor((paint?.k() ?: 16f).roundToInt().coerceAtLeast(1), fontFamilyFor(text))
-        return awtFontMetrics(awtFont).stringWidth(text)
+        val size = (paint?.k() ?: 16f).roundToInt().coerceAtLeast(1)
+        val metrics = awtFontMetrics(awtFontFor(size, SlickFontFamily.DroidSansFallback))
+        return text.toTextRuns().sumOf { run ->
+            when (run) {
+                is TextRun.Plain -> metrics.stringWidth(run.value)
+                is TextRun.Emoji -> emojiImage(run.value, metrics.height)?.width ?: metrics.height
+            }
+        }
     }
 
     override fun r(): Texture = fallbackTexture
@@ -537,6 +594,36 @@ class SlickGraphicsEngine private constructor(
                 g.fillRect(left, top, right - left, bottom - top)
             }
         }
+    }
+
+    /**
+     * True when the quad cannot touch the render target. A rotated quad stays inside the circle around
+     * its pivot that reaches its farthest corner, so that circle's bounding box is tested.
+     */
+    private fun isOutsideTarget(
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        rotationDegrees: Float,
+        pivotX: Float,
+        pivotY: Float,
+    ): Boolean {
+        var minX = left
+        var minY = top
+        var maxX = right
+        var maxY = bottom
+        if (rotationDegrees % 360f != 0f) {
+            val dx = max(abs(left - pivotX), abs(right - pivotX))
+            val dy = max(abs(top - pivotY), abs(bottom - pivotY))
+            val radius = kotlin.math.sqrt(dx * dx + dy * dy)
+            minX = pivotX - radius
+            minY = pivotY - radius
+            maxX = pivotX + radius
+            maxY = pivotY + radius
+        }
+        return maxX < -CULL_MARGIN || maxY < -CULL_MARGIN ||
+            minX > m() + CULL_MARGIN || minY > n() + CULL_MARGIN
     }
 
     private fun drawImageRegion(
@@ -573,12 +660,38 @@ class SlickGraphicsEngine private constructor(
         val rotationDegrees = transform.rotationDegrees + 90f + extraRotationDegrees
         val pivotXTransformed = transform.x(pivotX)
         val pivotYTransformed = transform.y(pivotY)
+        if (isOutsideTarget(left, top, right, bottom, rotationDegrees, pivotXTransformed, pivotYTransformed)) {
+            return
+        }
         val imageColor = colorForImage(paint)
         val shader = slickShaderFor(shaderTexture, paint)
+        val blendMode = slickBlendModeForPaint(paint)
+        val teamTexture = shaderTexture as? TeamColorTexture
+        val batchTeamColor = shader is TeamColorShader && teamTexture != null && QuadBatch.ensureBatchShader()
+        if (blendMode == null && (shader == null || batchTeamColor)) {
+            clearSlickShader(g)
+            drawTexturedQuad(
+                image = image,
+                srcLeft = srcLeft,
+                srcTop = srcTop,
+                srcRight = srcRight,
+                srcBottom = srcBottom,
+                dstLeft = left,
+                dstTop = top,
+                dstRight = right,
+                dstBottom = bottom,
+                rotationDegrees = rotationDegrees,
+                pivotX = pivotXTransformed,
+                pivotY = pivotYTransformed,
+                color = imageColor,
+                teamMode = teamModeFor(teamTexture),
+                teamColor = teamTexture?.teamColor ?: 0,
+            )
+            return
+        }
         withSlickBlendModeForPaint(g, paint) {
             withSlickShader(g, shader, paint, shaderTexture) {
                 drawTexturedQuad(
-                    graphics = g,
                     image = image,
                     srcLeft = srcLeft,
                     srcTop = srcTop,
@@ -592,16 +705,26 @@ class SlickGraphicsEngine private constructor(
                     pivotX = pivotXTransformed,
                     pivotY = pivotYTransformed,
                     color = imageColor,
+                    teamMode = QuadBatch.TEAM_NONE,
+                    teamColor = 0,
                 )
             }
         }
-        if (imageColor.a < 0.999f) {
-            g.flushBuffer()
+    }
+
+    private fun teamModeFor(texture: TeamColorTexture?): Int {
+        if (texture == null) {
+            return QuadBatch.TEAM_NONE
+        }
+        return when (texture.colorMode) {
+            ColorMode.hueAdd -> QuadBatch.TEAM_HUE_ADD
+            ColorMode.hueShift -> QuadBatch.TEAM_HUE_SHIFT
+            ColorMode.disabled -> QuadBatch.TEAM_NONE
+            else -> QuadBatch.TEAM_PURE_GREEN
         }
     }
 
     private fun drawTexturedQuad(
-        graphics: Graphics,
         image: Image,
         srcLeft: Int,
         srcTop: Int,
@@ -615,13 +738,12 @@ class SlickGraphicsEngine private constructor(
         pivotX: Float,
         pivotY: Float,
         color: Color,
+        teamMode: Int,
+        teamColor: Int,
     ) {
-        Graphics.setCurrent(graphics)
         val imageWidth = image.width
         val imageHeight = image.height
         val texture = image.texture ?: return
-        color.bind()
-        texture.bind()
         val textureWidthScale = image.textureWidth / imageWidth
         val textureHeightScale = image.textureHeight / imageHeight
         val leftU = srcLeft * textureWidthScale
@@ -660,18 +782,20 @@ class SlickGraphicsEngine private constructor(
             topRightX = (dx * cos) - (dy * sin) + pivotX
             topRightY = (dx * sin) + (dy * cos) + pivotY
         }
-        val renderer = Renderer.get()
-        renderer.glBegin(GL11.GL_QUADS)
-        renderer.glTexCoord2f(leftU, topV)
-        renderer.glVertex3f(topLeftX, topLeftY, 0f)
-        renderer.glTexCoord2f(leftU, bottomV)
-        renderer.glVertex3f(bottomLeftX, bottomLeftY, 0f)
-        renderer.glTexCoord2f(rightU, bottomV)
-        renderer.glVertex3f(bottomRightX, bottomRightY, 0f)
-        renderer.glTexCoord2f(rightU, topV)
-        renderer.glVertex3f(topRightX, topRightY, 0f)
-        renderer.glEnd()
-        graphics.bindCurrentColor()
+        val teamR = ((teamColor shr 16) and 255) * 0.003921569f
+        val teamG = ((teamColor shr 8) and 255) * 0.003921569f
+        val teamB = (teamColor and 255) * 0.003921569f
+        QuadBatch.addTexturedQuad(
+            texture.textureID,
+            leftU, topV, rightU, bottomV,
+            topLeftX, topLeftY,
+            bottomLeftX, bottomLeftY,
+            bottomRightX, bottomRightY,
+            topRightX, topRightY,
+            color.r, color.g, color.b, color.a,
+            teamMode,
+            teamR, teamG, teamB,
+        )
     }
 
     private fun tileTexture(
@@ -1070,6 +1194,8 @@ class SlickGraphicsEngine private constructor(
             Graphics.setCurrent(g)
             Color.setRebindRequired()
             lastActiveGraphics = g
+            lastClipLeft = Int.MIN_VALUE
+            lastClipEnabled = false
             applyClip(g)
         }
     }
@@ -1078,15 +1204,30 @@ class SlickGraphicsEngine private constructor(
         val active = g ?: return
         val clip = transform.clip
         if (clip == null || clip.a()) {
+            if (!lastClipEnabled && lastClipLeft != Int.MIN_VALUE) return
+            lastClipEnabled = false
+            lastClipLeft = 0
+            lastClipTop = 0
+            lastClipWidth = 0
+            lastClipHeight = 0
             active.clearClip()
-        } else {
-            active.setClip(
-                clip.a.toInt(),
-                clip.b.toInt(),
-                max(1, clip.width().toInt()),
-                max(1, clip.height().toInt()),
-            )
+            return
         }
+        val left = clip.a.toInt()
+        val top = clip.b.toInt()
+        val width = max(1, clip.width().toInt())
+        val height = max(1, clip.height().toInt())
+        if (lastClipEnabled && lastClipLeft == left && lastClipTop == top &&
+            lastClipWidth == width && lastClipHeight == height
+        ) {
+            return
+        }
+        lastClipEnabled = true
+        lastClipLeft = left
+        lastClipTop = top
+        lastClipWidth = width
+        lastClipHeight = height
+        active.setClip(left, top, width, height)
     }
 
     private data class TransformState(
@@ -1205,9 +1346,12 @@ class SlickGraphicsEngine private constructor(
         val family: SlickFontFamily,
     )
 
-    private fun fontForText(paint: KoolPaint?, text: String): Font {
+    private fun fontForText(
+        paint: KoolPaint?,
+        text: String,
+        family: SlickFontFamily = fontFamilyFor(text),
+    ): Font {
         val size = (paint?.k() ?: 16f).roundToInt().coerceAtLeast(1)
-        val family = fontFamilyFor(text)
         val key = SlickFontKey(size, family)
         val unicodeFont = fontCache.getOrPut(key) {
             val awtFont = awtFontFor(size, family)
@@ -1218,17 +1362,21 @@ class SlickGraphicsEngine private constructor(
             }
         }
         if (text.isNotEmpty() && family != SlickFontFamily.Roboto) {
-            val recentTexts = recentUnicodeTexts.getOrPut(key) { ArrayDeque() }
-            if (text !in recentTexts) {
-                val loaded = runCatching {
+            val loadedPoints = loadedFontCodePoints.getOrPut(key) { HashSet() }
+            var missing = false
+            var index = 0
+            while (index < text.length) {
+                val codePoint = text.codePointAt(index)
+                if (codePoint !in loadedPoints) {
+                    missing = true
+                    loadedPoints.add(codePoint)
+                }
+                index += Character.charCount(codePoint)
+            }
+            if (missing) {
+                runCatching {
                     unicodeFont.addGlyphs(text)
                     unicodeFont.loadGlyphs()
-                }.isSuccess
-                if (loaded) {
-                    recentTexts.addLast(text)
-                    if (recentTexts.size > RECENT_UNICODE_TEXT_LIMIT) {
-                        recentTexts.removeFirst()
-                    }
                 }
             }
         }
@@ -1255,6 +1403,9 @@ class SlickGraphicsEngine private constructor(
         val candidates = listOf(
             System.getProperty("user.home") + "/.local/share/fonts/ImportedFonts/seguiemj.ttf",
             "C:/Windows/Fonts/seguiemj.ttf",
+            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
         )
         for (path in candidates) {
             val file = java.io.File(path)
@@ -1276,6 +1427,24 @@ class SlickGraphicsEngine private constructor(
     private fun fontFamilyFor(text: String): SlickFontFamily =
         if (needsEmojiFont(text)) SlickFontFamily.Emoji else SlickFontFamily.DroidSansFallback
 
+    private fun emojiImage(emoji: String, sizePx: Int): Image? {
+        val key = "$sizePx:$emoji"
+        emojiImageCache[key]?.let { return it }
+        val raster = emojiRasterizer.rasterize(emoji, sizePx.coerceAtLeast(1)) ?: return null
+        val buffer = ImageBuffer(raster.width, raster.height)
+        var index = 0
+        for (y in 0 until raster.height) {
+            for (x in 0 until raster.width) {
+                val red = raster.rgba[index++].toInt() and 0xff
+                val green = raster.rgba[index++].toInt() and 0xff
+                val blue = raster.rgba[index++].toInt() and 0xff
+                val alpha = raster.rgba[index++].toInt() and 0xff
+                buffer.setRGBA(x, y, red, green, blue, alpha)
+            }
+        }
+        return Image(buffer).also { emojiImageCache[key] = it }
+    }
+
     private fun awtFontMetrics(font: AwtFont): java.awt.FontMetrics =
         fontMetricsCache.getOrPut(font) {
             java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB)
@@ -1284,12 +1453,15 @@ class SlickGraphicsEngine private constructor(
                 .fontMetrics
         }
 
+    private fun isEmojiCodePoint(codePoint: Int): Boolean =
+        codePoint > 0xFFFF || codePoint in 0x2600..0x27BF
+
     private fun needsEmojiFont(text: String): Boolean {
         var index = 0
         while (index < text.length) {
-            val cp = text.codePointAt(index)
-            if (cp > 0xFFFF || cp in 0x2600..0x27BF) return true
-            index += Character.charCount(cp)
+            val codePoint = text.codePointAt(index)
+            if (isEmojiCodePoint(codePoint)) return true
+            index += Character.charCount(codePoint)
         }
         return false
     }
@@ -1414,7 +1586,10 @@ class SlickGraphicsEngine private constructor(
             requiresImageTintColorFilter = false,
         )
         const val MAX_TILED_DRAWS = 2000
-        const val RECENT_UNICODE_TEXT_LIMIT = 30
+        const val CULL_MARGIN = 4f
+        const val CIRCLE_SEGMENT_PIXELS = 6.0
+        const val MIN_CIRCLE_SEGMENTS = 12
+        const val MAX_CIRCLE_SEGMENTS = 50
         var lastActiveGraphics: Graphics? = null
 
         val drawableNamesById: Map<Int, String> by lazy {

@@ -6,6 +6,7 @@ import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.input.LocalKeyCode
 import de.fabmax.kool.util.FrontendScope
 import io.github.rwx.ui.component.PlatformCaretRect
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.ui.component.PlatformTextInputController
 import io.github.rwx.ui.component.PlatformTextInputRequest
 import kotlinx.coroutines.launch
@@ -13,13 +14,20 @@ import org.slf4j.LoggerFactory
 import java.awt.Color
 import java.awt.Component
 import java.awt.Container
+import java.awt.Graphics
 import java.awt.MouseInfo
 import java.awt.Point
+import java.awt.Rectangle
 import java.awt.Window
+import java.awt.font.TextHitInfo
+import java.awt.im.InputMethodRequests
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.InputMethodEvent
 import java.awt.event.InputMethodListener
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent as AwtKeyEvent
+import javax.swing.JLayeredPane
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
 import javax.swing.Timer
@@ -34,30 +42,31 @@ import javax.swing.text.StyleConstants
 /**
  * Desktop input-method (IME) bridge.
  *
- * AWT input methods only attach to a real, focusable text component hosted by a window that macOS
- * lets become the key window. The Kool UI lives in a borderless, transparent `JWindow` that is
- * owned by the game `JFrame`; an input method never attaches to it, so composition and committed
- * text were lost and only the raw keystrokes (the pinyin letters) reached the Kool field. This
- * controller keeps a 1x1, fully transparent [JTextField] in the **frame** instead, brings the frame
- * forward and focuses that editor while a Kool text field is focused, and forwards the committed
- * text to that Kool field. The input method composes into the editor, so in-progress composition
- * stays in the editor's document as marked text and never reaches
- * [PlatformTextInputRequest.onChange].
+ * IBus/XIM attach to the focused X window. The Kool UI is a transparent overlay `JWindow` sitting
+ * on top of the game frame, so the editor must live in that overlay (same X window the user
+ * clicked). A field hosted on the frame never receives composition: the overlay is the key window
+ * and only pinyin letters reach Kool.
  *
- * This mirrors [io.github.rwx.AndroidTextInputController], which does the same with a hidden
- * `EditText`.
+ * While a Kool text field is focused this controller keeps a real [JTextField] in that overlay so
+ * the input method can compose, and forwards only committed text to [PlatformTextInputRequest.onChange].
+ *
+ * The Swing editor is a 1×1 IME target at the caret. Covering the Kool field with an opaque
+ * editor replaced the original underline style with a flat Swing box; a transparent full-size
+ * field would punch a hole through the overlay window and show the game instead of the Kool UI.
  */
 internal class DesktopTextInputController(
     private val editorHost: Container,
     private val activateEditorWindow: () -> Unit,
     private val setEditorHasFocus: (Boolean) -> Unit,
     private val restoreFocus: () -> Unit,
+    private val returnKeysToCanvas: () -> Unit = {},
     private val sendKey: (KeyCode, Int) -> Unit = ::dispatchKoolKey,
     private val dispatch: (() -> Unit) -> Unit = { action -> FrontendScope.launch { action() } },
     private val moveImeSpot: (Int, Int) -> Unit = LinuxImeCandidateSpot::move,
+    private val isHostActive: () -> Boolean = { isSwingComponentHostActive(editorHost) },
 ) : PlatformTextInputController {
 
-    private val editor = JTextField()
+    private val editor = HiddenImeEditor()
     private val maxLengthFilter = MaxLengthFilter()
 
     /**
@@ -80,10 +89,12 @@ internal class DesktopTextInputController(
     private var lastForwardedText = ""
     private var lastCaretRequestId = 0L
     private var lastCaretRect: PlatformCaretRect? = null
+    private var lastFieldRect: PlatformCaretRect? = null
     private var lastSpot: Point? = null
     private var lastActivationNanos = 0L
     private var focusAttempts = 0
     private var editorAbandoned = false
+    private var focusRequestPending = false
 
     @Volatile
     private var lastRequestNanos = 0L
@@ -100,21 +111,13 @@ internal class DesktopTextInputController(
 
     init {
         editor.apply {
-            // The editor exists only to give the input method a real text component to compose
-            // into; it must never be visible.
-            isOpaque = false
-            border = null
-            highlighter = null
-            // Focusable only while a Kool field is actually editing. Left focusable at rest, this
-            // 1×1 field is the first component in the game frame and keeps every shortcut.
+            // Focusable only while a Kool field is actually editing.
             isFocusable = false
             isRequestFocusEnabled = true
-            caretColor = Transparent
-            foreground = Transparent
-            selectionColor = Transparent
-            selectedTextColor = Transparent
+            enableInputMethods(true)
             setFocusTraversalKeysEnabled(false)
-            setBounds(0, 0, EDITOR_SIZE_PX, EDITOR_SIZE_PX)
+            isVisible = false
+            setBounds(0, 0, IME_TARGET_SIZE_PX, IME_TARGET_SIZE_PX)
         }
         (editor.document as? AbstractDocument)?.setDocumentFilter(maxLengthFilter)
         editor.document.addDocumentListener(object : DocumentListener {
@@ -144,6 +147,16 @@ internal class DesktopTextInputController(
             val selectionAnchor = if (caret == editor.selectionStart) editor.selectionEnd else editor.selectionStart
             dispatch { request.onSelectionChanged?.invoke(selectionAnchor, caret) }
         }
+        editor.addFocusListener(object : FocusAdapter() {
+            override fun focusGained(event: FocusEvent) {
+                syncEditorFocus(true)
+                lastSpot?.let { publishSpot(it.x, it.y, force = true) }
+            }
+
+            override fun focusLost(event: FocusEvent) {
+                syncEditorFocus(false)
+            }
+        })
         // Registering a listener makes Swing treat the editor as an active input method client and
         // gives us visibility on the composition lifecycle.
         editor.addInputMethodListener(object : InputMethodListener {
@@ -167,7 +180,12 @@ internal class DesktopTextInputController(
 
             override fun caretPositionChanged(event: InputMethodEvent) = Unit
         })
-        editorHost.add(editor)
+        if (editorHost is JLayeredPane) {
+            editorHost.add(editor, JLayeredPane.DRAG_LAYER)
+        } else {
+            editorHost.add(editor)
+            editorHost.setComponentZOrder(editor, 0)
+        }
     }
 
     override fun showOrUpdate(request: PlatformTextInputRequest) {
@@ -183,6 +201,7 @@ internal class DesktopTextInputController(
                 lastCaretRequestId = request.caretRequest?.id ?: 0L
                 focusAttempts = 0
                 editorAbandoned = false
+                focusRequestPending = false
                 replaceEditorText(request.text, caretAtEnd = true)
             } else if (request.text != lastForwardedText) {
                 // The Kool side rewrote the text (send-and-clear, filtering, ...): mirror it while
@@ -194,48 +213,18 @@ internal class DesktopTextInputController(
                 lastCaretRequestId = caretRequest.id
                 applyEditorSelection(caretRequest.selectionStart, caretRequest.caret)
             }
-            if (isNewOwner || request.caretRect != lastCaretRect) {
+            if (isNewOwner || request.caretRect != lastCaretRect || request.fieldRect != lastFieldRect) {
                 lastCaretRect = request.caretRect
-                placeEditor(request.caretRect)
+                lastFieldRect = request.fieldRect
+                placeEditor(request.caretRect, request.fieldRect)
             }
 
-            val editorFocused = editor.isFocusOwner
-            if (editorHasFocus != editorFocused) {
-                editorHasFocus = editorFocused
-                setEditorHasFocus(editorFocused)
-                if (editorFocused) focusAttempts = 0
-            }
-            if (!editorFocused && !editorAbandoned) {
-                // The Kool overlay window cannot host an input method; hand the frame the key
-                // window role and move focus onto the editor inside it. Re-arm at most a few times
-                // a second so a stray click on the overlay cannot tear down an active composition,
-                // and give up after a few attempts so a platform that refuses the focus request
-                // falls back to Kool's own editing instead of losing text input entirely.
+            syncEditorFocus(editor.isFocusOwner)
+            if (!editor.isFocusOwner && !editorAbandoned && !focusRequestPending && isHostActive()) {
                 val now = System.nanoTime()
                 if (isNewOwner || now - lastActivationNanos >= FOCUS_REARM_INTERVAL_NANOS) {
                     lastActivationNanos = now
-                    focusAttempts += 1
-                    activateEditorWindow()
-                    editor.isFocusable = true
-                    if (editor.requestFocusInWindow()) {
-                        editorHasFocus = true
-                        focusAttempts = 0
-                        setEditorHasFocus(true)
-                    } else if (focusAttempts >= MAX_FOCUS_ATTEMPTS) {
-                        editor.isFocusable = false
-                        editorAbandoned = true
-                        logger.warn(
-                            "Desktop text input editor could not take focus after {} attempts " +
-                                "(showing={}, focusOwner={}); falling back to Kool's own text editing, " +
-                                "system input method stays unavailable",
-                            focusAttempts,
-                            editor.isShowing,
-                            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                                .focusOwner?.javaClass?.name,
-                        )
-                        setEditorHasFocus(false)
-                        restoreFocus()
-                    }
+                    requestEditorFocus()
                 }
             }
         }
@@ -270,12 +259,71 @@ internal class DesktopTextInputController(
         editorHasFocus = false
         focusAttempts = 0
         editorAbandoned = false
+        focusRequestPending = false
         lastCaretRect = null
+        lastFieldRect = null
         lastSpot = null
         // Drop focus before restoring it. A non-focusable editor cannot remain the key target,
         // which is what was swallowing in-game shortcuts after a text field closed.
         editor.isFocusable = false
+        editor.isVisible = false
         restoreFocus()
+    }
+
+    private fun syncEditorFocus(focused: Boolean) {
+        if (editorHasFocus == focused) return
+        editorHasFocus = focused
+        setEditorHasFocus(focused)
+        if (focused) {
+            focusAttempts = 0
+            editorAbandoned = false
+            focusRequestPending = false
+        }
+    }
+
+    /**
+     * [JTextField.requestFocusInWindow] returning true only means the request was queued. Claiming
+     * caret ownership from that value turns off Kool's own typing while the hidden editor still
+     * has no keys, so neither English nor Chinese arrives. Ownership follows [isFocusOwner] only.
+     */
+    private fun requestEditorFocus() {
+        if (!isHostActive()) return
+        focusAttempts += 1
+        focusRequestPending = true
+        activateEditorWindow()
+        editor.isFocusable = true
+        // Wait until the overlay has finished dropping key-window status, then ask for focus.
+        // Checking on this same turn is always a miss and used to disable the UI keyboard.
+        // Never fall back to requestFocus(): that steals the active window from other apps.
+        SwingUtilities.invokeLater {
+            if (activeRequest == null || editorAbandoned || !isHostActive()) {
+                focusRequestPending = false
+                return@invokeLater
+            }
+            editor.requestFocusInWindow()
+            SwingUtilities.invokeLater {
+                focusRequestPending = false
+                if (activeRequest == null || editorAbandoned || !isHostActive()) return@invokeLater
+                if (editor.isFocusOwner) {
+                    syncEditorFocus(true)
+                    return@invokeLater
+                }
+                returnKeysToCanvas()
+                if (focusAttempts >= MAX_FOCUS_ATTEMPTS) {
+                    editorAbandoned = true
+                    editor.isFocusable = false
+                    logger.warn(
+                        "Desktop text input editor could not take focus after {} attempts " +
+                            "(showing={}, focusOwner={}); using Kool text editing, " +
+                            "system input method stays unavailable",
+                        focusAttempts,
+                        editor.isShowing,
+                        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                            .focusOwner?.javaClass?.name,
+                    )
+                }
+            }
+        }
     }
 
     private fun dropStaleEditing() {
@@ -304,12 +352,20 @@ internal class DesktopTextInputController(
                 event.consume()
                 // Do not synthesize Esc into Kool's global input stack. While this editor holds AWT
                 // focus the Kool canvas is unfocused, so Esc would skip the focused TextField and
-                // hit the app-wide back handler (leave battleroom / jump to main menu). Cancel via
-                // the request callback instead, which only clears the field's focus.
+                // hit the app-wide back handler (leave battleroom / jump to main menu).
+                // An in-progress composition is cancelled in place; otherwise the field is dropped
+                // and an open dialog (in-game chat) closes.
+                if (hasActiveComposition()) {
+                    editor.inputContext?.endComposition()
+                    return
+                }
                 val request = activeRequest
                 activeRequest = null
                 endEditing()
-                dispatch { request?.onCancel?.invoke() }
+                dispatch {
+                    request?.onCancel?.invoke()
+                    PlatformTextInputBridge.onEscape?.invoke()
+                }
             }
 
             AwtKeyEvent.VK_TAB -> {
@@ -334,6 +390,8 @@ internal class DesktopTextInputController(
      * stores marked text in the document with [StyleConstants.ComposedTextAttribute]; forwarding
      * it would put the raw pinyin into the Kool field.
      */
+    private fun hasActiveComposition(): Boolean = committedEditorText() != editor.text
+
     private fun committedEditorText(): String {
         val full = editor.text
         val root = (editor.document as? AbstractDocument)?.defaultRootElement ?: return full
@@ -386,37 +444,50 @@ internal class DesktopTextInputController(
         }
     }
 
-    /** Moves the hidden editor onto the Kool caret, falling back to the pointer when no rect is known. */
-    private fun placeEditor(rect: PlatformCaretRect?) {
-        if (rect == null) {
+    /** Parks the hidden IME target at the caret so the candidate window stays near the text. */
+    private fun placeEditor(caret: PlatformCaretRect?, field: PlatformCaretRect?) {
+        val box = caret ?: field
+        if (box == null) {
             positionEditorNearPointer()
             return
         }
-        val x = rect.x.toInt()
-        val top = rect.y.toInt()
-        positionEditor(x, top)
-        val spot = contentWindowPoint(x, (rect.y + rect.height).toInt())
+        positionEditor(box.x.toInt(), box.y.toInt())
+        val spotX = (caret?.x ?: box.x).toInt()
+        val spotY = ((field?.y ?: caret?.y ?: box.y) + (field?.height ?: caret?.height ?: box.height)).toInt()
+        val spot = contentWindowPoint(spotX, spotY)
         publishSpot(spot.x, spot.y)
     }
 
-    /** Puts the editor where the user clicked, so the IME candidate window shows up near the field. */
+    /** Puts the IME target where the user clicked, so the candidate window shows up near the field. */
     private fun positionEditorNearPointer() {
         val location = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull() ?: return
         runCatching {
             SwingUtilities.convertPointFromScreen(location, editorHost)
             positionEditor(location.x, location.y)
-            val spot = contentWindowPoint(editor.x, editor.y + EDITOR_SIZE_PX)
+            val spot = contentWindowPoint(editor.x, editor.y + editor.height)
             publishSpot(spot.x, spot.y)
         }
     }
 
-    private fun positionEditor(x: Int, y: Int) {
-        val maxX = (editorHost.width - EDITOR_SIZE_PX).coerceAtLeast(0)
-        val maxY = (editorHost.height - EDITOR_SIZE_PX).coerceAtLeast(0)
-        editor.setLocation(x.coerceIn(0, maxX), y.coerceIn(0, maxY))
+    private fun positionEditor(x: Int, y: Int, width: Int = IME_TARGET_SIZE_PX, height: Int = IME_TARGET_SIZE_PX) {
+        val hostWidth = editorHost.width.takeIf { it > 0 }
+            ?: SwingUtilities.getWindowAncestor(editorHost)?.width
+            ?: 0
+        val hostHeight = editorHost.height.takeIf { it > 0 }
+            ?: SwingUtilities.getWindowAncestor(editorHost)?.height
+            ?: 0
+        val maxX = (hostWidth - width).coerceAtLeast(0)
+        val maxY = (hostHeight - height).coerceAtLeast(0)
+        editor.isVisible = true
+        editor.setBounds(
+            x.coerceIn(0, maxX),
+            y.coerceIn(0, maxY),
+            width.coerceAtLeast(1),
+            height.coerceAtLeast(1),
+        )
     }
 
-    /** Caret position relative to the frame content window, which is the XIC focus window. */
+    /** Caret position relative to the overlay (or host) window, which is the XIC focus window. */
     private fun contentWindowPoint(xInHost: Int, yInHost: Int): Point {
         var x = xInHost
         var y = yInHost
@@ -470,14 +541,76 @@ internal class DesktopTextInputController(
     }
 
     private companion object {
-        const val EDITOR_SIZE_PX = 1
+        const val IME_TARGET_SIZE_PX = 1
         const val KEY_MOD_SHIFT = 1
         const val FOCUS_REARM_INTERVAL_NANOS = 300_000_000L
         const val MAX_FOCUS_ATTEMPTS = 3
         const val EDITING_STALE_CHECK_MILLIS = 500
         const val STALE_EDITING_NANOS = 2_000_000_000L
-        val Transparent: Color = Color(0, 0, 0, 0)
         val logger = LoggerFactory.getLogger("Desktop")
+    }
+}
+
+/**
+ * Focusable XIM client that does not paint. A visible Swing field over the Kool canvas replaces
+ * the original field style; this stays in the overlay window so the input method still attaches.
+ */
+private class HiddenImeEditor : JTextField() {
+    init {
+        isOpaque = false
+        border = null
+        background = Color(0, 0, 0, 0)
+        foreground = Color(0, 0, 0, 0)
+        caretColor = Color(0, 0, 0, 0)
+        selectionColor = Color(0, 0, 0, 0)
+        selectedTextColor = Color(0, 0, 0, 0)
+        disabledTextColor = Color(0, 0, 0, 0)
+        margin = java.awt.Insets(0, 0, 0, 0)
+    }
+
+    override fun paint(g: Graphics) = Unit
+
+    override fun paintComponent(g: Graphics) = Unit
+
+    override fun paintBorder(g: Graphics) = Unit
+
+    override fun updateUI() {
+        super.updateUI()
+        isOpaque = false
+        border = null
+    }
+
+    override fun getInputMethodRequests(): InputMethodRequests {
+        val base = super.getInputMethodRequests()
+        return object : InputMethodRequests {
+            override fun getTextLocation(offset: TextHitInfo?): Rectangle {
+                if (isShowing) {
+                    val screen = locationOnScreen
+                    return Rectangle(screen.x, screen.y, 1, height.coerceAtLeast(1))
+                }
+                return base.getTextLocation(offset)
+            }
+
+            override fun getLocationOffset(x: Int, y: Int): TextHitInfo? = base.getLocationOffset(x, y)
+
+            override fun getInsertPositionOffset(): Int = base.insertPositionOffset
+
+            override fun getCommittedText(
+                beginIndex: Int,
+                endIndex: Int,
+                attributes: Array<out java.text.AttributedCharacterIterator.Attribute>?,
+            ): java.text.AttributedCharacterIterator = base.getCommittedText(beginIndex, endIndex, attributes)
+
+            override fun getCommittedTextLength(): Int = base.committedTextLength
+
+            override fun cancelLatestCommittedText(
+                attributes: Array<out java.text.AttributedCharacterIterator.Attribute>?,
+            ): java.text.AttributedCharacterIterator? = base.cancelLatestCommittedText(attributes)
+
+            override fun getSelectedText(
+                attributes: Array<out java.text.AttributedCharacterIterator.Attribute>?,
+            ): java.text.AttributedCharacterIterator? = base.getSelectedText(attributes)
+        }
     }
 }
 

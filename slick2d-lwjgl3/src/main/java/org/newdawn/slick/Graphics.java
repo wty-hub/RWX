@@ -6,6 +6,7 @@ import org.newdawn.slick.geom.Shape;
 import org.newdawn.slick.geom.ShapeRenderer;
 import org.newdawn.slick.opengl.TextureImpl;
 import org.newdawn.slick.opengl.renderer.LineStripRenderer;
+import org.newdawn.slick.opengl.renderer.QuadBatch;
 import org.newdawn.slick.opengl.renderer.Renderer;
 import org.newdawn.slick.opengl.renderer.SGL;
 import org.newdawn.slick.util.FastTrig;
@@ -95,6 +96,7 @@ public class Graphics {
      */
     public static void setCurrent(Graphics current) {
         if (currentGraphics != current) {
+            QuadBatch.flush();
             if (currentGraphics != null) {
                 currentGraphics.disable();
             }
@@ -186,6 +188,8 @@ public class Graphics {
      * @param height The height of the screen for this context
      */
     public Graphics(int width, int height) {
+        // Offscreen contexts bind their framebuffer while constructing.
+        QuadBatch.flush();
         if (DEFAULT_FONT == null) {
             AccessController.doPrivileged(new PrivilegedAction() {
                 public Object run() {
@@ -287,6 +291,7 @@ public class Graphics {
      */
     private void predraw() {
         setCurrent(this);
+        QuadBatch.flush();
     }
 
     /**
@@ -307,12 +312,14 @@ public class Graphics {
      */
     public void flush() {
         if (currentGraphics == this) {
+            QuadBatch.flush();
             currentGraphics.disable();
             currentGraphics = null;
         }
     }
 
     public void flushBuffer() {
+        QuadBatch.flush();
         GL.flush();
     }
 
@@ -469,7 +476,8 @@ public class Graphics {
         }
 
         currentColor = new Color(color);
-        predraw();
+        // Batched vertices carry their own colour, so a colour change must not end the batch.
+        setCurrent(this);
         currentColor.bind();
         postdraw();
     }
@@ -489,7 +497,7 @@ public class Graphics {
         currentColor.g = color.g;
         currentColor.b = color.b;
         currentColor.a = color.a;
-        predraw();
+        setCurrent(this);
         currentColor.bind();
         postdraw();
     }
@@ -926,6 +934,48 @@ public class Graphics {
      */
     public void drawOval(float x1, float y1, float width, float height) {
         drawOval(x1, y1, width, height, DEFAULT_SEGMENTS);
+    }
+
+    /**
+     * Queue an ellipse outline in the current colour into the shared {@link QuadBatch}. Consecutive
+     * outlines with the same line width are submitted in a single draw.
+     *
+     * @param cx       Centre x
+     * @param cy       Centre y
+     * @param rx       Horizontal radius
+     * @param ry       Vertical radius
+     * @param segments Number of line segments around the ellipse
+     */
+    public void drawEllipseOutlineBatched(float cx, float cy, float rx, float ry, int segments) {
+        setCurrent(this);
+        int count = Math.max(3, Math.min(segments, ELLIPSE_MAX_SEGMENTS));
+        float[] unit = ellipseUnitCircle(count);
+        float[] points = ellipsePoints;
+        for (int i = 0; i < count; i++) {
+            points[i * 2] = cx + unit[i * 2] * rx;
+            points[i * 2 + 1] = cy + unit[i * 2 + 1] * ry;
+        }
+        QuadBatch.addLineLoop(points, count, currentColor.r, currentColor.g, currentColor.b, currentColor.a);
+    }
+
+    private static final int ELLIPSE_MAX_SEGMENTS = 64;
+
+    private static final float[][] ellipseUnitCircles = new float[ELLIPSE_MAX_SEGMENTS + 1][];
+
+    private final float[] ellipsePoints = new float[ELLIPSE_MAX_SEGMENTS * 2];
+
+    private static float[] ellipseUnitCircle(int segments) {
+        float[] unit = ellipseUnitCircles[segments];
+        if (unit == null) {
+            unit = new float[segments * 2];
+            for (int i = 0; i < segments; i++) {
+                double angle = (Math.PI * 2.0 * i) / segments;
+                unit[i * 2] = (float) Math.cos(angle);
+                unit[i * 2 + 1] = (float) Math.sin(angle);
+            }
+            ellipseUnitCircles[segments] = unit;
+        }
+        return unit;
     }
 
     /**

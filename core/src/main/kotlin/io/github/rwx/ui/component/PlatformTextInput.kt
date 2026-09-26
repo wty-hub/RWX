@@ -43,6 +43,7 @@ data class PlatformTextInputRequest(
     val caretRequest: PlatformCaretRequest? = null,
     val onSelectionChanged: ((selectionStart: Int, caret: Int) -> Unit)? = null,
     val caretRect: PlatformCaretRect? = null,
+    val fieldRect: PlatformCaretRect? = null,
 )
 
 interface PlatformTextInputController {
@@ -80,6 +81,13 @@ object PlatformTextInputBridge {
 
     /** Whether a platform text editor is currently active for a Kool field. */
     fun isEditing(): Boolean = controller?.isEditing == true
+
+    /**
+     * Runs after Esc leaves a focused text field that has no in-progress input-method composition.
+     * In-game chat uses this to close the dialog; unfocusing the field alone left the window open.
+     */
+    @Volatile
+    var onEscape: (() -> Unit)? = null
 
     internal fun showOrUpdate(request: PlatformTextInputRequest): Boolean {
         val activeController = controller ?: return false
@@ -175,8 +183,17 @@ fun UiScope.RwxTextField(
 
     if (isFocused) {
         val caretIndex = if (caretOwned) caret.value.coerceIn(0, text.length) else text.length
-        val caretRect = (textField as? UiNode)?.let { node ->
+        val fieldNode = textField as? UiNode
+        val caretRect = fieldNode?.let { node ->
             platformCaretRect(node, modifier.font, text, caretIndex, modifier.textAlignX)
+        }
+        val fieldRect = fieldNode?.let { node ->
+            PlatformCaretRect(
+                x = node.leftPx,
+                y = node.topPx,
+                width = node.widthPx.coerceAtLeast(1f),
+                height = node.heightPx.coerceAtLeast(1f),
+            )
         }
         PlatformTextInputBridge.showOrUpdate(
             PlatformTextInputRequest(
@@ -198,6 +215,7 @@ fun UiScope.RwxTextField(
                     null
                 },
                 caretRect = caretRect,
+                fieldRect = fieldRect,
             )
         )
     } else if (wasFocused.value) {

@@ -30,6 +30,7 @@ import org.newdawn.slick.BasicGame
 import org.newdawn.slick.GameContainer
 import org.newdawn.slick.Graphics
 import org.newdawn.slick.Input
+import org.newdawn.slick.opengl.renderer.QuadBatch
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -78,6 +79,12 @@ private const val SLICK_LAYER_REDRAW_BUDGET_MS = 2
 private val SLICK_TARGET_FPS_OVERRIDE: Int? =
     System.getenv("RWX_SLICK_TARGET_FPS")?.toIntOrNull()?.takeIf { it > 0 }
 
+private val BENCHMARK_REPLAY_SPEED: Int? =
+    System.getenv("RWX_REPLAY_SPEED")?.toIntOrNull()?.takeIf { it > 1 }
+
+private val BENCHMARK_REPLAY_SPEED_UNTIL: Int? =
+    System.getenv("RWX_REPLAY_SPEED_UNTIL")?.toIntOrNull()?.takeIf { it > 0 }
+
 internal fun shouldDriveSlickGameLoop(
     hasPendingLoad: Boolean,
     hasLoadedLevel: Boolean,
@@ -91,7 +98,6 @@ internal fun shouldDriveSlickGameLoop(
 
 internal fun shouldRenderPausedSlickFrame(
     pausedBackground: Boolean,
-    gameSpeed: Float,
     hasLoadedLevel: Boolean,
     gameVisible: Boolean,
     runningMenuBackground: Boolean,
@@ -101,7 +107,7 @@ internal fun shouldRenderPausedSlickFrame(
         gameVisible &&
         !runningMenuBackground &&
         !networkMultiplayerActive &&
-        (pausedBackground || gameSpeed == 0f || enginePaused)
+        (pausedBackground || enginePaused)
 
 internal fun shouldCountSlickReadyFrame(
     hasLoadedLevel: Boolean,
@@ -199,6 +205,15 @@ class SlickGame(
     private val view = SlickCoreGameView(gameSession.inGameMenuController)
     private val debugSlickMenuInput = System.getenv("RWX_DEBUG_SLICK_MENU") == "1"
     private val keyStates = BooleanArray(SLICK_KEY_COUNT)
+
+    /**
+     * Set while an in-game dialog owns the keyboard. Applied on the game thread so [keyStates]
+     * cannot keep a key latched after the engine has already released it.
+     */
+    @Volatile
+    var modalKeyCaptureRequested: Boolean = false
+
+    private var modalKeyCaptureApplied = false
     private var engine: GameEngine? = null
 
     /**
@@ -370,6 +385,7 @@ class SlickGame(
     }
 
     private fun drainPendingWork(activeEngine: GameEngine, container: GameContainer) {
+        syncModalKeyCapture(activeEngine)
         applyPendingInputEvents(activeEngine)
         applyPendingSize(activeEngine, container)
         applyPendingRequest(activeEngine)
@@ -377,6 +393,19 @@ class SlickGame(
         applyPendingTextInputResponses()
         updatePointerCursor(container, activeEngine)
         abortStartedGameAfterDisconnect(activeEngine)
+        applyBenchmarkReplaySpeed(activeEngine)
+    }
+
+    /**
+     * `RWX_REPLAY_SPEED=N` fast-forwards replay playback (the same multiplier the replay UI uses)
+     * until `RWX_REPLAY_SPEED_UNTIL` ticks, then drops back to 1x. Only used for benchmarks.
+     */
+    private fun applyBenchmarkReplaySpeed(activeEngine: GameEngine) {
+        val speed = BENCHMARK_REPLAY_SPEED ?: return
+        val replay = activeEngine.replayEngine ?: return
+        if (!replay.i()) return
+        val until = BENCHMARK_REPLAY_SPEED_UNTIL
+        replay.v = if (until != null && activeEngine.currentTick >= until) 1 else speed
     }
 
     private fun renderPendingLayerRedraws(activeEngine: GameEngine) {
@@ -402,7 +431,6 @@ class SlickGame(
     private fun shouldRenderPausedFrame(activeEngine: GameEngine): Boolean =
         shouldRenderPausedSlickFrame(
             pausedBackground = pausedBackground,
-            gameSpeed = activeEngine.gameSpeed,
             hasLoadedLevel = activeEngine.hasLoadedLevel,
             gameVisible = gameVisible,
             runningMenuBackground = runningMenuBackground,
@@ -992,6 +1020,7 @@ class SlickGame(
 
     private fun readBackBufferSnapshot(width: Int, height: Int, sequence: Long): SlickFrameSnapshot {
         val buffer = BufferUtils.createByteBuffer(width * height * 4)
+        QuadBatch.flush()
         GL11.glReadBuffer(GL11.GL_BACK)
         GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1)
         GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer)
@@ -1047,12 +1076,32 @@ class SlickGame(
             is SlickInputEvent.Key -> {
                 setKeyState(activeEngine, event.slickKey, event.down)
             }
+
+            is SlickInputEvent.OsAlt -> {
+                // A later event whose OS mask says Alt is up wins over a press whose release
+                // never arrived (window manager or Swing menu focus).
+                if (!event.down) {
+                    setKeyState(activeEngine, Input.KEY_LMENU, false)
+                    setKeyState(activeEngine, Input.KEY_RMENU, false)
+                }
+            }
+
+            SlickInputEvent.FocusLost -> releaseLatchedKeys(activeEngine)
         }
+    }
+
+    fun noteOsAlt(down: Boolean) {
+        enqueueInputEvent(SlickInputEvent.OsAlt(down))
+    }
+
+    fun noteFocusLost() {
+        enqueueInputEvent(SlickInputEvent.FocusLost)
     }
 
     override fun mousePressed(button: Int, x: Int, y: Int) {
         val pointerId = pointerIdForButton(button)
         if (pointerId != -1) {
+            logger.info("RWXInput") { "slick mouse down button=$button pointerId=$pointerId xy=$x,$y" }
             enqueueInputEvent(SlickInputEvent.PointerButton(x.toFloat(), y.toFloat(), true, pointerId))
         }
         logSlickMenuInput("slickMousePressed button=$button pointerId=$pointerId xy=$x,$y ${engineTouchState()}")
@@ -1061,6 +1110,7 @@ class SlickGame(
     override fun mouseReleased(button: Int, x: Int, y: Int) {
         val pointerId = pointerIdForButton(button)
         if (pointerId != -1) {
+            logger.info("RWXInput") { "slick mouse up button=$button pointerId=$pointerId xy=$x,$y" }
             enqueueInputEvent(SlickInputEvent.PointerButton(x.toFloat(), y.toFloat(), false, pointerId))
         }
         logSlickMenuInput("slickMouseReleased button=$button pointerId=$pointerId xy=$x,$y ${engineTouchState()}")
@@ -1103,13 +1153,41 @@ class SlickGame(
         pendingInputEvents.add(event)
     }
 
+    private fun syncModalKeyCapture(activeEngine: GameEngine) {
+        val requested = modalKeyCaptureRequested
+        if (requested == modalKeyCaptureApplied) return
+        modalKeyCaptureApplied = requested
+        logger.info("RWXInput") { "modal key capture ${if (requested) "on" else "off"}" }
+        // The canvas lost or regained focus, so its last press/release pair is stale.
+        keyStates.fill(false)
+        if (requested) activeEngine.beginModalKeyCapture() else activeEngine.endModalKeyCapture()
+    }
+
     private fun setKeyState(activeEngine: GameEngine, slickKey: Int, down: Boolean) {
-        if (slickKey !in keyStates.indices || keyStates[slickKey] == down) return
-        keyStates[slickKey] = down
+        if (slickKey !in keyStates.indices) return
         val androidKey = SlickToAndroidKeycodes.convertSlickToAndroidKeyCode(slickKey)
+        if (androidKey == 0) {
+            if (down) logger.info("RWXInput") { "slick key dropped unmapped slickKey=$slickKey" }
+        } else if (keyStates[slickKey] != down) {
+            logger.info("RWXInput") { "slick key ${if (down) "down" else "up"} android=$androidKey slickKey=$slickKey" }
+        }
+        if (keyStates[slickKey] == down) {
+            // Modal capture zeros [keyStates] while a key is still physically down, so the matching
+            // key-up must still reach the engine or that key stays ignored forever.
+            if (!down && androidKey != 0) activeEngine.setKeyState(androidKey, false)
+            return
+        }
+        keyStates[slickKey] = down
         if (androidKey != 0) {
             activeEngine.setKeyState(androidKey, down)
         }
+    }
+
+    private fun releaseLatchedKeys(activeEngine: GameEngine) {
+        val latched = keyStates.indices.filter { keyStates[it] }
+        if (latched.isEmpty()) return
+        logger.info("RWXInput") { "released latched keys after focus loss slickKeys=$latched" }
+        latched.forEach { setKeyState(activeEngine, it, false) }
     }
 
     private fun pointerIdForButton(button: Int): Int = when (button) {
@@ -1188,6 +1266,10 @@ class SlickGame(
             val slickKey: Int,
             val down: Boolean,
         ) : SlickInputEvent
+
+        data class OsAlt(val down: Boolean) : SlickInputEvent
+
+        data object FocusLost : SlickInputEvent
     }
 
     private companion object {

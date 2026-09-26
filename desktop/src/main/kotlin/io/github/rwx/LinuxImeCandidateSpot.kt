@@ -12,9 +12,9 @@ import java.lang.reflect.Method
 /**
  * Tells the X input method where the caret is.
  *
- * OpenJDK creates its XIC with on-the-spot preedit and never sets `XNSpotLocation`, so IBus keeps
- * the candidate window at the bottom-left of the window. libX11 1.8.2 and later honors the spot
- * for that style. The XIC pointer is the first field of the native struct stored in
+ * OpenJDK never sets `XNSpotLocation`. fcitx5 then falls back to the bottom-left of the focus
+ * window; IBus does the same. libX11 1.8.2 and later honors the spot for on-the-spot XICs too.
+ * The XIC pointer is the first field of the native struct stored in
  * `sun.awt.X11InputMethodBase.pData`.
  */
 internal object LinuxImeCandidateSpot {

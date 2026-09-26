@@ -1564,6 +1564,9 @@ public class GameLogic extends GameEngine {
             this.teamStats.update();
         }
         this.gameStatistics.b();
+        if (io.github.rwx.diagnostics.GameStateTrace.enabled) {
+            io.github.rwx.diagnostics.GameStateTrace.onTickEnd(this);
+        }
     }
 
     /* JADX INFO: renamed from: a */

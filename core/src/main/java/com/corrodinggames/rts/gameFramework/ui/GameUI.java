@@ -410,6 +410,7 @@ public final class GameUI extends Serializable {
 
     /* JADX INFO: renamed from: T */
     boolean isInputDisabled = false;
+    boolean dragDecisionLogged = false;
 
     /* JADX INFO: renamed from: U */
     boolean isSelectionBoxActive = false;
@@ -752,12 +753,13 @@ public final class GameUI extends Serializable {
         this.unitRangeBorderPaint = new GamePaint();
         this.unitRangeBorderPaint.a(this.buildingPreviewInvalidPaint);
         this.unitRangeBorderPaint.a(255, 128, 0, 0);
-        gameEngine.updatePaintTextSize(this.unitRangeBorderPaint, 14.0f);
+        gameEngine.updatePaintTextSize(this.unitRangeBorderPaint, 20.0f);
         this.unitRangeBorderPaint.a(KoolPaint.Align.CENTER);
         GamePaint.b(this.unitRangeBorderPaint);
         this.unitPathPaint = new GamePaint();
         this.unitPathPaint.a(this.unitRangeBorderPaint);
         this.unitPathPaint.a(255, 220, 222, 49);
+        gameEngine.updatePaintTextSize(this.unitPathPaint, 20.0f);
         this.unitPathBorderPaint = new GamePaint();
         this.unitPathBorderPaint.a(this.buildingPreviewInvalidPaint);
         gameEngine.updatePaintTextSize(this.unitPathBorderPaint, 12.0f);
@@ -956,6 +958,13 @@ public final class GameUI extends Serializable {
                     }
                     if (z3) {
                         this.isInputDisabled = true;
+                        if (!this.dragDecisionLogged) {
+                            this.dragDecisionLogged = true;
+                            io.github.rwx.GlobalLogger.INSTANCE.infoNow("RWXInput", "camera drag start pointer=" + this.lastTouchCount + " mouseOrders=" + gameEngine.settingsEngine.mouseOrders);
+                        }
+                    } else if (!this.dragDecisionLogged) {
+                        this.dragDecisionLogged = true;
+                        io.github.rwx.GlobalLogger.INSTANCE.infoNow("RWXInput", "camera drag rejected pointer=" + this.lastTouchCount + " mouseOrders=" + gameEngine.settingsEngine.mouseOrders + " alt=" + isKeyboardSupportAndGraphicsEnabled(gameEngine));
                     }
                     this.mouseScreenX = this.selectionBoxStartX;
                     this.mouseScreenY = this.selectionBoxStartY;
@@ -1904,6 +1913,7 @@ public final class GameUI extends Serializable {
         if (!this.isMousePressed) {
             this.uiScale = 0.0f;
             this.isInputDisabled = false;
+            this.dragDecisionLogged = false;
         }
         this.isMouseOverUI = this.isMousePressed;
         gameEngine.updateTouchInput();
@@ -4084,19 +4094,18 @@ public final class GameUI extends Serializable {
     }
 
     public void a(String str, Rect rect, KoolPaint paint, KoolPaint paint2) {
-        KoolPaint paint3;
         GameEngine gameEngine = GameEngine.getInstance();
-        int i = 0;
-        for (String str2 : Utility.splitByChar(str, '\n')) {
-            if (i == 0) {
-                paint3 = paint;
-            } else {
-                paint3 = paint2;
-            }
-            KoolPaint paint4 = paint3;
+        int lineIndex = 0;
+        int paragraphIndex = 0;
+        float maxWidth = Math.max(1, rect.b() - 4);
+        for (String paragraph : Utility.splitByChar(str, '\n')) {
+            KoolPaint paint4 = paragraphIndex == 0 ? paint : paint2;
             int lineHeight = TextUtils.getLineHeight(paint4);
-            gameEngine.renderGraphicsEngine.a(str2, rect.d(), rect.b + (lineHeight / 2) + (i * lineHeight), paint4);
-            i++;
+            for (String line : TextUtils.wrapLines(paragraph, paint4, maxWidth)) {
+                gameEngine.renderGraphicsEngine.a(line, rect.d(), rect.b + (lineHeight / 2) + (lineIndex * lineHeight), paint4);
+                lineIndex++;
+            }
+            paragraphIndex++;
         }
     }
 

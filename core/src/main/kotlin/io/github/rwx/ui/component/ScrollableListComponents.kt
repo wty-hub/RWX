@@ -8,8 +8,8 @@ import io.github.rwx.ui.UiTheme
 fun <T> UiScope.ScrollableVerticalList(
     items: List<T>,
     theme: ColorSchemeDefinition,
-    width: Dp = UiTheme.Layout.levelSelectButtonWidth,
-    height: Dp = UiTheme.Layout.scrollViewportHeight,
+    width: Dimension = UiTheme.Layout.levelSelectButtonWidth,
+    height: Dimension = UiTheme.Layout.scrollViewportHeight,
     isScrollByDrag: Boolean = true,
     framed: Boolean = false,
     contentPadding: Dp = Dp.ZERO,
@@ -17,9 +17,12 @@ fun <T> UiScope.ScrollableVerticalList(
     stickToEnd: Boolean = false,
     itemContent: UiScope.(T) -> Unit,
 ) {
-    val listState = if (stickToEnd) rememberListState() else null
-    if (listState != null) {
-        followListEnd(listState, items.size)
+    // Always allocate the same remember slots so callers that branch around this
+    // list (or toggle stickToEnd) do not corrupt sibling remember state.
+    val listState = rememberListState()
+    val follow = remember(ListEndFollow())
+    if (stickToEnd) {
+        followListEnd(listState, follow, items.size)
     }
     if (framed) {
         Box(width = width, height = height) {
@@ -53,8 +56,11 @@ fun <T> UiScope.ScrollableVerticalList(
     }
 }
 
-private fun UiScope.followListEnd(listState: LazyListState, itemCount: Int) {
-    val follow = remember(ListEndFollow())
+private fun UiScope.followListEnd(
+    listState: LazyListState,
+    follow: MutableStateValue<ListEndFollow>,
+    itemCount: Int,
+) {
     val from = listState.itemsFrom.use()
     val laidOut = listState.numVisibleItems > 0 && listState.numTotalItems > 0
     val atEnd = laidOut && from + listState.numVisibleItems >= listState.numTotalItems
@@ -75,7 +81,7 @@ private fun <T> UiScope.LazyColumn(
     height: Dimension,
     isScrollByDrag: Boolean,
     bottomContentPadding: Dp,
-    state: LazyListState? = null,
+    state: LazyListState,
     itemContent: UiScope.(T) -> Unit,
 ) {
     LazyColumn(
@@ -85,7 +91,7 @@ private fun <T> UiScope.LazyColumn(
         withHorizontalScrollbar = false,
         isScrollableHorizontal = false,
         isScrollByDrag = isScrollByDrag,
-        state = state ?: rememberListState(),
+        state = state,
         scrollbarColor = theme.palette.primary,
         containerModifier = { it.backgroundColor(null) },
         scrollPaneModifier = { it.allowOverScroll(x = false, y = false) },

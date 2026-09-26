@@ -29,6 +29,9 @@ internal class InGameDialogController(
         val shouldOverlayGameCanvas = screen == AppScreen.InGame && !gameSession.rendersIntoKoolCanvas
 
         fun restoreGameCanvas() {
+            // Drop keys the dialog swallowed (Enter reopens chat, Shift stays held) before the
+            // match canvas takes focus again.
+            gameSession.setModalKeyCapture(false)
             if (currentScreen() == AppScreen.InGame && !gameSession.rendersIntoKoolCanvas) {
                 gameSession.setGameVisible(
                     true,
@@ -77,10 +80,23 @@ internal class InGameDialogController(
 
         if (shouldOverlayGameCanvas) {
             koolCanvasScene.isVisible = true
+            gameSession.setModalKeyCapture(true)
             gameSession.setGameVisible(true, viewport(), koolOverlay = true, pausedBackground = true)
         }
         dialogSceneHost.show(
             dialog.copy(buttons = dialog.buttons.map { it.restoreGameAfterPress() })
+        )
+    }
+
+    /** Escape dismisses the dialog without pressing a button, so the match still has to release keys. */
+    fun onDialogDismissed() {
+        if (currentScreen() != AppScreen.InGame || gameSession.rendersIntoKoolCanvas) return
+        gameSession.setModalKeyCapture(false)
+        gameSession.setGameVisible(
+            true,
+            viewport(),
+            koolOverlay = UiRegistry.hasActiveHudLayers(),
+            pausedBackground = false,
         )
     }
 

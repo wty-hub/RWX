@@ -1660,17 +1660,7 @@ public class GameInterfaceRenderer extends Serializable {
                     if (a2) {
                         this.gameEngine.renderGraphicsEngine.a(this.lockIconTexture, (float) (this.zoomButtonRect.a + 25), this.zoomButtonRect.g(), null);
                     }
-                    final float float4 = (float) this.gameEngine.renderGraphicsEngine.b(d, this.gameUI.buildingPreviewPaint);
-                    if (float4 > this.zoomButtonRect.b() - 2) {
-                        final float float5 = (float) this.gameEngine.renderGraphicsEngine.b(d, this.gameUI.rallyPointPaint);
-                        if (float5 > this.zoomButtonRect.b() - 2) {
-                            this.paintUnitInfo.a(this.gameUI.selectionBoxBorderPaint);
-                        } else {
-                            this.paintUnitInfo.a(this.gameUI.rallyPointPaint);
-                        }
-                    } else {
-                        this.paintUnitInfo.a(this.gameUI.buildingPreviewPaint);
-                    }
+                    this.paintUnitInfo.a(this.gameUI.buildingPreviewPaint);
                     if (!b8) {
                         this.paintUnitInfo.b(KoolArgbColor.a(255, 0, 100, 0));
                     }
@@ -1694,27 +1684,25 @@ public class GameInterfaceRenderer extends Serializable {
                     } else if (b6) {
                         this.paintUnitInfo.a(155, 255, 255, 255);
                     }
-                    final int a4 = this.gameEngine.renderGraphicsEngine.a(d, this.paintUnitInfo);
-                    float n28 = this.zoomButtonRect.g() + a4 / 2;
+                    ArrayList<String> lines = TextUtils.wrapLines(d, this.paintUnitInfo, Math.max(1, this.zoomButtonRect.b() - 4));
+                    int lineHeight = this.gameEngine.renderGraphicsEngine.a("A", this.paintUnitInfo);
+                    float anchor = this.zoomButtonRect.g() + lineHeight / 2.0f;
                     if (b6) {
-                        n28 = this.zoomButtonRect.g();
+                        anchor = this.zoomButtonRect.g();
                     }
-                    if (b11 && !d.contains((CharSequence) "\n")) {
+                    if (b11 && !d.contains("\n")) {
                         if (b6) {
-                            n28 = (float) (this.zoomButtonRect.d - a4 / 2 - 1);
+                            anchor = this.zoomButtonRect.d - lineHeight / 2.0f - 1.0f;
                         } else {
-                            n28 = (float) (this.zoomButtonRect.d - 6);
+                            anchor = this.zoomButtonRect.d - 6.0f;
                         }
                     }
-                    if (b6) {
-                        String[] lines = Utility.splitByChar(d, '\n');
-                        float lineHeight = TextUtils.getCharWidth(this.paintUnitInfo);
-                        float verticalOffset = (lines.length - 1) * lineHeight;
-                        for (int lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-                            this.gameEngine.renderGraphicsEngine.a(lines[lineIndex], this.zoomButtonRect.f(), (n28 - (verticalOffset / 2.0f)) + (lineIndex * lineHeight) + (lineHeight / 2.0f), this.paintUnitInfo);
-                        }
-                    } else {
-                        this.gameEngine.renderGraphicsEngine.a(d, this.zoomButtonRect.f(), n28, this.paintUnitInfo);
+                    float verticalOffset = (lines.size() - 1) * lineHeight;
+                    float firstBaseline = b6
+                            ? (anchor - verticalOffset / 2.0f) + lineHeight / 2.0f
+                            : (b11 && !d.contains("\n") ? anchor - verticalOffset : anchor - verticalOffset / 2.0f);
+                    for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+                        this.gameEngine.renderGraphicsEngine.a(lines.get(lineIndex), this.zoomButtonRect.f(), firstBaseline + lineIndex * lineHeight, this.paintUnitInfo);
                     }
                 }
                 int n36 = 0;

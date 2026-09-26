@@ -2,6 +2,7 @@ package com.corrodinggames.rts.gameFramework.ui;
 
 import com.corrodinggames.rts.game.units.custom.logicBooleans.VariableScope;
 import com.corrodinggames.rts.gameFramework.GameEngine;
+import com.corrodinggames.rts.gameFramework.Utility;
 import com.corrodinggames.rts.gameFramework.graphics.GraphicsEngine;
 import com.corrodinggames.rts.gameFramework.graphics.Texture;
 import io.github.rwx.geometry.Rect;
@@ -9,6 +10,8 @@ import io.github.rwx.geometry.RectF;
 import io.github.rwx.render.canvas.KoolPaint;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /* JADX INFO: renamed from: com.corrodinggames.rts.gameFramework.f.d */
 /* JADX INFO: loaded from: game-lib.jar:com/corrodinggames/rts/gameFramework/f/d.class */
@@ -38,6 +41,97 @@ public class TextUtils {
             return iA + 2;
         }
         return iA;
+    }
+
+    private static final int WRAP_CACHE_LIMIT = 256;
+
+    private static final LinkedHashMap<WrapCacheKey, ArrayList<String>> wrapCache =
+            new LinkedHashMap<WrapCacheKey, ArrayList<String>>(WRAP_CACHE_LIMIT, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<WrapCacheKey, ArrayList<String>> eldest) {
+                    return size() > WRAP_CACHE_LIMIT;
+                }
+            };
+
+    private static final class WrapCacheKey {
+        final String text;
+        final int paintSize;
+        final int maxWidth;
+
+        WrapCacheKey(String text, int paintSize, int maxWidth) {
+            this.text = text;
+            this.paintSize = paintSize;
+            this.maxWidth = maxWidth;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof WrapCacheKey)) {
+                return false;
+            }
+            WrapCacheKey key = (WrapCacheKey) other;
+            return paintSize == key.paintSize && maxWidth == key.maxWidth && text.equals(key.text);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * (31 * text.hashCode() + paintSize) + maxWidth;
+        }
+    }
+
+    public static ArrayList<String> wrapLines(String text, KoolPaint paint, float maxWidth) {
+        ArrayList<String> wrapped = new ArrayList<>();
+        if (text == null || text.isEmpty()) {
+            wrapped.add("");
+            return wrapped;
+        }
+        int paintSize = paint == null ? 0 : Float.floatToIntBits(paint.k());
+        WrapCacheKey cacheKey = new WrapCacheKey(text, paintSize, (int) maxWidth);
+        ArrayList<String> cached = wrapCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        GraphicsEngine graphics = GameEngine.getInstance().renderGraphicsEngine;
+        for (String paragraph : Utility.splitByChar(text, '\n')) {
+            if (paragraph.isEmpty()) {
+                wrapped.add("");
+                continue;
+            }
+            int start = 0;
+            while (start < paragraph.length()) {
+                int end = start;
+                int fitted = start;
+                while (end < paragraph.length()) {
+                    int next = paragraph.offsetByCodePoints(end, 1);
+                    if (fitted > start && graphics.b(paragraph.substring(start, next), paint) > maxWidth) {
+                        break;
+                    }
+                    fitted = next;
+                    end = next;
+                    if (graphics.b(paragraph.substring(start, fitted), paint) > maxWidth) {
+                        break;
+                    }
+                }
+                if (fitted >= paragraph.length()) {
+                    wrapped.add(paragraph.substring(start));
+                    break;
+                }
+                int breakAt = paragraph.substring(start, fitted).lastIndexOf(' ');
+                if (breakAt > 0) {
+                    fitted = start + breakAt;
+                }
+                if (fitted <= start) {
+                    fitted = paragraph.offsetByCodePoints(start, 1);
+                }
+                wrapped.add(paragraph.substring(start, fitted).trim());
+                start = fitted;
+                while (start < paragraph.length() && paragraph.charAt(start) == ' ') {
+                    start++;
+                }
+            }
+        }
+        wrapCache.put(cacheKey, wrapped);
+        return wrapped;
     }
 
     /* JADX INFO: renamed from: a */

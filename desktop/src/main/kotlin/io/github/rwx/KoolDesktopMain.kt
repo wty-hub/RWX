@@ -34,6 +34,7 @@ object KoolDesktopMain : KoinComponent {
 
     @JvmStatic
     fun main(args: Array<String>) {
+        LinuxInputMethodBootstrap.install()
         configureDesktopLogging()
         System.setProperty(LWJGL_CONTEXT_API_PROPERTY, LWJGL_NATIVE_CONTEXT_API)
         run(args)

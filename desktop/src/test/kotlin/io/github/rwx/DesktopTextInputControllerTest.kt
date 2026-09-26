@@ -4,6 +4,7 @@ import de.fabmax.kool.input.KeyCode
 import de.fabmax.kool.input.KeyboardInput
 import io.github.rwx.ui.component.PlatformCaretRect
 import io.github.rwx.ui.component.PlatformCaretRequest
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.ui.component.PlatformTextInputRequest
 import java.awt.GraphicsEnvironment
 import java.awt.event.KeyEvent
@@ -110,13 +111,25 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `a background host does not raise the editor window`() {
+        var activations = 0
+        withController(
+            activateEditorWindow = { activations += 1 },
+            isHostActive = { false },
+        ) { controller, _ ->
+            controller.showOrUpdate(request(Any(), "abc"))
+            assertEquals(0, activations)
+        }
+    }
+
+    @Test
     fun `caret ownership is only claimed while the platform editor holds focus`() {
         var activations = 0
         withController(activateEditorWindow = { activations += 1 }) { controller, editor ->
             controller.showOrUpdate(request(Any(), "abc"))
 
-            // No showing window in this test, so the editor cannot take focus and the Kool field
-            // must keep its own editing instead of silently swallowing every keystroke.
+            // No showing window in this test, so the editor cannot take focus. ownsCaret stays
+            // false so the Kool field keeps ASCII editing until a real window grants IME focus.
             assertTrue(!editor.isFocusOwner)
             assertTrue(!controller.ownsCaret, "ownsCaret must not be claimed without editor focus")
             assertTrue(activations > 0, "the controller should have asked for the editor window")
@@ -184,6 +197,43 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `escape closes an open dialog when nothing is composing`() {
+        var closed = 0
+        PlatformTextInputBridge.onEscape = { closed += 1 }
+        try {
+            withController { controller, editor ->
+                controller.showOrUpdate(request(Any(), "hi"))
+                pressKey(editor, KeyEvent.VK_ESCAPE)
+                assertEquals(1, closed)
+                assertTrue(!controller.isEditing)
+            }
+        } finally {
+            PlatformTextInputBridge.onEscape = null
+        }
+    }
+
+    @Test
+    fun `escape during composition cancels the composition and leaves the dialog open`() {
+        var closed = 0
+        PlatformTextInputBridge.onEscape = { closed += 1 }
+        try {
+            withController { controller, editor ->
+                controller.showOrUpdate(request(Any(), "ab"))
+                val composed = SimpleAttributeSet()
+                composed.addAttribute(StyleConstants.ComposedTextAttribute, AttributedString("nihao"))
+                editor.document.insertString(2, "nihao", composed)
+
+                pressKey(editor, KeyEvent.VK_ESCAPE)
+
+                assertEquals(0, closed)
+                assertTrue(controller.isEditing)
+            }
+        } finally {
+            PlatformTextInputBridge.onEscape = null
+        }
+    }
+
+    @Test
     fun `hide stops forwarding further edits`() {
         withController { controller, editor ->
             val owner = Any()
@@ -204,23 +254,27 @@ class DesktopTextInputControllerTest {
             editor.parent.setSize(800, 600)
             val owner = Any()
             val rect = PlatformCaretRect(x = 120f, y = 40f, width = 1f, height = 18f)
-            controller.showOrUpdate(request(owner, "ab", caretRect = rect))
+            val field = PlatformCaretRect(x = 100f, y = 36f, width = 200f, height = 28f)
+            controller.showOrUpdate(request(owner, "ab", caretRect = rect, fieldRect = field))
 
             assertEquals(120, editor.x)
             assertEquals(40, editor.y)
-            assertEquals(listOf(120 to 58), spots)
+            assertEquals(1, editor.width)
+            assertEquals(1, editor.height)
+            assertEquals(listOf(120 to 64), spots)
 
-            controller.showOrUpdate(request(owner, "ab", caretRect = rect))
-            assertEquals(listOf(120 to 58), spots)
+            controller.showOrUpdate(request(owner, "ab", caretRect = rect, fieldRect = field))
+            assertEquals(listOf(120 to 64), spots)
 
             pressKey(editor, KeyEvent.VK_A)
-            assertEquals(listOf(120 to 58, 120 to 58), spots)
+            assertEquals(listOf(120 to 64, 120 to 64), spots)
 
             val moved = PlatformCaretRect(x = 200f, y = 80f, width = 1f, height = 18f)
-            controller.showOrUpdate(request(owner, "ab", caretRect = moved))
+            val movedField = PlatformCaretRect(x = 180f, y = 76f, width = 200f, height = 28f)
+            controller.showOrUpdate(request(owner, "ab", caretRect = moved, fieldRect = movedField))
             assertEquals(200, editor.x)
             assertEquals(80, editor.y)
-            assertEquals(200 to 98, spots.last())
+            assertEquals(200 to 104, spots.last())
         }
     }
 
@@ -241,6 +295,7 @@ class DesktopTextInputControllerTest {
         activateEditorWindow: () -> Unit = {},
         restoreFocus: () -> Unit = {},
         moveImeSpot: (Int, Int) -> Unit = { _, _ -> },
+        isHostActive: () -> Boolean = { true },
         block: (DesktopTextInputController, JTextField) -> Unit,
     ) {
         if (GraphicsEnvironment.isHeadless()) return
@@ -254,6 +309,7 @@ class DesktopTextInputControllerTest {
                 sendKey = sendKey,
                 dispatch = { action -> action() },
                 moveImeSpot = moveImeSpot,
+                isHostActive = isHostActive,
             )
             try {
                 val editor = editorHost.components.filterIsInstance<JTextField>().single()
@@ -272,6 +328,7 @@ class DesktopTextInputControllerTest {
         onCancel: (() -> Unit)? = null,
         caretRequest: PlatformCaretRequest? = null,
         caretRect: PlatformCaretRect? = null,
+        fieldRect: PlatformCaretRect? = null,
         onSelectionChanged: ((Int, Int) -> Unit)? = null,
         onChange: (String) -> Unit = {},
     ) = PlatformTextInputRequest(
@@ -285,6 +342,7 @@ class DesktopTextInputControllerTest {
         caretRequest = caretRequest,
         onSelectionChanged = onSelectionChanged,
         caretRect = caretRect,
+        fieldRect = fieldRect,
     )
 
     private fun pressKey(editor: JTextField, keyCode: Int, shift: Boolean = false) {

@@ -27,7 +27,7 @@ import kotlin.system.exitProcess
 class SwingKoolHost private constructor(
     val koolCanvas: Canvas,
     val gameCanvas: Canvas,
-    val windowSubsystem: SwingWindowSubsystem,
+    val windowSubsystem: PacedSwingWindowSubsystem,
     private val startupFullscreen: Boolean,
 ) : PlatformFilePickerHost {
     private val panel = JPanel(null)
@@ -66,36 +66,24 @@ class SwingKoolHost private constructor(
         koolCanvas.ignoreRepaint = true
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
         textInputController = DesktopTextInputController(
-            editorHost = panel,
+            editorHost = overlayWindow.layeredPane,
             activateEditorWindow = {
-                // IME clients must live in the key window (the frame). Bring the frame forward
-                // without requestFocus(), which on some Linux WMs drops the owned overlay JWindow
-                // and looks like a flash-quit when the user starts typing.
-                if (!frame.isActive) {
-                    frame.toFront()
-                }
+                // IBus attaches to the focused X window. The overlay is that window when the user
+                // clicks a Kool field; keep it focusable and put the Swing editor on it.
+                overlayWindow.focusableWindowState = true
+                raiseOverlayIfActive()
             },
             setEditorHasFocus = { hasFocus ->
-                // While the editor owns AWT focus, clicks on the Kool canvas must not take it back:
-                // that would drop an in-progress input method composition.
                 koolCanvas.isFocusable = !hasFocus
-                if (hasFocus && overlayWindow.isVisible) {
-                    // Keep the transparent UI overlay painted above the game canvas while the
-                    // hidden frame editor holds keyboard focus for the input method.
-                    overlayWindow.toFront()
-                }
+                gameCanvas.isFocusable = !hasFocus
             },
             restoreFocus = {
-                koolCanvas.isFocusable = true
-                if (overlayWindow.isVisible) {
-                    overlayWindow.toFront()
-                    overlayWindow.requestFocus()
-                    koolCanvas.requestFocusInWindow()
-                } else if (gameCanvas.isShowing) {
-                    // In a match the overlay is hidden, so keyboard focus belongs on the game
-                    // canvas. Sending it to the hidden overlay left the IME editor holding every key.
-                    gameCanvas.requestFocusInWindow()
-                }
+                restoreOverlayKeyboard()
+                focusVisibleCanvas()
+            },
+            returnKeysToCanvas = {
+                restoreOverlayKeyboard()
+                focusVisibleCanvas()
             },
         )
         PlatformTextInputBridge.install(textInputController)
@@ -155,7 +143,10 @@ class SwingKoolHost private constructor(
             gameCanvas.isVisible = true
             setKoolOverlayVisible(koolOverlay)
             ensureGameBufferStrategy()
-            if (koolOverlay) {
+            if (PlatformTextInputBridge.isEditing()) {
+                // The hidden frame editor already owns the input method. Taking canvas focus
+                // here would cancel composition and leave only pinyin in the field.
+            } else if (koolOverlay) {
                 koolCanvas.requestFocusInWindow()
             } else {
                 gameCanvas.requestFocusInWindow()
@@ -248,16 +239,44 @@ class SwingKoolHost private constructor(
         SlickCanvasHost.notifyGameCanvasResized(width, height)
     }
 
+    private fun restoreOverlayKeyboard() {
+        overlayWindow.focusableWindowState = true
+        koolCanvas.isFocusable = true
+        gameCanvas.isFocusable = true
+    }
+
+    private fun focusVisibleCanvas() {
+        if (PlatformTextInputBridge.isEditing() && textInputController.ownsCaret) {
+            return
+        }
+        if (!isApplicationActive()) return
+        if (overlayWindow.isVisible) {
+            raiseOverlayIfActive()
+            koolCanvas.requestFocusInWindow()
+        } else if (gameCanvas.isShowing) {
+            gameCanvas.requestFocusInWindow()
+        }
+    }
+
     private fun setKoolOverlayVisible(visible: Boolean) {
         koolCanvas.isVisible = visible
         if (visible) {
             syncOverlayBounds(forceLocationRefresh = true)
             overlayWindow.isVisible = true
-            overlayWindow.toFront()
+            raiseOverlayIfActive()
         } else {
             overlayWindow.isVisible = false
         }
     }
+
+    private fun raiseOverlayIfActive() {
+        if (overlayWindow.isVisible && isApplicationActive()) {
+            overlayWindow.toFront()
+        }
+    }
+
+    private fun isApplicationActive(): Boolean =
+        frame.isActive || overlayWindow.isActive
 
     private fun syncOverlayBounds(forceLocationRefresh: Boolean = false) {
         if (!panel.isShowing) {
@@ -372,7 +391,9 @@ class SwingKoolHost private constructor(
                         depthSize = 24
                         stencilSize = 8
                         samples = 4
-                        swapInterval = 1
+                        // A vsync swap would block while holding the AWT lock; frames are paced
+                        // by PacedSwingWindowSubsystem instead.
+                        swapInterval = 0
                     },
                 )
             } else {
@@ -387,9 +408,11 @@ class SwingKoolHost private constructor(
                 requestedSwapInterval = 0,
             )
             lateinit var host: SwingKoolHost
-            val subsystem = SwingWindowSubsystem(
-                providedCanvas = koolCanvas,
-                makeFocusable = true,
+            val subsystem = PacedSwingWindowSubsystem(
+                SwingWindowSubsystem(
+                    providedCanvas = koolCanvas,
+                    makeFocusable = true,
+                ),
             )
             host = SwingKoolHost(
                 koolCanvas = koolCanvas,
@@ -452,6 +475,7 @@ internal fun configureKoolOverlayWindow(
     overlayWindow.contentPane = overlayPanel
     overlayWindow.rootPane.isOpaque = false
     overlayWindow.focusableWindowState = true
+    overlayWindow.enableInputMethods(true)
 }
 
 private val TransparentCanvasColor = Color(0, 0, 0, 0)

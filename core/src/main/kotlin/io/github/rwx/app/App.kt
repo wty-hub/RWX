@@ -6,9 +6,11 @@ import io.github.rwx.logger
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.ui.*
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.ui.model.LevelSelectMode
 import io.github.rwx.ui.model.MainMenuConditions
 import io.github.rwx.ui.model.PauseMenuConditions
+import io.github.rwx.ui.model.ReplaySelectViewModel
 import io.github.rwx.ui.model.ResourceBrowserType
 import kotlinx.coroutines.*
 import kotlin.coroutines.CoroutineContext
@@ -416,12 +418,18 @@ fun installApp(
         showUnavailableDialog = dialogController::showUnavailable,
     ).install()
 
+    val dismissDialog = {
+        val dismissed = dialogSceneHost.dismissIfShowing()
+        if (dismissed) inGameDialogController.onDialogDismissed()
+        dismissed
+    }
+    PlatformTextInputBridge.onEscape = { dismissDialog() }
     val inputController = InputController(
         gameSession = gameSession,
         currentScreen = { navigator.current },
         screenScale = { context.window.parentScreenScale },
         navigateBack = session::navigateBack,
-        dismissDialog = dialogSceneHost::dismissIfShowing,
+        dismissDialog = dismissDialog,
     ).also { it.install() }
     screenPresenter.apply(navigator.current, lastExternalGameFrame)
 
@@ -471,6 +479,15 @@ fun installApp(
     ).finish()
     options.joinServer?.let { address ->
         multiplayerConnectionController.joinOriginalServer(address, roomLabel = address)
+    }
+    options.replay?.let { name ->
+        val replays = ReplaySelectViewModel().items()
+        val replay = replays.firstOrNull { it.fileName == name } ?: replays.firstOrNull { it.fileName.contains(name) }
+        if (replay != null) {
+            gameLaunchController.enterReplay(replay, startNew = true)
+        } else {
+            logger.warn { "Replay not found for --replay=$name" }
+        }
     }
     return session
 }

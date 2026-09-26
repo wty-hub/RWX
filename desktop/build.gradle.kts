@@ -152,6 +152,7 @@ application {
         "--sun-misc-unsafe-memory-access=allow",
         "--add-opens", "java.desktop/sun.awt=ALL-UNNAMED",
         "--add-opens", "java.desktop/sun.awt.im=ALL-UNNAMED",
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED",
     )
 }
 
@@ -358,6 +359,7 @@ val createJpackageImage by tasks.registering(Exec::class) {
             "--java-options", "--enable-native-access=ALL-UNNAMED",
             "--java-options", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--java-options", "--add-opens=java.desktop/sun.awt.im=ALL-UNNAMED",
+            "--java-options", "--add-opens=java.base/java.lang=ALL-UNNAMED",
         )
         val icon = if (targetPlatform.osName == "macos") {
             generatedMacIcon.get().asFile
@@ -396,6 +398,7 @@ if (targetPlatform.osName == "windows") {
                 "--enable-native-access=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt.im=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
             ),
         )
         productName.set(appName)

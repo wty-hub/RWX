@@ -1,6 +1,7 @@
 package org.newdawn.slick.opengl;
 
 import org.lwjgl.BufferUtils;
+import org.newdawn.slick.opengl.renderer.QuadBatch;
 import org.newdawn.slick.opengl.renderer.Renderer;
 import org.newdawn.slick.opengl.renderer.SGL;
 import org.newdawn.slick.util.Log;
@@ -278,6 +279,7 @@ public class TextureImpl implements Texture {
      * @see org.newdawn.slick.opengl.Texture#release()
      */
     public void release() {
+        QuadBatch.flush();
         IntBuffer texBuf = createIntBuffer(1);
         texBuf.put(textureID);
         texBuf.flip();
@@ -330,6 +332,7 @@ public class TextureImpl implements Texture {
      */
     public byte[] getTextureData() {
         ByteBuffer buffer = BufferUtils.createByteBuffer((hasAlpha() ? 4 : 3) * texWidth * texHeight);
+        QuadBatch.flush();
         bind();
         GL.glGetTexImage(SGL.GL_TEXTURE_2D, 0, hasAlpha() ? SGL.GL_RGBA : SGL.GL_RGB, SGL.GL_UNSIGNED_BYTE,
                 buffer);

@@ -40,10 +40,43 @@ public final class PerformanceProfiler {
         GameEngine.log(str + VariableScope.nullOrMissingString + a(a(j)));
     }
 
+    /** Enabled by the desktop frame-time log; only reads the clock, never touches game state. */
+    public static volatile boolean frameTimingEnabled = false;
+
+    private long updateStartNanos;
+    private long drawStartNanos;
+
+    /** Nanoseconds spent in the update and draw sections since the last {@link #takeFrameTimings()}. */
+    public long updateNanos;
+    public long drawNanos;
+
     public final void a(ProfilerSection profilerSection) {
+        if (!frameTimingEnabled) {
+            return;
+        }
+        if (profilerSection == ProfilerSection.update) {
+            this.updateStartNanos = System.nanoTime();
+        } else if (profilerSection == ProfilerSection.draw) {
+            this.drawStartNanos = System.nanoTime();
+        }
     }
 
     public final void b(ProfilerSection profilerSection) {
+        if (!frameTimingEnabled) {
+            return;
+        }
+        if (profilerSection == ProfilerSection.update && this.updateStartNanos != 0) {
+            this.updateNanos += System.nanoTime() - this.updateStartNanos;
+            this.updateStartNanos = 0;
+        } else if (profilerSection == ProfilerSection.draw && this.drawStartNanos != 0) {
+            this.drawNanos += System.nanoTime() - this.drawStartNanos;
+            this.drawStartNanos = 0;
+        }
+    }
+
+    public final void takeFrameTimings() {
+        this.updateNanos = 0;
+        this.drawNanos = 0;
     }
 
     public static final String a(double d) {

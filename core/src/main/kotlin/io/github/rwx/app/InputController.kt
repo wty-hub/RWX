@@ -30,10 +30,12 @@ internal class InputController(
             filter = InputStack.KEY_FILTER_ALL,
         ) { event ->
             if (!event.isPressed) return@addKeyListener
-            // While a platform IME editor is active (or was just cancelled), Esc must not leave
-            // the screen — Chinese IME users cancel composition with Esc constantly.
+            // Esc while typing must not leave the screen. Chinese IME composition is cancelled by
+            // the platform editor before this runs; a plain Esc closes a dialog (in-game chat)
+            // and otherwise only drops the field.
             if (PlatformTextInputBridge.isEditing()) {
                 PlatformTextInputBridge.dismissKeyboard()
+                dismissDialog()
                 return@addKeyListener
             }
             if (dismissDialog()) return@addKeyListener
