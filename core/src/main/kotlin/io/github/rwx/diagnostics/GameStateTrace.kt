@@ -9,19 +9,37 @@ import java.io.File
 
 /**
  * Per-tick simulation fingerprint for verifying that performance changes stay bit-exact with the
- * original game. Enabled with `RWX_CHECKSUM_LOG=/path/file`; writes one line per simulation tick.
+ * original game. Enabled with `RWX_CHECKSUM_LOG=/path/file`, or [start] after argument parsing.
+ * Writes one line per simulation tick.
  *
  * Only reads game state. Uses its own [GameStateChecksum] instance (the same computation network sync
  * uses) plus a stricter hash over raw float bits of every orderable unit.
  */
 object GameStateTrace {
-    private val output: File? = System.getenv("RWX_CHECKSUM_LOG")?.takeIf { it.isNotBlank() }?.let(::File)
+    private var output: File? = System.getenv("RWX_CHECKSUM_LOG")?.takeIf { it.isNotBlank() }?.let(::File)
 
     @JvmField
-    val enabled: Boolean = output != null
+    var enabled: Boolean = output != null
 
     private val checksum = GameStateChecksum()
     private var writer: BufferedWriter? = null
+
+    /** Switch the checksum log to [file]. Creates parent directories. Replaces `RWX_CHECKSUM_LOG`. */
+    @JvmStatic
+    fun start(file: File) {
+        close()
+        file.parentFile?.mkdirs()
+        output = file
+        enabled = true
+    }
+
+    @JvmStatic
+    fun close() {
+        val out = writer ?: return
+        out.flush()
+        out.close()
+        writer = null
+    }
 
     @JvmStatic
     fun onTickEnd(engine: GameEngine) {

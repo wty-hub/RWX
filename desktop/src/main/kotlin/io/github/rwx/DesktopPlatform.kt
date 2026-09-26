@@ -24,7 +24,9 @@ internal fun ensureDesktopOpenAlMusicFactory() {
     }
 }
 
-class DesktopPlatformBridge : PlatformBridge {
+class DesktopPlatformBridge(
+    audio: PlatformAudio? = null,
+) : PlatformBridge {
     override val storage: DesktopPlatformStorage = DesktopPlatformStorage()
     override val preferenceStorage: PreferenceStorage = TomlPreferenceStorage(
         storage.location("/SD/rustedWarfare/", File(storage.rootDir.file, "${PREFERENCE_NAME}.toml"))
@@ -44,7 +46,7 @@ class DesktopPlatformBridge : PlatformBridge {
         ),
     )
     override val isMobilePlatform: Boolean = false
-    override val audio: PlatformAudio = DesktopPlatformAudio(storage)
+    override val audio: PlatformAudio = audio ?: DesktopPlatformAudio(storage)
     override var filePickerHost: PlatformFilePickerHost?=null
 
     override fun createModClassLoader(modFile: File, parent: ClassLoader): ClassLoader {

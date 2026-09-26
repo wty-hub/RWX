@@ -34,6 +34,11 @@ object KoolDesktopMain : KoinComponent {
 
     @JvmStatic
     fun main(args: Array<String>) {
+        if (HEADLESS_FLAG in args) {
+            System.setProperty("java.awt.headless", "true")
+            HeadlessMain.main(args)
+            return
+        }
         LinuxInputMethodBootstrap.install()
         configureDesktopLogging()
         System.setProperty(LWJGL_CONTEXT_API_PROPERTY, LWJGL_NATIVE_CONTEXT_API)
@@ -150,4 +155,5 @@ object KoolDesktopMain : KoinComponent {
     private const val LWJGL_NATIVE_CONTEXT_API: String = "native"
     private const val RENDER_BACKEND_PROPERTY: String = "rwx.kool.backend"
     private const val RENDER_BACKEND_ENV: String = "RWX_KOOL_BACKEND"
+    private const val HEADLESS_FLAG: String = "--headless"
 }

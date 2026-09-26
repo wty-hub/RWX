@@ -119,9 +119,22 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 |---|---|
 | `RWX_PERF_LOG=1` 或文件路径 | 每约 5 秒一行：fps、单位数、lock/work/update/draw/swap/sync 的 avg/p50/p95 |
 | `RWX_CHECKSUM_LOG=/path/file` | 每 tick 一行：原版 `GameStateChecksum` + 每个可命令单位浮点 bit 的更严 FNV |
-| `--replay=` / `RWX_REPLAY_SPEED` | 自动播回放，方便对校验和 |
+| `--replay=` / `RWX_REPLAY_SPEED` | 窗口版自动播回放，方便对校验和 |
 
-回放必须和优化前 jar 的 checksum 文件逐 tick 比对。沙盒 Crossing Large、水吊、小块地均与基线 IDENTICAL。
+不需要窗口时用 `:desktop:headless`。它走同一条 `gameLoop`，不创建 OpenGL。`--checksum=` 和 `RWX_CHECKSUM_LOG` 写的是同一种文件。
+
+```bash
+./gradlew :desktop:headless --args='--replay=22.25.33 --ticks=3000 --checksum=build/replay.txt'
+./gradlew :desktop:headless --args='--map="maps/skirmish/[p2]Small_Island (2p).tmx" --ticks=600 --checksum=build/map.txt'
+```
+
+- `--replay=` 可以用文件名里一段不重复的文字，和窗口版一样。
+- `--map=` 走单人地图加载，必须带 `--ticks=N`。回放省略 `--ticks` 时播到结束。
+- `--args` 里如果参数含空格，再加一层引号。
+- 正常结束退出码 0；加载失败 1；回放读到一半出错 2。
+- 已安装的 RWXX 也可以：`--headless --replay=...`。完全退出再启动后才会用到新 jar。
+
+回放必须和优化前 jar 的 checksum 文件逐 tick 比对。沙盒 Crossing Large、水吊、小块地均与基线 IDENTICAL。同一段回放的前 30 tick，无头和窗口版校验和逐行相同。
 
 不要用 16p Mc 劫掠那类回放当 2000 单位基准：它会卡在 tick 1～3（寻路/对话框/等待），测不到团战。
 
@@ -143,6 +156,7 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 | 锁外同步、帧末冲批 | `EmbeddedSlickGameContainer.kt` |
 | 帧时间日志 | `SlickFrameTimeLog.kt` |
 | 校验和 | `core/.../diagnostics/GameStateTrace.kt` |
+| 无头仿真 | `desktop/.../HeadlessMain.kt`、`headless/HeadlessGameSession.kt`、`headless/HeadlessGraphicsEngine.kt` |
 | 碰撞预过滤 | `UnitSpatialIndex.java`、`OrderableUnit.updateAllUnitCollisions` |
 | 折行缓存 | `core/.../ui/TextUtils.java` |
 | IME | `DesktopTextInputController.kt`、`SwingKoolHost.kt`、`SlickCanvasHost.kt` |

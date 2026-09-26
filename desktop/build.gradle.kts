@@ -192,6 +192,15 @@ tasks.named<JavaExec>("run") {
     configureRunArgs()
 }
 
+tasks.register<JavaExec>("headless") {
+    group = "verification"
+    description = "Run a replay or single-player map without a window. Pass options with --args."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.rwx.HeadlessMain")
+    workingDir = project.file("..")
+    jvmArgs("-Djava.awt.headless=true")
+}
+
 tasks.named("runShadow") {
     group = null
     enabled = false
