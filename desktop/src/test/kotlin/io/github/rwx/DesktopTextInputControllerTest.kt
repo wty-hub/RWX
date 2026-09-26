@@ -279,6 +279,35 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `shift enter still submits the committed text`() {
+        withController { controller, editor ->
+            val entered = mutableListOf<String>()
+            controller.showOrUpdate(request(Any(), "team", onEnter = { entered += it }))
+
+            pressKey(editor, KeyEvent.VK_ENTER, shift = true)
+
+            assertEquals(listOf("team"), entered)
+        }
+    }
+
+    @Test
+    fun `enter release forwards a key-up and not a new press`() {
+        val released = mutableListOf<KeyCode>()
+        val pressed = mutableListOf<Pair<KeyCode, Int>>()
+        withController(
+            sendKey = { code, modifiers -> pressed += code to modifiers },
+            releaseKey = { released += it },
+        ) { controller, editor ->
+            controller.showOrUpdate(request(Any(), "hi"))
+
+            releaseKeyEvent(editor, KeyEvent.VK_ENTER)
+
+            assertEquals(listOf<KeyCode>(KeyboardInput.KEY_ENTER), released)
+            assertEquals(emptyList<Pair<KeyCode, Int>>(), pressed)
+        }
+    }
+
+    @Test
     fun `tab is forwarded with the shift modifier`() {
         val keys = mutableListOf<Pair<KeyCode, Int>>()
         withController(sendKey = { code, modifiers -> keys += code to modifiers }) { controller, editor ->
@@ -292,6 +321,7 @@ class DesktopTextInputControllerTest {
 
     private fun withController(
         sendKey: (KeyCode, Int) -> Unit = { _, _ -> },
+        releaseKey: (KeyCode) -> Unit = {},
         activateEditorWindow: () -> Unit = {},
         restoreFocus: () -> Unit = {},
         moveImeSpot: (Int, Int) -> Unit = { _, _ -> },
@@ -307,6 +337,7 @@ class DesktopTextInputControllerTest {
                 setEditorHasFocus = {},
                 restoreFocus = restoreFocus,
                 sendKey = sendKey,
+                releaseKey = releaseKey,
                 dispatch = { action -> action() },
                 moveImeSpot = moveImeSpot,
                 isHostActive = isHostActive,
@@ -358,5 +389,17 @@ class DesktopTextInputControllerTest {
         val listeners = editor.keyListeners
         assertTrue(listeners.isNotEmpty(), "the platform editor has no key listener")
         listeners.forEach { it.keyPressed(event) }
+    }
+
+    private fun releaseKeyEvent(editor: JTextField, keyCode: Int) {
+        val event = KeyEvent(
+            editor,
+            KeyEvent.KEY_RELEASED,
+            System.currentTimeMillis(),
+            0,
+            keyCode,
+            KeyEvent.CHAR_UNDEFINED,
+        )
+        editor.keyListeners.forEach { it.keyReleased(event) }
     }
 }

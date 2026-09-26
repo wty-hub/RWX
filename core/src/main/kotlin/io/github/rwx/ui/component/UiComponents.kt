@@ -203,6 +203,7 @@ fun UiScope.TextFieldWithTrailingIcon(
     trailingIcon: Icon? = null,
     trailingIconTooltip: String? = null,
     onTrailingIconPress: (() -> Unit)? = null,
+    onEnter: ((String) -> Unit)? = null,
     onChange: (String) -> Unit,
 ) {
     val inputHeight = if (compact) UiTheme.Layout.CompactMenuButtonHeight else UiTheme.Layout.menuButtonHeight
@@ -227,6 +228,7 @@ fun UiScope.TextFieldWithTrailingIcon(
                     selectionColor = theme.palette.primaryContainer,
                 )
                 .onChange(onChange)
+                .onEnterPressed(onEnter)
         }
         trailingIcon?.let { icon ->
             val iconSize = if (compact) Dp(18f) else UiTheme.Layout.textButtonGlyphSize

@@ -9,12 +9,14 @@ import io.github.rwx.ui.model.*
 fun UiScope.MessageDialog(
     dialog: Dialog,
     theme: ColorSchemeDefinition,
+    inputSession: Int = 0,
     onDismiss: () -> Unit,
 ) {
     val compact = dialog.compactOnAndroid && GameEngine.isAndroidPlatform()
     val inputValue = remember("")
     val inputKey = remember("")
     val nextInputKey = listOf(
+        inputSession.toString(),
         dialog.title,
         dialog.textInput?.hint.orEmpty(),
         dialog.textInput?.initialText.orEmpty(),
@@ -64,6 +66,13 @@ fun UiScope.MessageDialog(
                 { onPress { selectedValue -> inputValue.value = selectedValue } }
             },
             onChange = { inputValue.value = it },
+            onEnter = { text ->
+                val sender = dialog.buttons.firstOrNull { button -> button.onInputPress != null }
+                    ?: return@TextFieldWithTrailingIcon
+                sender.onInputPress?.invoke(text)
+                inputValue.value = ""
+                onDismiss()
+            },
         )
     }
     dialog.form?.let { form ->

@@ -5,6 +5,67 @@ import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.UiTheme
 
 
+/**
+ * Full (non-virtual) column that pins to the latest item. Chat lines wrap to different heights;
+ * Kool's [LazyColumn] `scrollToItem(last)` then parks the last line at the top and never
+ * composes the messages above it, so they look missing.
+ */
+fun <T> UiScope.StickToEndScrollColumn(
+    items: List<T>,
+    theme: ColorSchemeDefinition,
+    width: Dimension = Grow.Std,
+    height: Dimension = Grow.Std,
+    itemContent: UiScope.(T) -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val follow = remember(ListEndFollow())
+    val contentHeight = scrollState.contentHeightDp.use()
+    val viewHeight = scrollState.viewHeightDp.use()
+    val yScroll = scrollState.yScrollDp.use()
+    val laidOut = viewHeight > 0f && contentHeight > 0f
+    val remaining = contentHeight - (yScroll + viewHeight)
+    val decision = nextListEndFollow(
+        follow = follow.value,
+        itemCount = items.size,
+        laidOut = laidOut,
+        atEnd = !laidOut || remaining <= STICK_TO_END_SLACK_DP,
+    )
+    follow.value = decision.follow
+    if (decision.scrollToIndex != null) {
+        scrollState.scrollRelativeY(1f, smooth = false)
+    }
+    ScrollArea(
+        width = width,
+        height = height,
+        withVerticalScrollbar = true,
+        withHorizontalScrollbar = false,
+        isScrollableVertical = true,
+        isScrollableHorizontal = false,
+        scrollbarColor = theme.palette.primary,
+        state = scrollState,
+        containerModifier = {
+            it
+                .backgroundColor(null)
+                .onDrag { event ->
+                    scrollState.scrollDpY(Dp.fromPx(-event.pointer.delta.y).value)
+                }
+        },
+    ) {
+        // ScrollPane defaults to FitContent, so an unwrapped line widens the pane and
+        // the text is clipped at the viewport edge. Grow keeps every line inside the
+        // viewport (so isWrapText has a real width). End padding clears the overlay bar.
+        modifier
+            .width(Grow.Std)
+            .height(FitContent)
+            .padding(end = SCROLLBAR_LANE_DP)
+        Column(width = Grow.Std) {
+            items.forEach { item ->
+                itemContent(item)
+            }
+        }
+    }
+}
+
 fun <T> UiScope.ScrollableVerticalList(
     items: List<T>,
     theme: ColorSchemeDefinition,
@@ -144,3 +205,8 @@ internal fun nextListEndFollow(
         scrollToIndex = if (scrollToEnd) itemCount - 1 else null,
     )
 }
+
+private const val STICK_TO_END_SLACK_DP: Float = 8f
+
+/** Matches Kool's default vertical scrollbar width so wrapped glyphs stay left of the bar. */
+private val SCROLLBAR_LANE_DP: Dp = Dp(8f)

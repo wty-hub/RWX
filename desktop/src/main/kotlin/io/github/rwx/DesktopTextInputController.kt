@@ -61,6 +61,7 @@ internal class DesktopTextInputController(
     private val restoreFocus: () -> Unit,
     private val returnKeysToCanvas: () -> Unit = {},
     private val sendKey: (KeyCode, Int) -> Unit = ::dispatchKoolKey,
+    private val releaseKey: (KeyCode) -> Unit = ::dispatchKoolKeyUp,
     private val dispatch: (() -> Unit) -> Unit = { action -> FrontendScope.launch { action() } },
     private val moveImeSpot: (Int, Int) -> Unit = LinuxImeCandidateSpot::move,
     private val isHostActive: () -> Boolean = { isSwingComponentHostActive(editorHost) },
@@ -132,6 +133,12 @@ internal class DesktopTextInputController(
                 // IBus drops the spot when composition starts, so repeat the last caret on each key.
                 lastSpot?.let { publishSpot(it.x, it.y, force = true) }
                 handleEditorKeyPressed(event)
+            }
+
+            override fun keyReleased(event: AwtKeyEvent) {
+                // The game never sees this release while the editor holds focus. Forward the key-up
+                // so a submit Enter is not treated as still held after the chat window closes.
+                editorKeyCode(event)?.let(releaseKey)
             }
 
             override fun keyTyped(event: AwtKeyEvent) {
@@ -239,7 +246,13 @@ internal class DesktopTextInputController(
     override fun dismissKeyboard() {
         val request = activeRequest
         activeRequest = null
-        runOnEdt { endEditing() }
+        // After the current AWT event. Enter's key-release must still hit this editor so the
+        // match learns the key is up before focus returns, instead of reopening chat.
+        SwingUtilities.invokeLater {
+            // A chat window opened again before this ran owns the editor now.
+            if (activeRequest != null) return@invokeLater
+            endEditing()
+        }
         // Clear Kool field focus so the next frame does not immediately re-attach the editor.
         if (request != null) {
             dispatch { request.onCancel?.invoke() }
@@ -256,6 +269,7 @@ internal class DesktopTextInputController(
     }
 
     private fun endEditing() {
+        if (activeRequest != null) return
         editorHasFocus = false
         focusAttempts = 0
         editorAbandoned = false
@@ -263,6 +277,13 @@ internal class DesktopTextInputController(
         lastCaretRect = null
         lastFieldRect = null
         lastSpot = null
+        lastForwardedText = ""
+        suppressTextCallback = true
+        try {
+            editor.text = ""
+        } finally {
+            suppressTextCallback = false
+        }
         // Drop focus before restoring it. A non-focusable editor cannot remain the key target,
         // which is what was swallowing in-game shortcuts after a text field closed.
         editor.isFocusable = false
@@ -378,6 +399,9 @@ internal class DesktopTextInputController(
                 val request = activeRequest ?: return
                 val text = committedEditorText()
                 lastForwardedText = text
+                // The game must ignore this Enter until key-up. Otherwise the same press reopens
+                // chat once the editor gives focus back.
+                editorKeyCode(event)?.let { PlatformTextInputBridge.onSubmitKey?.invoke(it) }
                 // Unlike Android, Enter keeps desktop editing active so the user can keep typing
                 // (chat) instead of dismissing the platform editor.
                 dispatch { request.onEnter?.invoke(text) }
@@ -509,6 +533,20 @@ internal class DesktopTextInputController(
         moveImeSpot(x, y)
     }
 
+    private fun editorKeyCode(event: AwtKeyEvent): KeyCode? = when (event.keyCode) {
+        AwtKeyEvent.VK_ENTER -> if (event.keyLocation == AwtKeyEvent.KEY_LOCATION_NUMPAD) {
+            KeyboardInput.KEY_NP_ENTER
+        } else {
+            KeyboardInput.KEY_ENTER
+        }
+        AwtKeyEvent.VK_SHIFT -> if (event.keyLocation == AwtKeyEvent.KEY_LOCATION_RIGHT) {
+            KeyboardInput.KEY_SHIFT_RIGHT
+        } else {
+            KeyboardInput.KEY_SHIFT_LEFT
+        }
+        else -> null
+    }
+
     private fun runOnEdt(action: () -> Unit) {
         if (SwingUtilities.isEventDispatchThread()) {
             action()
@@ -619,4 +657,10 @@ internal fun dispatchKoolKey(keyCode: KeyCode, modifiers: Int) {
     val localKeyCode = LocalKeyCode(keyCode.code)
     KeyboardInput.handleKeyEvent(KeyEvent(keyCode, localKeyCode, KeyboardInput.KEY_EV_DOWN, modifiers))
     KeyboardInput.handleKeyEvent(KeyEvent(keyCode, localKeyCode, KeyboardInput.KEY_EV_UP, modifiers))
+}
+
+/** Key-up only. A full down+up pair would look like a new Enter and reopen chat. */
+internal fun dispatchKoolKeyUp(keyCode: KeyCode) {
+    val localKeyCode = LocalKeyCode(keyCode.code)
+    KeyboardInput.handleKeyEvent(KeyEvent(keyCode, localKeyCode, KeyboardInput.KEY_EV_UP, 0))
 }

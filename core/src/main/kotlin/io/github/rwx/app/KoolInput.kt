@@ -23,6 +23,7 @@ fun interface KoolLegacyPointerSink {
 class LegacyGamePointerSink(
     private val gameSession: GameSession,
     private val scaleProvider: KoolScreenScaleProvider = KoolScreenScaleProvider { 1.0f },
+    private val blockWorldWheel: () -> Boolean = { false },
 ) : KoolLegacyPointerSink, InputStack.PointerListener {
     private var activePointerId = NO_BUTTON_ID
     private var suppressPointerUntilRelease = false
@@ -36,8 +37,11 @@ class LegacyGamePointerSink(
         val screenX = pointer.pos.x * scale
         val screenY = pointer.pos.y * scale
         if (handleWorldPositionSelection(pointer, screenX, screenY)) return
-        pointer.scroll.y.takeIf { it != 0f }?.let { scroll ->
-            gameSession.submitMouseWheel((scroll * 120f).toInt())
+        // A modal window (players, chat, …) scrolls itself. The same wheel must not zoom the map.
+        if (!blockWorldWheel()) {
+            pointer.scroll.y.takeIf { it != 0f }?.let { scroll ->
+                gameSession.submitMouseWheel((scroll * 120f).toInt())
+            }
         }
         val pointerId = pointer.legacyButtonId()
         if (pointerId == NO_BUTTON_ID) {

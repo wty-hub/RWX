@@ -385,23 +385,25 @@ private fun UiScope.BattleRoomChatPanel(
             height = metrics.chatViewportHeight,
         ) {
             modifier.background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            ScrollableVerticalList(
+            StickToEndScrollColumn(
                 items = chatLines,
                 theme = theme,
                 width = Grow.Std,
                 height = Grow.Std,
-                stickToEnd = true,
             ) { line ->
                 val color = battleRoomChatColorIndexFor(line, players)
                     ?.let { BattleRoomTeamColors.colorFor(it, theme.palette.textPrimary) }
                     ?: theme.palette.textSecondary
-                EmojiAwareText(
-                    text = line.text,
-                    textFont = UiTheme.Fonts.bodySmall,
-                    textColor = color,
-                    contentWidth = Grow.Std,
-                    wrap = true,
-                )
+                Box(width = Grow.Std) {
+                    modifier.padding(horizontal = UiTheme.Spacing.xs, vertical = Dp(2f))
+                    EmojiAwareText(
+                        text = line.text,
+                        textFont = UiTheme.Fonts.bodySmall,
+                        textColor = color,
+                        contentWidth = Grow.Std,
+                        wrap = true,
+                    )
+                }
             }
             if (chatLines.isEmpty()) {
                 Text(I18n.battleroom.emptyChat()) {

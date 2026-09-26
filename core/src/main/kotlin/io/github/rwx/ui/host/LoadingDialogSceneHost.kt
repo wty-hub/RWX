@@ -18,6 +18,9 @@ class LoadingDialogSceneHost(
     private var dialogSurface: UiSurface? = null
     private var suspendedState: LoadingDialogState? = null
 
+    val isShowing: Boolean
+        get() = dialogState.value != null
+
     fun showProgress(title: String, message: String, progress: Float, onDismiss: () -> Unit = { hide() }) {
         suspendedState = null
         dialogState.value = LoadingDialogState(title, message, progress.coerceIn(0.0f, 1.0f), onDismiss)

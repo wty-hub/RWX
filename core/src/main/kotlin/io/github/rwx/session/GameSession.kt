@@ -221,6 +221,14 @@ abstract class GameSession {
         }
     }
 
+    /** Ignores the next press of [androidKeyCode] until the matching key-up reaches the engine. */
+    open fun suppressKeyUntilRelease(androidKeyCode: Int) {
+        if (isEngineBusyForUiReads()) return
+        postEngineCommand("suppress key until release") { engine ->
+            engine.suppressKeyUntilRelease(androidKeyCode)
+        }
+    }
+
     open fun submitMouseWheel(amount: Int) {
         if (amount == 0) return
         if (isEngineBusyForUiReads()) return

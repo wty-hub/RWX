@@ -2009,6 +2009,20 @@ public abstract class GameEngine {
         }
     }
 
+    /**
+     * Ignores the next press of [keyCode] until a real key-up arrives.
+     * Chat submits from the platform editor, which eats that Enter, so the same physical press
+     * must not reopen chat when focus returns to the match.
+     */
+    public void suppressKeyUntilRelease(int keyCode) {
+        if (keyCode < 0 || keyCode >= this.suppressKeyDownUntilRelease.length) {
+            return;
+        }
+        this.suppressKeyDownUntilRelease[keyCode] = true;
+        this.keyDownStates[keyCode] = false;
+        this.keyPressPendingStates[keyCode] = false;
+    }
+
     /* JADX INFO: renamed from: aE */
     public void showMemoryWarningsIfNeeded() {
         if (lowMemoryWarningPending && !hasShownLowMemoryWarning) {

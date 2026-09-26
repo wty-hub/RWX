@@ -14,10 +14,12 @@ internal class InputController(
     screenScale: () -> Float,
     private val navigateBack: () -> Unit,
     private val dismissDialog: () -> Boolean = { false },
+    isModalOverlayOpen: () -> Boolean = { false },
 ) {
     private val legacyPointerSink = LegacyGamePointerSink(
         gameSession = gameSession,
         scaleProvider = KoolScreenScaleProvider(screenScale),
+        blockWorldWheel = isModalOverlayOpen,
     )
 
     val preparedComponentName: String

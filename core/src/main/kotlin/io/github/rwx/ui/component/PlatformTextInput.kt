@@ -1,5 +1,6 @@
 package io.github.rwx.ui.component
 
+import de.fabmax.kool.input.KeyCode
 import de.fabmax.kool.modules.ui2.AlignmentX
 import de.fabmax.kool.modules.ui2.TextField
 import de.fabmax.kool.modules.ui2.TextFieldScope
@@ -88,6 +89,13 @@ object PlatformTextInputBridge {
      */
     @Volatile
     var onEscape: (() -> Unit)? = null
+
+    /**
+     * The platform editor consumed a submit key (Enter) before the game could see it.
+     * The match should ignore that key until its key-up arrives, so the same press cannot reopen chat.
+     */
+    @Volatile
+    var onSubmitKey: ((KeyCode) -> Unit)? = null
 
     internal fun showOrUpdate(request: PlatformTextInputRequest): Boolean {
         val activeController = controller ?: return false

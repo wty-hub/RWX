@@ -1,7 +1,9 @@
 package io.github.rwx.app
 
 import de.fabmax.kool.KoolContext
+import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.util.ApplicationScope
+import io.github.rwx.input.KoolKeyCodeMapping
 import io.github.rwx.logger
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
@@ -424,12 +426,21 @@ fun installApp(
         dismissed
     }
     PlatformTextInputBridge.onEscape = { dismissDialog() }
+    PlatformTextInputBridge.onSubmitKey = { key ->
+        val androidKey = when (key) {
+            KeyboardInput.KEY_ENTER -> KoolKeyCodeMapping.ANDROID_ENTER
+            KeyboardInput.KEY_NP_ENTER -> KoolKeyCodeMapping.ANDROID_NUMPAD_ENTER
+            else -> null
+        }
+        if (androidKey != null) gameSession.suppressKeyUntilRelease(androidKey)
+    }
     val inputController = InputController(
         gameSession = gameSession,
         currentScreen = { navigator.current },
         screenScale = { context.window.parentScreenScale },
         navigateBack = session::navigateBack,
         dismissDialog = dismissDialog,
+        isModalOverlayOpen = { dialogSceneHost.isShowing || loadingDialogSceneHost.isShowing },
     ).also { it.install() }
     screenPresenter.apply(navigator.current, lastExternalGameFrame)
 
