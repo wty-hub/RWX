@@ -37,6 +37,7 @@ import com.corrodinggames.rts.gameFramework.utility.UnitList;
 import io.github.rwx.geometry.Point;
 import io.github.rwx.geometry.PointF;
 import io.github.rwx.geometry.Rect;
+import io.github.rwx.ui.SmartFactoryProduction;
 import io.github.rwx.geometry.RectF;
 import io.github.rwx.render.canvas.KoolArgbColor;
 import io.github.rwx.render.canvas.KoolMultiplyAddColorFilter;
@@ -46,6 +47,7 @@ import io.github.rwx.render.canvas.KoolTypeface;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 /* JADX INFO: renamed from: com.corrodinggames.rts.gameFramework.f.g */
 /* JADX INFO: loaded from: game-lib.jar:com/corrodinggames/rts/gameFramework/f/g.class */
@@ -3450,6 +3452,34 @@ public final class GameUI extends Serializable {
         return commandCreateBaseCommand;
     }
 
+    /**
+     * With several factories selected, each produced unit is queued on one idle factory.
+     * Returns false when this click should keep the original all-factories behavior.
+     */
+    public boolean issueSmartFactoryProduction(AbstractUnitAction action, int count, boolean cancel) {
+        List<OrderableUnit> targets = SmartFactoryProduction.productionTargets(
+                this.selectedUnitsList,
+                action,
+                count,
+                cancel
+        );
+        if (targets == null) {
+            return false;
+        }
+        for (OrderableUnit unit : targets) {
+            Command command = createCommandForSelectedUnits();
+            command.addUnitToCommand(unit);
+            if (cancel) {
+                command.stopCurrentAction = true;
+            }
+            command.setActionId(action.getQueueId());
+            if (!cancel) {
+                prepareUnitActionCommand(action, null, null, command);
+            }
+        }
+        return true;
+    }
+
     /* JADX INFO: renamed from: c */
     public void issueAttackTargetCommand(BaseUnit baseUnit) {
         GameEngine gameEngine = GameEngine.getInstance();
@@ -4406,14 +4436,16 @@ public final class GameUI extends Serializable {
                     instance.soundEngine.playInterfaceSound(SoundEngine.clickAddSound, 0.5f);
                     UnitActionTimer.startTimer(am, s, false, true);
                 }
-                for (i = 0; i < n6; ++i) {
-                    final Command baseCommand = this.createBaseCommand();
-                    if (this.isShiftKeyPressed(instance)) {
-                        baseCommand.isQueued = true;
+                if (!this.issueSmartFactoryProduction(s, n6, false)) {
+                    for (i = 0; i < n6; ++i) {
+                        final Command baseCommand = this.createBaseCommand();
+                        if (this.isShiftKeyPressed(instance)) {
+                            baseCommand.isQueued = true;
+                        }
+                        this.setActionCommandTargets(baseCommand, s);
+                        baseCommand.setActionId(s.getQueueId());
+                        this.prepareUnitActionCommand(s, null, null, baseCommand);
                     }
-                    this.setActionCommandTargets(baseCommand, s);
-                    baseCommand.setActionId(s.getQueueId());
-                    this.prepareUnitActionCommand(s, null, null, baseCommand);
                 }
             }
             if (b11) {
@@ -4421,11 +4453,13 @@ public final class GameUI extends Serializable {
                     UnitActionTimer.startTimer(am, s, true, true);
                     instance.soundEngine.playInterfaceSound(SoundEngine.clickRemoveSound, 0.5f);
                 }
-                for (i = 0; i < n6; ++i) {
-                    final Command baseCommand2 = this.createBaseCommand();
-                    this.setActionCommandTargets(baseCommand2, s);
-                    baseCommand2.stopCurrentAction = true;
-                    baseCommand2.setActionId(s.getQueueId());
+                if (!this.issueSmartFactoryProduction(s, n6, true)) {
+                    for (i = 0; i < n6; ++i) {
+                        final Command baseCommand2 = this.createBaseCommand();
+                        this.setActionCommandTargets(baseCommand2, s);
+                        baseCommand2.stopCurrentAction = true;
+                        baseCommand2.setActionId(s.getQueueId());
+                    }
                 }
             }
             if (!b10 && !b11 && this.isSelectionBoxActive && !this.isInputDisabled && !this.bw.b((int) this.selectionBoxStartX, (int) this.selectionBoxStartY)) {

@@ -10,6 +10,7 @@ import de.fabmax.kool.modules.ui2.remember
 import de.fabmax.kool.modules.ui2.selectionRange
 import de.fabmax.kool.util.Font
 import de.fabmax.kool.util.TextCaretNavigation
+import de.fabmax.kool.util.TextMetrics
 import kotlin.math.abs
 
 /**
@@ -97,6 +98,31 @@ object PlatformTextInputBridge {
     @Volatile
     var onSubmitKey: ((KeyCode) -> Unit)? = null
 
+    /**
+     * A key the platform editor handled was released. The match has to see that key-up even while a
+     * dialog is swallowing keyboard input, or [io.github.rwx.session.GameSession.suppressKeyUntilRelease]
+     * stays latched and the next Enter never opens chat.
+     */
+    @Volatile
+    var onKeyReleased: ((KeyCode) -> Unit)? = null
+
+    /**
+     * The next text field to take focus should ignore Enter until that key is released. Chat is
+     * opened with Enter; the same press must not submit an empty message once the field focuses.
+     */
+    @Volatile
+    private var swallowSubmitUntilRelease: Boolean = false
+
+    fun armSwallowSubmitUntilRelease() {
+        swallowSubmitUntilRelease = true
+    }
+
+    fun consumeSwallowSubmitUntilRelease(): Boolean {
+        val armed = swallowSubmitUntilRelease
+        swallowSubmitUntilRelease = false
+        return armed
+    }
+
     internal fun showOrUpdate(request: PlatformTextInputRequest): Boolean {
         val activeController = controller ?: return false
         activeController.showOrUpdate(request)
@@ -155,6 +181,7 @@ fun UiScope.RwxTextField(
         modifier.selectionRange(currentSelection, currentCaret)
 
         (textField as? UiNode)?.let { node ->
+            val caretForHit = caret.value.coerceIn(0, text.length)
             fun requestCaret(selectionStart: Int, caretPosition: Int) {
                 val start = selectionStart.coerceIn(0, text.length)
                 val position = caretPosition.coerceIn(0, text.length)
@@ -168,7 +195,7 @@ fun UiScope.RwxTextField(
             }
 
             modifier.onClick += { event ->
-                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x, caretForHit, modifier.textAlignX)
                 if (event.pointer.leftButtonRepeatedClickCount > 1) {
                     val bounds = text.wordBoundsAt(index)
                     requestCaret(bounds.first, bounds.second)
@@ -177,13 +204,13 @@ fun UiScope.RwxTextField(
                 }
             }
             modifier.onDragStart += { event ->
-                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x, caretForHit, modifier.textAlignX)
                 dragAnchor.value = index
                 requestCaret(index, index)
             }
             modifier.onDrag += { event ->
                 val anchor = dragAnchor.value.coerceAtLeast(0)
-                val index = node.platformCaretIndex(modifier.font, text, event.position.x)
+                val index = node.platformCaretIndex(modifier.font, text, event.position.x, caretForHit, modifier.textAlignX)
                 requestCaret(anchor, index)
             }
         }
@@ -258,41 +285,109 @@ private fun UiScope.platformCaretRect(
     caret: Int,
     alignX: AlignmentX,
 ): PlatformCaretRect {
-    var textWidth = 0f
-    var caretOffset = 0f
-    val end = caret.coerceIn(0, text.length)
-    for (index in text.indices) {
-        val width = font.charWidth(text[index])
-        if (index < end) caretOffset += width
-        textWidth += width
-    }
-    val originX = when (alignX) {
-        AlignmentX.Start -> node.paddingStartPx
-        AlignmentX.Center -> (node.widthPx - textWidth) / 2f
-        AlignmentX.End -> node.widthPx - textWidth - node.paddingEndPx
-    }
+    val widths = FloatArray(text.length) { index -> font.charWidth(text[index]) }
+    val metricsWidth = if (text.isEmpty()) 0f else font.textDimensions(text, TextMetrics()).width
+    val layout = textFieldCaretLayout(
+        paddingStartPx = node.paddingStartPx,
+        paddingEndPx = node.paddingEndPx,
+        widthPx = node.widthPx,
+        innerWidthPx = node.innerWidthPx,
+        align = alignX,
+        charWidths = widths,
+        caret = caret,
+        metricsWidth = metricsWidth,
+        caretWidthPx = 1f.dp.px,
+        overflowMarginPx = 2f.dp.px,
+    )
     // Same caret box Kool draws: font size plus a few dp, vertically centered in the field.
     val caretHeight = (font.sizePts + 4f).dp.px
     val top = ((node.heightPx - caretHeight) / 2f).coerceAtLeast(0f)
-    val localX = (originX + caretOffset).coerceIn(0f, node.widthPx.coerceAtLeast(0f))
     return PlatformCaretRect(
-        x = node.leftPx + localX,
+        x = node.leftPx + layout.caretLocalX,
         y = node.topPx + top,
         width = 1f,
         height = caretHeight.coerceIn(1f, node.heightPx.coerceAtLeast(1f)),
     )
 }
 
-private fun UiNode.platformCaretIndex(font: Font, text: String, localX: Float): Int {
-    var x = paddingStartPx
-    for (index in text.indices) {
-        val width = font.charWidth(text[index])
+private fun UiNode.platformCaretIndex(
+    font: Font,
+    text: String,
+    localX: Float,
+    caret: Int,
+    alignX: AlignmentX,
+): Int {
+    val widths = FloatArray(text.length) { index -> font.charWidth(text[index]) }
+    val metricsWidth = if (text.isEmpty()) 0f else font.textDimensions(text, TextMetrics()).width
+    val layout = textFieldCaretLayout(
+        paddingStartPx = paddingStartPx,
+        paddingEndPx = paddingEndPx,
+        widthPx = widthPx,
+        innerWidthPx = innerWidthPx,
+        align = alignX,
+        charWidths = widths,
+        caret = caret,
+        metricsWidth = metricsWidth,
+        caretWidthPx = 1f.dp.px,
+        overflowMarginPx = 2f.dp.px,
+    )
+    return caretIndexAt(localX, layout.originX, widths)
+}
+
+/**
+ * Caret placement that follows Kool's text field: character advances, then the same overflow
+ * scroll that keeps the caret inside the field once the line is wider than the box.
+ */
+internal class TextFieldCaretLayout(
+    val originX: Float,
+    val caretLocalX: Float,
+)
+
+internal fun textFieldCaretLayout(
+    paddingStartPx: Float,
+    paddingEndPx: Float,
+    widthPx: Float,
+    innerWidthPx: Float,
+    align: AlignmentX,
+    charWidths: FloatArray,
+    caret: Int,
+    metricsWidth: Float,
+    caretWidthPx: Float,
+    overflowMarginPx: Float,
+): TextFieldCaretLayout {
+    val end = caret.coerceIn(0, charWidths.size)
+    var prefix = 0f
+    for (index in 0 until end) {
+        prefix += charWidths[index]
+    }
+    val originBase = when (align) {
+        AlignmentX.Start -> paddingStartPx
+        AlignmentX.Center -> (widthPx - metricsWidth) / 2f
+        AlignmentX.End -> widthPx - metricsWidth - caretWidthPx - paddingEndPx
+    }
+    val caretWithoutOverflow = originBase + prefix
+    val overflow = if (metricsWidth < innerWidthPx) {
+        0f
+    } else when {
+        caretWithoutOverflow < 0f -> -caretWithoutOverflow
+        caretWithoutOverflow > widthPx -> widthPx - caretWithoutOverflow - overflowMarginPx
+        else -> 0f
+    }
+    val originX = originBase + overflow
+    val caretLocalX = (originX + prefix).coerceIn(0f, widthPx.coerceAtLeast(0f))
+    return TextFieldCaretLayout(originX, caretLocalX)
+}
+
+internal fun caretIndexAt(localX: Float, originX: Float, charWidths: FloatArray): Int {
+    var x = originX
+    for (index in charWidths.indices) {
+        val width = charWidths[index]
         if (x + width >= localX) {
             return if (abs(x - localX) < abs(x + width - localX)) index else index + 1
         }
         x += width
     }
-    return text.length
+    return charWidths.size
 }
 
 private fun String.wordBoundsAt(index: Int): Pair<Int, Int> {

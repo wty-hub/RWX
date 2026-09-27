@@ -1,6 +1,6 @@
 package io.github.rwx.i18n
 
-import java.util.*
+import java.util.Locale
 
 // Auto-generated file - Do not modify
 object I18n {
@@ -362,11 +362,11 @@ object I18n {
                 ),
             )
 
-            val versionCheckValue = entry(
-                key = "mainmenu.about.versionCheckValue",
+            val versionValue = entry(
+                key = "mainmenu.about.versionValue",
                 translations = linkedMapOf(
-                    "en" to "{0}({1}) CompatibleCore:{2} - click to check updates",
-                    "zh-CN" to "{0}({1}) 兼容内核:{2} - 点击检查更新",
+                    "en" to "{0}({1}) CompatibleCore:{2}",
+                    "zh-CN" to "{0}({1}) 兼容内核:{2}",
                 ),
             )
 
@@ -594,14 +594,6 @@ object I18n {
             ),
         )
 
-        val ramUsed = entry(
-            key = "mods.ramUsed",
-            translations = linkedMapOf(
-                "en" to "RAM: {0}",
-                "zh-CN" to "RAM: {0}",
-            ),
-        )
-
         val reload = entry(
             key = "mods.reload",
             translations = linkedMapOf(
@@ -636,6 +628,114 @@ object I18n {
                 "zh-CN" to "正在连接到 {0}...",
             ),
         )
+
+        object filterAccess {
+            val all = entry(
+                key = "multiplayer.filterAccess.all",
+                translations = linkedMapOf(
+                    "en" to "Any access",
+                    "zh-CN" to "不限密码",
+                ),
+            )
+
+            val `open` = entry(
+                key = "multiplayer.filterAccess.open",
+                translations = linkedMapOf(
+                    "en" to "No password",
+                    "zh-CN" to "无密码",
+                ),
+            )
+
+            val password = entry(
+                key = "multiplayer.filterAccess.password",
+                translations = linkedMapOf(
+                    "en" to "Password",
+                    "zh-CN" to "需要密码",
+                ),
+            )
+
+        }
+
+        object filterMods {
+            val all = entry(
+                key = "multiplayer.filterMods.all",
+                translations = linkedMapOf(
+                    "en" to "Any mods",
+                    "zh-CN" to "全部模组",
+                ),
+            )
+
+            val none = entry(
+                key = "multiplayer.filterMods.none",
+                translations = linkedMapOf(
+                    "en" to "No mods",
+                    "zh-CN" to "无模组",
+                ),
+            )
+
+            val required = entry(
+                key = "multiplayer.filterMods.required",
+                translations = linkedMapOf(
+                    "en" to "Has mods",
+                    "zh-CN" to "有模组",
+                ),
+            )
+
+        }
+
+        object filterSlots {
+            val all = entry(
+                key = "multiplayer.filterSlots.all",
+                translations = linkedMapOf(
+                    "en" to "Any slots",
+                    "zh-CN" to "全部人数",
+                ),
+            )
+
+            val `open` = entry(
+                key = "multiplayer.filterSlots.open",
+                translations = linkedMapOf(
+                    "en" to "Open slots",
+                    "zh-CN" to "未满",
+                ),
+            )
+
+        }
+
+        object filterStatus {
+            val all = entry(
+                key = "multiplayer.filterStatus.all",
+                translations = linkedMapOf(
+                    "en" to "Any status",
+                    "zh-CN" to "全部状态",
+                ),
+            )
+
+            val inGame = entry(
+                key = "multiplayer.filterStatus.inGame",
+                translations = linkedMapOf(
+                    "en" to "In game",
+                    "zh-CN" to "游戏中",
+                ),
+            )
+
+            val other = entry(
+                key = "multiplayer.filterStatus.other",
+                translations = linkedMapOf(
+                    "en" to "Other",
+                    "zh-CN" to "其他",
+                ),
+            )
+
+            val waiting = entry(
+                key = "multiplayer.filterStatus.waiting",
+                translations = linkedMapOf(
+                    "en" to "Waiting",
+                    "zh-CN" to "等待中",
+                ),
+            )
+
+        }
 
         val hostGame = entry(
             key = "multiplayer.hostGame",
@@ -781,6 +881,14 @@ object I18n {
             ),
         )
 
+        val noMatches = entry(
+            key = "multiplayer.noMatches",
+            translations = linkedMapOf(
+                "en" to "No rooms match the current filter",
+                "zh-CN" to "没有匹配的房间",
+            ),
+        )
+
         val p2pRoomIdHint = entry(
             key = "multiplayer.p2pRoomIdHint",
             translations = linkedMapOf(
@@ -877,6 +985,14 @@ object I18n {
             translations = linkedMapOf(
                 "en" to "Unable to join server: room is no longer in the list",
                 "zh-CN" to "无法加入服务器：房间已不在列表中",
+            ),
+        )
+
+        val searchHint = entry(
+            key = "multiplayer.searchHint",
+            translations = linkedMapOf(
+                "en" to "host or map",
+                "zh-CN" to "房主或地图",
             ),
         )
 
@@ -1817,113 +1933,6 @@ object I18n {
             translations = linkedMapOf(
                 "en" to "Unlocked",
                 "zh-CN" to "已解锁",
-            ),
-        )
-
-    }
-
-    object update {
-        val availableMessage = entry(
-            key = "update.availableMessage",
-            translations = linkedMapOf(
-                "en" to "New version: {0}\n\nRelease notes:\n{1}",
-                "zh-CN" to "检测到新版本：{0}\n\n更新内容：\n{1}",
-            ),
-        )
-
-        val availableTitle = entry(
-            key = "update.availableTitle",
-            translations = linkedMapOf(
-                "en" to "Update available",
-                "zh-CN" to "发现新版本",
-            ),
-        )
-
-        val checkingMessage = entry(
-            key = "update.checkingMessage",
-            translations = linkedMapOf(
-                "en" to "Checking GitHub releases...",
-                "zh-CN" to "正在检查 GitHub Release...",
-            ),
-        )
-
-        val checkingTitle = entry(
-            key = "update.checkingTitle",
-            translations = linkedMapOf(
-                "en" to "Checking for updates",
-                "zh-CN" to "正在检查更新",
-            ),
-        )
-
-        val failedMessage = entry(
-            key = "update.failedMessage",
-            translations = linkedMapOf(
-                "en" to "Unable to check GitHub releases: {0}",
-                "zh-CN" to "无法检查 GitHub Release：{0}",
-            ),
-        )
-
-        val failedTitle = entry(
-            key = "update.failedTitle",
-            translations = linkedMapOf(
-                "en" to "Update check failed",
-                "zh-CN" to "检查更新失败",
-            ),
-        )
-
-        val latestMessage = entry(
-            key = "update.latestMessage",
-            translations = linkedMapOf(
-                "en" to "You are running the latest version: {0}",
-                "zh-CN" to "当前已是最新版本：{0}",
-            ),
-        )
-
-        val latestTitle = entry(
-            key = "update.latestTitle",
-            translations = linkedMapOf(
-                "en" to "Already up to date",
-                "zh-CN" to "已是最新版本",
-            ),
-        )
-
-        val noReleaseNotes = entry(
-            key = "update.noReleaseNotes",
-            translations = linkedMapOf(
-                "en" to "No release notes provided.",
-                "zh-CN" to "此版本没有提供更新内容。",
-            ),
-        )
-
-        val openRelease = entry(
-            key = "update.openRelease",
-            translations = linkedMapOf(
-                "en" to "Open Release",
-                "zh-CN" to "打开 Release",
-            ),
-        )
-
-        val prerelease = entry(
-            key = "update.prerelease",
-            translations = linkedMapOf(
-                "en" to "Prerelease",
-                "zh-CN" to "预发布版本",
-            ),
-        )
-
-        val publishedAt = entry(
-            key = "update.publishedAt",
-            translations = linkedMapOf(
-                "en" to "Published",
-                "zh-CN" to "发布时间",
-            ),
-        )
-
-        val releasePage = entry(
-            key = "update.releasePage",
-            translations = linkedMapOf(
-                "en" to "Release page",
-                "zh-CN" to "Release 页面",
             ),
         )
 

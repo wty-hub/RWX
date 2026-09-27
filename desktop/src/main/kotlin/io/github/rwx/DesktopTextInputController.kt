@@ -25,6 +25,8 @@ import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import java.awt.event.InputMethodEvent
 import java.awt.event.InputMethodListener
+import java.awt.KeyboardFocusManager
+import java.awt.KeyEventDispatcher
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent as AwtKeyEvent
 import javax.swing.JLayeredPane
@@ -68,6 +70,24 @@ internal class DesktopTextInputController(
 ) : PlatformTextInputController {
 
     private val editor = HiddenImeEditor()
+    private var swallowSubmitUntilRelease = false
+
+    /**
+     * The Enter that opened chat is released on whichever component still has focus. If that is not
+     * this editor, the editor's own key listener never runs and the match keeps ignoring Enter.
+     */
+    private val openingEnterReleaseDispatcher = KeyEventDispatcher { event ->
+        if (
+            swallowSubmitUntilRelease &&
+            event.id == AwtKeyEvent.KEY_RELEASED &&
+            isSubmitKey(event) &&
+            event.source !== editor
+        ) {
+            swallowSubmitUntilRelease = false
+            editorKeyCode(event)?.let(::forwardKeyRelease)
+        }
+        false
+    }
     private val maxLengthFilter = MaxLengthFilter()
 
     /**
@@ -138,7 +158,10 @@ internal class DesktopTextInputController(
             override fun keyReleased(event: AwtKeyEvent) {
                 // The game never sees this release while the editor holds focus. Forward the key-up
                 // so a submit Enter is not treated as still held after the chat window closes.
-                editorKeyCode(event)?.let(releaseKey)
+                if (isSubmitKey(event)) {
+                    swallowSubmitUntilRelease = false
+                }
+                editorKeyCode(event)?.let(::forwardKeyRelease)
             }
 
             override fun keyTyped(event: AwtKeyEvent) {
@@ -193,6 +216,8 @@ internal class DesktopTextInputController(
             editorHost.add(editor)
             editorHost.setComponentZOrder(editor, 0)
         }
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            .addKeyEventDispatcher(openingEnterReleaseDispatcher)
     }
 
     override fun showOrUpdate(request: PlatformTextInputRequest) {
@@ -209,6 +234,7 @@ internal class DesktopTextInputController(
                 focusAttempts = 0
                 editorAbandoned = false
                 focusRequestPending = false
+                swallowSubmitUntilRelease = PlatformTextInputBridge.consumeSwallowSubmitUntilRelease()
                 replaceEditorText(request.text, caretAtEnd = true)
             } else if (request.text != lastForwardedText) {
                 // The Kool side rewrote the text (send-and-clear, filtering, ...): mirror it while
@@ -262,6 +288,8 @@ internal class DesktopTextInputController(
     fun dispose() {
         activeRequest = null
         staleEditingTimer.stop()
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            .removeKeyEventDispatcher(openingEnterReleaseDispatcher)
         runOnEdt {
             endEditing()
             editorHost.remove(editor)
@@ -396,6 +424,7 @@ internal class DesktopTextInputController(
 
             AwtKeyEvent.VK_ENTER -> {
                 event.consume()
+                if (swallowSubmitUntilRelease) return
                 val request = activeRequest ?: return
                 val text = committedEditorText()
                 lastForwardedText = text
@@ -532,6 +561,14 @@ internal class DesktopTextInputController(
         lastSpot = Point(x, y)
         moveImeSpot(x, y)
     }
+
+    private fun forwardKeyRelease(key: KeyCode) {
+        releaseKey(key)
+        PlatformTextInputBridge.onKeyReleased?.invoke(key)
+    }
+
+    private fun isSubmitKey(event: AwtKeyEvent): Boolean =
+        event.keyCode == AwtKeyEvent.VK_ENTER
 
     private fun editorKeyCode(event: AwtKeyEvent): KeyCode? = when (event.keyCode) {
         AwtKeyEvent.VK_ENTER -> if (event.keyLocation == AwtKeyEvent.KEY_LOCATION_NUMPAD) {

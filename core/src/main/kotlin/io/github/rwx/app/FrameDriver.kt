@@ -11,7 +11,6 @@ internal class FrameDriver(
     private val currentScreen: () -> AppScreen,
     private val canvasViewport: () -> KoolCanvasViewport,
     private val coreEventDispatcher: CoreEventDispatcher,
-    private val updateController: UpdateController,
     private val battleRoomController: BattleRoomController,
     private val battleRoomLaunchController: BattleRoomLaunchController,
     private val mapController: MapController,
@@ -31,8 +30,6 @@ internal class FrameDriver(
         }
         coreEventDispatcher.drain(isRenderLoopFrame)
         battleRoomLaunchController.driveDeferredNetworkGameStart()
-        updateController.maybeRequestAutomatic(currentScreen() == AppScreen.MainMenu)
-        updateController.drive()
         driveBattleRoomNetworkPolling(isRenderLoopFrame)
         driveInGameMapTransfers()
         battleRoomJoinController.drive()

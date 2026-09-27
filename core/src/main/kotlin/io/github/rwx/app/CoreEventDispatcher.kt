@@ -47,7 +47,8 @@ internal class CoreEventDispatcher(
                     battleRoomController.updateFromNetwork()
                 }
 
-                is CoreUiEvent.InGameChatRequested -> inGameDialogController.showInGameChatDialog(event.teamOnly)
+                is CoreUiEvent.InGameChatRequested ->
+                    inGameDialogController.showInGameChatDialog(event.teamOnly, openedFromShortcut = true)
                 CoreUiEvent.InGamePlayerListRequested -> inGameDialogController.showInGamePlayerListDialog()
                 is CoreUiEvent.InGameMapJumpRequested -> mapController.jumpToLinkedMap(event)
                 CoreUiEvent.InGameMapListRequested -> mapController.showMapSwitchDialog()

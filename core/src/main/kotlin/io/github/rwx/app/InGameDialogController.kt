@@ -3,8 +3,10 @@ package io.github.rwx.app
 import com.corrodinggames.rts.gameFramework.local.Locale
 import de.fabmax.kool.scene.Scene
 import io.github.rwx.i18n.I18n
+import io.github.rwx.input.KoolKeyCodeMapping
 import io.github.rwx.logger
 import io.github.rwx.mod.registry.UiRegistry
+import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.session.GameSession
 import io.github.rwx.ui.AppScreen
@@ -233,7 +235,18 @@ internal class InGameDialogController(
         )
     }
 
-    fun showInGameChatDialog(teamOnly: Boolean) {
+    fun showInGameChatDialog(teamOnly: Boolean, openedFromShortcut: Boolean = false) {
+        if (openedFromShortcut) {
+            // The Enter that opened chat is still down. Ignore it until release so it cannot
+            // submit the empty field, and so a lost key-up cannot block the next open.
+            gameSession.suppressKeyUntilRelease(KoolKeyCodeMapping.ANDROID_ENTER)
+            gameSession.suppressKeyUntilRelease(KoolKeyCodeMapping.ANDROID_NUMPAD_ENTER)
+            if (teamOnly) {
+                gameSession.suppressKeyUntilRelease(KoolKeyCodeMapping.ANDROID_SHIFT_LEFT)
+                gameSession.suppressKeyUntilRelease(KoolKeyCodeMapping.ANDROID_SHIFT_RIGHT)
+            }
+            PlatformTextInputBridge.armSwallowSubmitUntilRelease()
+        }
         val history = gameSession.multiplayerChatHistory()
         showDialogOverGame(
             Dialog(
@@ -242,7 +255,7 @@ internal class InGameDialogController(
                 listItems = history.asReversed().map { line ->
                     DialogListItem(line.text, line.teamColorIndex)
                 },
-                textInput = DialogTextInput(hint = "Message"),
+                textInput = DialogTextInput(hint = "Message", focusOnShow = true),
                 buttons = listOf(
                     DialogButton(
                         label = "Send",

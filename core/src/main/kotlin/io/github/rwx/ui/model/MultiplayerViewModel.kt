@@ -1,5 +1,6 @@
 package io.github.rwx.ui.model
 
+import io.github.rwx.i18n.I18n
 import io.github.rwx.ui.AppScreen
 
 data class MultiplayerRoomItem(
@@ -17,7 +18,117 @@ data class MultiplayerRoomItem(
     val requiresJoinInput: Boolean = false,
     val joinInputHint: String = "",
     val infoText: String = "",
+    val currentPlayers: Int = -1,
+    val maxPlayers: Int = 0,
 )
+
+enum class MultiplayerStatusFilter {
+    All,
+    Waiting,
+    InGame,
+    Other,
+    ;
+
+    override fun toString(): String = when (this) {
+        All -> I18n.multiplayer.filterStatus.all()
+        Waiting -> I18n.multiplayer.filterStatus.waiting()
+        InGame -> I18n.multiplayer.filterStatus.inGame()
+        Other -> I18n.multiplayer.filterStatus.other()
+    }
+}
+
+enum class MultiplayerSlotFilter {
+    All,
+    Open,
+    ;
+
+    override fun toString(): String = when (this) {
+        All -> I18n.multiplayer.filterSlots.all()
+        Open -> I18n.multiplayer.filterSlots.`open`()
+    }
+}
+
+enum class MultiplayerAccessFilter {
+    All,
+    Open,
+    Password,
+    ;
+
+    override fun toString(): String = when (this) {
+        All -> I18n.multiplayer.filterAccess.all()
+        Open -> I18n.multiplayer.filterAccess.`open`()
+        Password -> I18n.multiplayer.filterAccess.password()
+    }
+}
+
+enum class MultiplayerModFilter {
+    All,
+    None,
+    Required,
+    ;
+
+    override fun toString(): String = when (this) {
+        All -> I18n.multiplayer.filterMods.all()
+        None -> I18n.multiplayer.filterMods.none()
+        Required -> I18n.multiplayer.filterMods.required()
+    }
+}
+
+object MultiplayerRoomBrowser {
+    fun visibleRooms(
+        rooms: List<MultiplayerRoomItem>,
+        query: String,
+        status: MultiplayerStatusFilter,
+        slots: MultiplayerSlotFilter,
+        access: MultiplayerAccessFilter,
+        mods: MultiplayerModFilter,
+    ): List<MultiplayerRoomItem> {
+        val trimmedQuery = query.trim()
+        return rooms.filter { room ->
+            matchesQuery(room, trimmedQuery) &&
+                    matchesStatus(room, status) &&
+                    matchesSlots(room, slots) &&
+                    matchesAccess(room, access) &&
+                    matchesMods(room, mods)
+        }
+    }
+
+    private fun matchesQuery(room: MultiplayerRoomItem, query: String): Boolean {
+        if (query.isBlank()) return true
+        return room.hostName.contains(query, ignoreCase = true) ||
+                room.mapName.contains(query, ignoreCase = true)
+    }
+
+    private fun matchesStatus(room: MultiplayerRoomItem, status: MultiplayerStatusFilter): Boolean {
+        val state = room.stateLabel.trim().lowercase()
+        return when (status) {
+            MultiplayerStatusFilter.All -> true
+            MultiplayerStatusFilter.Waiting -> state == "battleroom"
+            MultiplayerStatusFilter.InGame -> state == "ingame"
+            MultiplayerStatusFilter.Other -> state != "battleroom" && state != "ingame"
+        }
+    }
+
+    private fun matchesSlots(room: MultiplayerRoomItem, slots: MultiplayerSlotFilter): Boolean =
+        when (slots) {
+            MultiplayerSlotFilter.All -> true
+            MultiplayerSlotFilter.Open -> room.currentPlayers >= 0 && room.currentPlayers < room.maxPlayers
+        }
+
+    private fun matchesAccess(room: MultiplayerRoomItem, access: MultiplayerAccessFilter): Boolean =
+        when (access) {
+            MultiplayerAccessFilter.All -> true
+            MultiplayerAccessFilter.Open -> !room.requiresPassword
+            MultiplayerAccessFilter.Password -> room.requiresPassword
+        }
+
+    private fun matchesMods(room: MultiplayerRoomItem, mods: MultiplayerModFilter): Boolean =
+        when (mods) {
+            MultiplayerModFilter.All -> true
+            MultiplayerModFilter.None -> !room.hasMods
+            MultiplayerModFilter.Required -> room.hasMods
+        }
+}
 
 enum class MultiplayerLobbyKind(val label: String) {
     Original("Original RW"),

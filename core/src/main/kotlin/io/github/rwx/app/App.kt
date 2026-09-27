@@ -9,6 +9,7 @@ import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.ui.*
 import io.github.rwx.ui.component.PlatformTextInputBridge
+import io.github.rwx.ui.model.BattleRoomAction
 import io.github.rwx.ui.model.LevelSelectMode
 import io.github.rwx.ui.model.MainMenuConditions
 import io.github.rwx.ui.model.PauseMenuConditions
@@ -62,7 +63,6 @@ fun installApp(
     val menuBackgroundSession = bootstrap.menuBackgroundSession
     val modRepository = bootstrap.modRepository
     val resourceBrowserRepository = bootstrap.resourceBrowserRepository
-    val updateRepository = bootstrap.updateRepository
     val settingsRepository = bootstrap.settingsRepository
     val actions = bootstrap.actions
     val settingsModel = bootstrap.settingsModel
@@ -114,12 +114,10 @@ fun installApp(
         isMenuBackgroundDemoEnabled = { settingsModel.showMainMenuBackgroundDemo.value },
     )
 
-    lateinit var updateController: UpdateController
     val dialogController = DialogController(
         platformBridge = platformBridge,
         appMetadata = appMetadata,
         dialogSceneHost = dialogSceneHost,
-        requestManualUpdateCheck = { updateController.request(manual = true) },
     )
 
     val battleRoomController = BattleRoomController(
@@ -157,13 +155,6 @@ fun installApp(
         navigateTo = { screen -> navigator.navigateTo(screen) },
     )
 
-    updateController = UpdateController(
-        appMetadata = appMetadata,
-        updateRepository = updateRepository,
-        loadingDialogSceneHost = loadingDialogSceneHost,
-        dialogSceneHost = dialogSceneHost,
-        openLink = dialogController::openLink,
-    )
     val multiplayerLobbyController = MultiplayerLobbyController(
         sceneHost = multiplayerSceneHost,
     )
@@ -381,6 +372,7 @@ fun installApp(
                 }
 
                 BackNavigationAction.InGame -> navigator.navigateTo(AppScreen.InGame)
+                BackNavigationAction.CloseBattleRoom -> actions.battleRoom(BattleRoomAction.Back)
             }
         },
     )
@@ -434,6 +426,16 @@ fun installApp(
         }
         if (androidKey != null) gameSession.suppressKeyUntilRelease(androidKey)
     }
+    PlatformTextInputBridge.onKeyReleased = { key ->
+        val androidKey = when (key) {
+            KeyboardInput.KEY_ENTER -> KoolKeyCodeMapping.ANDROID_ENTER
+            KeyboardInput.KEY_NP_ENTER -> KoolKeyCodeMapping.ANDROID_NUMPAD_ENTER
+            KeyboardInput.KEY_SHIFT_LEFT -> KoolKeyCodeMapping.ANDROID_SHIFT_LEFT
+            KeyboardInput.KEY_SHIFT_RIGHT -> KoolKeyCodeMapping.ANDROID_SHIFT_RIGHT
+            else -> null
+        }
+        if (androidKey != null) gameSession.submitKey(androidKey, false)
+    }
     val inputController = InputController(
         gameSession = gameSession,
         currentScreen = { navigator.current },
@@ -460,7 +462,6 @@ fun installApp(
         inGameDialogController = inGameDialogController,
         mapController = mapController,
         sessionActions = sessionActions,
-        updateController = updateController,
         battleRoomJoinController = battleRoomJoinController,
         pendingStartController = pendingStartController,
         externalGameController = externalGameController,

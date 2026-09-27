@@ -160,6 +160,8 @@ internal fun p2pRoomToMultiplayerItem(room: P2PRoomAdvertisement): MultiplayerRo
         },
         stateLabel = room.gameState ?: "unknown",
         infoText = room.getInfoText(),
+        currentPlayers = room.currentPlayers,
+        maxPlayers = room.maxPlayers,
     )
 
 private fun String.withRwxModeSuffix(requiredRwxFeatures: List<String>): String =
@@ -181,6 +183,8 @@ internal fun serverInfoToMultiplayerItem(server: ServerInfo): MultiplayerRoomIte
             else -> "Relay"
         },
         stateLabel = server.gameState ?: "unknown",
+        currentPlayers = server.currentPlayers,
+        maxPlayers = server.maxPlayers,
         joinAddress = server.getConnectDescriptor(),
         originalServerId = server.serverId?.takeIf { it.isNotBlank() },
         infoText = runCatching { server.getInfoText() }.getOrDefault(""),

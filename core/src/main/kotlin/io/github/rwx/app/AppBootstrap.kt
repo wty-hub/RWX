@@ -7,7 +7,6 @@ import io.github.rwx.PlatformBridge
 import io.github.rwx.i18n.I18n
 import io.github.rwx.mod.ModRepository
 import io.github.rwx.net.ResourceBrowserRepository
-import io.github.rwx.net.UpdateRepository
 import io.github.rwx.render.canvas.KoolCanvasSceneHost
 import io.github.rwx.session.GameSession
 import io.github.rwx.settings.GameSettingsRepository
@@ -37,7 +36,6 @@ internal data class AppBootstrap(
     val menuBackgroundSession: GameSession,
     val modRepository: ModRepository,
     val resourceBrowserRepository: ResourceBrowserRepository,
-    val updateRepository: UpdateRepository,
     val settingsRepository: GameSettingsRepository,
     val actions: ActionHandlers,
     val settingsModel: SettingsModel,
@@ -88,7 +86,6 @@ internal fun createAppBootstrap(
     val menuBackgroundSession = gameSession
     val modRepository = koin.get<ModRepository>()
     val resourceBrowserRepository = koin.get<ResourceBrowserRepository>()
-    val updateRepository = koin.get<UpdateRepository>()
     val settingsRepository = koin.get<GameSettingsRepository>()
     val actions = ActionHandlers()
 
@@ -227,7 +224,6 @@ internal fun createAppBootstrap(
         menuBackgroundSession = menuBackgroundSession,
         modRepository = modRepository,
         resourceBrowserRepository = resourceBrowserRepository,
-        updateRepository = updateRepository,
         settingsRepository = settingsRepository,
         actions = actions,
         settingsModel = settingsModel,

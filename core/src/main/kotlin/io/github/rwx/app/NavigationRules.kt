@@ -121,6 +121,7 @@ internal enum class BackNavigationAction {
     ShowExitDialog,
     MainMenu,
     InGame,
+    CloseBattleRoom,
 }
 
 internal fun backActionForScreen(
@@ -135,5 +136,6 @@ internal fun backActionForScreen(
         }
 
         AppScreen.Paused -> BackNavigationAction.ShowExitDialog
+        AppScreen.BattleRoom -> BackNavigationAction.CloseBattleRoom
         else -> BackNavigationAction.MainMenu
     }

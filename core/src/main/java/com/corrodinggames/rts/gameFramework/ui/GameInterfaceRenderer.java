@@ -1810,19 +1810,21 @@ public class GameInterfaceRenderer extends Serializable {
                                     this.gameEngine.soundEngine.playInterfaceSound(SoundEngine.clickSound, 0.8f);
                                 }
                                 UnitActionTimer.startTimer(baseUnit, unitCommand, b14, false);
-                                for (int j = 0; j < n29; ++j) {
-                                    final Command commandForSelectedUnits = this.gameUI.createCommandForSelectedUnits();
-                                    if (!unitCommand.isOnlyOneUnitAtATime()) {
-                                        this.gameUI.setActionCommandTargets(commandForSelectedUnits, unitCommand);
-                                    } else {
-                                        this.gameUI.setActionCommandTarget(commandForSelectedUnits, unitCommand, b14);
-                                    }
-                                    if (b14) {
-                                        commandForSelectedUnits.stopCurrentAction = true;
-                                    }
-                                    commandForSelectedUnits.setActionId(unitCommand.getQueueId());
-                                    if (!b14) {
-                                        this.gameUI.prepareUnitActionCommand(unitCommand, null, null, commandForSelectedUnits);
+                                if (!this.gameUI.issueSmartFactoryProduction(unitCommand, n29, b14)) {
+                                    for (int j = 0; j < n29; ++j) {
+                                        final Command commandForSelectedUnits = this.gameUI.createCommandForSelectedUnits();
+                                        if (!unitCommand.isOnlyOneUnitAtATime()) {
+                                            this.gameUI.setActionCommandTargets(commandForSelectedUnits, unitCommand);
+                                        } else {
+                                            this.gameUI.setActionCommandTarget(commandForSelectedUnits, unitCommand, b14);
+                                        }
+                                        if (b14) {
+                                            commandForSelectedUnits.stopCurrentAction = true;
+                                        }
+                                        commandForSelectedUnits.setActionId(unitCommand.getQueueId());
+                                        if (!b14) {
+                                            this.gameUI.prepareUnitActionCommand(unitCommand, null, null, commandForSelectedUnits);
+                                        }
                                     }
                                 }
                             }

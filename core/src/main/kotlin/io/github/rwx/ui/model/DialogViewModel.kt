@@ -45,6 +45,8 @@ data class DialogTextInput(
     val trailingIcon: Icon? = null,
     val trailingIconTooltip: String? = null,
     val onTrailingIconPress: ((setValue: (String) -> Unit) -> Unit)? = null,
+    /** Put the caret in this field as soon as the dialog is shown. */
+    val focusOnShow: Boolean = false,
 )
 
 data class DialogForm(

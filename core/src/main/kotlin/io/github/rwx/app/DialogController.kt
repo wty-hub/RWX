@@ -11,7 +11,6 @@ internal class DialogController(
     private val platformBridge: PlatformBridge?,
     private val appMetadata: AppMetadata,
     private val dialogSceneHost: DialogSceneHost,
-    private val requestManualUpdateCheck: () -> Unit,
 ) {
     fun showUnavailable(message: String) {
         dialogSceneHost.show(
@@ -33,10 +32,6 @@ internal class DialogController(
         dialogSceneHost.show(
             AboutDialog(
                 appMetadata = appMetadata,
-                onVersionPress = {
-                    dialogSceneHost.hide()
-                    requestManualUpdateCheck()
-                },
                 onOpenLink = ::openLink,
             ),
         )

@@ -170,6 +170,25 @@ class DesktopTextInputControllerTest {
     }
 
     @Test
+    fun `the enter that opened chat is ignored until it is released`() {
+        val released = mutableListOf<KeyCode>()
+        withController(releaseKey = { released += it }) { controller, editor ->
+            val entered = mutableListOf<String>()
+            PlatformTextInputBridge.armSwallowSubmitUntilRelease()
+            controller.showOrUpdate(request(Any(), "hello", onEnter = { entered += it }))
+
+            pressKey(editor, KeyEvent.VK_ENTER)
+            assertEquals(emptyList<String>(), entered)
+
+            releaseKeyEvent(editor, KeyEvent.VK_ENTER)
+            assertEquals(listOf<KeyCode>(KeyboardInput.KEY_ENTER), released)
+
+            pressKey(editor, KeyEvent.VK_ENTER)
+            assertEquals(listOf("hello"), entered)
+        }
+    }
+
+    @Test
     fun `enter invokes the enter handler with the committed text`() {
         withController { controller, editor ->
             val entered = mutableListOf<String>()

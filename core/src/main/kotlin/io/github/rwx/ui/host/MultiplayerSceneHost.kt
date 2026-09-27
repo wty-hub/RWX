@@ -64,17 +64,22 @@ private data class MultiplayerLayoutMetrics(
     val viewportHeight: Dp,
 )
 
-private fun UiScope.multiplayerLayoutMetrics(): MultiplayerLayoutMetrics =
-    MultiplayerLayoutMetrics(
-        contentWidth = ResponsiveContentWidth(
-            defaultWidth = UiTheme.Layout.multiplayerRoomRowWidth,
-            minWidth = UiTheme.Layout.multiplayerMinContentWidth,
-            maxWidth = UiTheme.Layout.multiplayerMaxContentWidth,
-        ),
+private fun UiScope.multiplayerLayoutMetrics(): MultiplayerLayoutMetrics {
+    val contentWidth = ResponsiveContentWidth(
+        defaultWidth = UiTheme.Layout.multiplayerRoomRowWidth,
+        minWidth = UiTheme.Layout.multiplayerMinContentWidth,
+        maxWidth = UiTheme.Layout.multiplayerMaxContentWidth,
+    )
+    val compact = contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP
+    val filterRow = UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.sm.value
+    val filterRows = if (compact) 3f else 1f
+    return MultiplayerLayoutMetrics(
+        contentWidth = contentWidth,
         viewportHeight = ResponsiveViewportHeight(
             defaultHeight = UiTheme.Layout.scrollViewportHeight,
             minHeight = UiTheme.Layout.multiplayerMinViewportHeight,
             maxHeight = UiTheme.Layout.multiplayerMaxViewportHeight,
-            verticalChrome = Dp(160f),
+            verticalChrome = Dp(160f + filterRows * filterRow),
         ),
     )
+}

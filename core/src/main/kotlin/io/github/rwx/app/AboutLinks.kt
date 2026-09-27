@@ -15,7 +15,6 @@ internal const val ABOUT_GITHUB_URL: String = "https://github.com/yomi2539/RWX"
 
 internal fun AboutDialog(
     appMetadata: AppMetadata,
-    onVersionPress: () -> Unit,
     onOpenLink: (String) -> Unit,
 ): Dialog =
     Dialog(
@@ -25,12 +24,11 @@ internal fun AboutDialog(
             DialogInfoRow(
                 icon = Icon.Version,
                 label = I18n.mainmenu.about.version(),
-                value = I18n.mainmenu.about.versionCheckValue(
+                value = I18n.mainmenu.about.versionValue(
                     appMetadata.versionName,
                     appMetadata.versionCode,
                     appMetadata.compatibleCoreVersionCode
                 ),
-                onPress = onVersionPress,
             ),
             DialogInfoRow(
                 icon = Icon.License,

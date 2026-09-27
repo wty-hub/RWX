@@ -66,6 +66,7 @@ fun UiScope.MessageDialog(
                 { onPress { selectedValue -> inputValue.value = selectedValue } }
             },
             onChange = { inputValue.value = it },
+            focusOnShow = input.focusOnShow,
             onEnter = { text ->
                 val sender = dialog.buttons.firstOrNull { button -> button.onInputPress != null }
                     ?: return@TextFieldWithTrailingIcon

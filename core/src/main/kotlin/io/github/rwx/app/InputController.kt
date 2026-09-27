@@ -14,7 +14,7 @@ internal class InputController(
     screenScale: () -> Float,
     private val navigateBack: () -> Unit,
     private val dismissDialog: () -> Boolean = { false },
-    isModalOverlayOpen: () -> Boolean = { false },
+    private val isModalOverlayOpen: () -> Boolean = { false },
 ) {
     private val legacyPointerSink = LegacyGamePointerSink(
         gameSession = gameSession,
@@ -48,7 +48,10 @@ internal class InputController(
             legacyPointerSink,
         )
         InputStack.defaultInputHandler.keyboardListeners += GatedKeyboardListener(
-            { shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) },
+            {
+                shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) &&
+                    !isModalOverlayOpen()
+            },
             LegacyGameKeyboardSink(gameSession),
         )
     }

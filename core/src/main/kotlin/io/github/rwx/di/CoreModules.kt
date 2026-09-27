@@ -4,7 +4,6 @@ import io.github.rwx.PlatformStorage
 import io.github.rwx.PreferenceStorage
 import io.github.rwx.mod.ModRepository
 import io.github.rwx.net.ResourceBrowserRepository
-import io.github.rwx.net.UpdateRepository
 import io.github.rwx.render.canvas.*
 import io.github.rwx.settings.GameSettingsRepository
 import io.github.rwx.ui.host.*
@@ -24,7 +23,6 @@ val coreModule = module {
         )
     }
     single { ResourceBrowserRepository(storage = get<PlatformStorage>()) }
-    single { UpdateRepository() }
     single<KoolCanvasTextureStore> { KoolCanvasTextureRegistry }
     single<KoolCanvasTextureResolver> { get<KoolCanvasTextureStore>() }
     single<KoolCanvasContextResourceInvalidator> { KoolCanvasTextureRegistry }

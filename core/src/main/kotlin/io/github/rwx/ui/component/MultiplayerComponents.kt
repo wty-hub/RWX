@@ -3,9 +3,14 @@ package io.github.rwx.ui.component
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.i18n.I18n
 import io.github.rwx.ui.ColorSchemeDefinition
+import io.github.rwx.ui.model.MultiplayerAccessFilter
 import io.github.rwx.ui.model.MultiplayerLobbyKind
+import io.github.rwx.ui.model.MultiplayerModFilter
+import io.github.rwx.ui.model.MultiplayerRoomBrowser
 import io.github.rwx.ui.model.MultiplayerRoomItem
 import io.github.rwx.ui.model.MultiplayerRoomListModel
+import io.github.rwx.ui.model.MultiplayerSlotFilter
+import io.github.rwx.ui.model.MultiplayerStatusFilter
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.fraction
 import io.github.rwx.ui.remainingAfter
@@ -87,6 +92,28 @@ fun UiScope.MultiplayerRoomList(
     viewportHeight: Dp = UiTheme.Layout.scrollViewportHeight,
     actions: MultiplayerRoomListActions,
 ) {
+    val searchText = remember("")
+    val statusIndex = remember(0)
+    val slotIndex = remember(0)
+    val accessIndex = remember(0)
+    val modIndex = remember(0)
+    val statusFilters = MultiplayerStatusFilter.entries
+    val slotFilters = MultiplayerSlotFilter.entries
+    val accessFilters = MultiplayerAccessFilter.entries
+    val modFilters = MultiplayerModFilter.entries
+    val selectedStatus = statusFilters[statusIndex.use().coerceIn(statusFilters.indices)]
+    val selectedSlots = slotFilters[slotIndex.use().coerceIn(slotFilters.indices)]
+    val selectedAccess = accessFilters[accessIndex.use().coerceIn(accessFilters.indices)]
+    val selectedMods = modFilters[modIndex.use().coerceIn(modFilters.indices)]
+    val visibleRooms = MultiplayerRoomBrowser.visibleRooms(
+        rooms = model.rooms,
+        query = searchText.use(),
+        status = selectedStatus,
+        slots = selectedSlots,
+        access = selectedAccess,
+        mods = selectedMods,
+    )
+
     MultiplayerLobbySwitcher(
         selected = model.lobbyKind,
         theme = theme,
@@ -95,12 +122,41 @@ fun UiScope.MultiplayerRoomList(
         onConfigure = actions.onConfigure,
         onSelected = actions.onSwitchLobby,
     )
+    MultiplayerRoomFilterBar(
+        searchText = searchText.use(),
+        statusFilters = statusFilters,
+        selectedStatusIndex = statusIndex.use().coerceIn(statusFilters.indices),
+        slotFilters = slotFilters,
+        selectedSlotIndex = slotIndex.use().coerceIn(slotFilters.indices),
+        accessFilters = accessFilters,
+        selectedAccessIndex = accessIndex.use().coerceIn(accessFilters.indices),
+        modFilters = modFilters,
+        selectedModIndex = modIndex.use().coerceIn(modFilters.indices),
+        theme = theme,
+        contentWidth = contentWidth,
+        onSearchTextChanged = { searchText.value = it },
+        onStatusSelected = { statusIndex.value = it },
+        onSlotsSelected = { slotIndex.value = it },
+        onAccessSelected = { accessIndex.value = it },
+        onModsSelected = { modIndex.value = it },
+    )
 
     if (model.rooms.isEmpty() && model.statusText.isNotEmpty()) {
         BodyText(model.statusText, theme, contentWidth)
+    } else if (model.rooms.isNotEmpty() && visibleRooms.isEmpty()) {
+        Box(width = contentWidth, height = viewportHeight) {
+            Text(I18n.multiplayer.noMatches()) {
+                modifier
+                    .width(Grow.Std)
+                    .height(Grow.Std)
+                    .font(UiTheme.Fonts.bodySmall)
+                    .textAlign(AlignmentX.Center, AlignmentY.Center)
+                    .textColor(theme.palette.textSecondary)
+            }
+        }
     } else {
         ScrollableVerticalList(
-            items = model.rooms,
+            items = visibleRooms,
             theme = theme,
             width = contentWidth,
             height = viewportHeight,
@@ -151,6 +207,140 @@ fun UiScope.MultiplayerRoomList(
             }
         }
     }
+}
+
+private fun UiScope.MultiplayerRoomFilterBar(
+    searchText: String,
+    statusFilters: List<MultiplayerStatusFilter>,
+    selectedStatusIndex: Int,
+    slotFilters: List<MultiplayerSlotFilter>,
+    selectedSlotIndex: Int,
+    accessFilters: List<MultiplayerAccessFilter>,
+    selectedAccessIndex: Int,
+    modFilters: List<MultiplayerModFilter>,
+    selectedModIndex: Int,
+    theme: ColorSchemeDefinition,
+    contentWidth: Dp,
+    onSearchTextChanged: (String) -> Unit,
+    onStatusSelected: (Int) -> Unit,
+    onSlotsSelected: (Int) -> Unit,
+    onAccessSelected: (Int) -> Unit,
+    onModsSelected: (Int) -> Unit,
+) {
+    val compact = contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP
+    if (compact) {
+        Column(width = contentWidth) {
+            modifier.margin(bottom = UiTheme.Spacing.sm)
+            MultiplayerSearchField(searchText, contentWidth, theme, onSearchTextChanged)
+            Row(width = contentWidth) {
+                modifier.margin(top = UiTheme.Spacing.xs)
+                val comboWidth = contentWidth.splitEvenly(
+                    count = 2,
+                    totalGap = UiTheme.Spacing.sm,
+                    minWidth = Dp(96f),
+                    maxWidth = contentWidth,
+                )
+                MultiplayerFilterCombo(statusFilters, selectedStatusIndex, comboWidth, theme, onStatusSelected)
+                MultiplayerFilterCombo(slotFilters, selectedSlotIndex, comboWidth, theme, onSlotsSelected)
+                    .modifier.margin(start = UiTheme.Spacing.sm)
+            }
+            Row(width = contentWidth) {
+                modifier.margin(top = UiTheme.Spacing.xs)
+                val comboWidth = contentWidth.splitEvenly(
+                    count = 2,
+                    totalGap = UiTheme.Spacing.sm,
+                    minWidth = Dp(96f),
+                    maxWidth = contentWidth,
+                )
+                MultiplayerFilterCombo(accessFilters, selectedAccessIndex, comboWidth, theme, onAccessSelected)
+                MultiplayerFilterCombo(modFilters, selectedModIndex, comboWidth, theme, onModsSelected)
+                    .modifier.margin(start = UiTheme.Spacing.sm)
+            }
+        }
+        return
+    }
+
+    val gap = UiTheme.Spacing.sm
+    val comboGaps = Dp(4f * gap.value)
+    val comboWidth = Dp(
+        ((contentWidth.value - MULTIPLAYER_SEARCH_MIN_WIDTH_DP - comboGaps.value) / 4f)
+            .coerceIn(MULTIPLAYER_FILTER_COMBO_MIN_WIDTH_DP, MULTIPLAYER_FILTER_COMBO_MAX_WIDTH_DP)
+    )
+    val searchWidth = contentWidth.remainingAfter(Dp(comboWidth.value * 4f + comboGaps.value), Dp(120f))
+    Row(width = contentWidth, height = UiTheme.Layout.menuButtonHeight) {
+        modifier.margin(bottom = UiTheme.Spacing.sm)
+        MultiplayerSearchField(searchText, searchWidth, theme, onSearchTextChanged)
+        MultiplayerFilterCombo(statusFilters, selectedStatusIndex, comboWidth, theme, onStatusSelected)
+            .modifier.margin(start = gap)
+        MultiplayerFilterCombo(slotFilters, selectedSlotIndex, comboWidth, theme, onSlotsSelected)
+            .modifier.margin(start = gap)
+        MultiplayerFilterCombo(accessFilters, selectedAccessIndex, comboWidth, theme, onAccessSelected)
+            .modifier.margin(start = gap)
+        MultiplayerFilterCombo(modFilters, selectedModIndex, comboWidth, theme, onModsSelected)
+            .modifier.margin(start = gap)
+    }
+}
+
+private fun UiScope.MultiplayerSearchField(
+    searchText: String,
+    width: Dp,
+    theme: ColorSchemeDefinition,
+    onSearchTextChanged: (String) -> Unit,
+) {
+    Row(width = width, height = UiTheme.Layout.menuButtonHeight) {
+        Icon(Icon.Search, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary)
+            .modifier
+            .alignY(AlignmentY.Center)
+            .margin(end = UiTheme.Spacing.xs)
+        RwxTextField(searchText) {
+            modifier
+                .width(width.remainingAfter(Dp(UiTheme.Layout.textButtonGlyphSize.value + UiTheme.Spacing.xs.value)))
+                .height(UiTheme.Layout.menuButtonHeight)
+                .padding(start = UiTheme.Spacing.sm)
+                .hint(I18n.multiplayer.searchHint())
+                .font(UiTheme.Fonts.bodySmall)
+                .colors(
+                    textColor = theme.palette.textPrimary,
+                    hintColor = theme.palette.textSecondary,
+                    lineColor = theme.palette.borderSubtle,
+                    lineColorFocused = theme.palette.primary,
+                    cursorColor = theme.palette.primary,
+                    selectionColor = theme.palette.primaryContainer,
+                )
+                .onChange(onSearchTextChanged)
+        }
+    }
+}
+
+private fun UiScope.MultiplayerFilterCombo(
+    items: List<Any>,
+    selectedIndex: Int,
+    width: Dp,
+    theme: ColorSchemeDefinition,
+    onSelected: (Int) -> Unit,
+): UiScope = RwxComboBox {
+    modifier
+        .width(width)
+        .height(UiTheme.Layout.menuButtonHeight)
+        .font(UiTheme.Fonts.bodySmall)
+        .items(items)
+        .selectedIndex(selectedIndex)
+        .colors(
+            textColor = theme.palette.textPrimary,
+            textBackgroundColor = theme.palette.surfaceSunken,
+            textBackgroundHoverColor = theme.palette.surfaceRaised,
+            expanderColor = theme.palette.primaryContainer,
+            expanderHoverColor = theme.palette.primary,
+            expanderArrowColor = theme.palette.textPrimary,
+        )
+        .popupColors(
+            popupTextColor = theme.palette.textPrimary,
+            popupBackgroundColor = theme.palette.surfaceBase,
+            popupHoverColor = theme.palette.primaryContainer,
+            popupHoverTextColor = theme.palette.textPrimary,
+            popupBorderColor = theme.palette.borderSubtle,
+        )
+        .onItemSelected(onSelected)
 }
 
 private fun UiScope.MultiplayerLobbySwitcher(
@@ -227,7 +417,10 @@ private fun roomMarkers(room: MultiplayerRoomItem): String = buildString {
     }
 }
 
-private const val MULTIPLAYER_COMPACT_WIDTH_DP: Float = 720f
+internal const val MULTIPLAYER_COMPACT_WIDTH_DP: Float = 720f
+private const val MULTIPLAYER_SEARCH_MIN_WIDTH_DP: Float = 200f
+private const val MULTIPLAYER_FILTER_COMBO_MIN_WIDTH_DP: Float = 88f
+private const val MULTIPLAYER_FILTER_COMBO_MAX_WIDTH_DP: Float = 168f
 
 data class MultiplayerRoomListActions(
     val onJoinRoom: (String) -> Unit,
