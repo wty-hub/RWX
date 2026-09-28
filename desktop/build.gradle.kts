@@ -70,6 +70,9 @@ val targetPlatform = providers.gradleProperty("targetPlatform")
     .map(DesktopPlatform::fromId)
     .getOrElse(hostPlatform)
 val jpackageVersion = project.version.toString().substringBefore('-').substringBefore('+')
+val packagingJava = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+}
 
 val slickNatives by configurations.creating {
     isCanBeResolved = true
@@ -346,9 +349,9 @@ val createJpackageImage by tasks.registering(Exec::class) {
 
         delete(jpackageImageDir.get().asFile)
         val executableName = if (hostPlatform.osName == "windows") "jpackage.exe" else "jpackage"
-        val executable = File(System.getProperty("java.home"), "bin/$executableName")
+        val executable = packagingJava.get().metadata.installationPath.file("bin/$executableName").asFile
         if (!executable.isFile) {
-            throw GradleException("jpackage was not found in ${System.getProperty("java.home")}")
+            throw GradleException("jpackage was not found in ${packagingJava.get().metadata.installationPath}")
         }
 
         val args = mutableListOf(
@@ -419,7 +422,7 @@ if (targetPlatform.osName == "windows") {
         description = "Replaces the jpackage launcher with the bundled-runtime Windows launcher."
         dependsOn(createJpackageImage, createWindowsLauncher)
         from(layout.buildDirectory.file("launch4j/windows/$appName.exe"))
-        from(File(System.getProperty("java.home"), "bin/javaw.exe")) {
+        from(packagingJava.map { it.metadata.installationPath.file("bin/javaw.exe") }) {
             into("runtime/bin")
         }
         into(jpackageImageDir.map { it.dir(packagedAppName) })

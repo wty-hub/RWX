@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
 
 object KoolDesktopMain : KoinComponent {
-    private val logger = LoggerFactory.getLogger("Desktop")
+    private val logger by lazy { LoggerFactory.getLogger("Desktop") }
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -39,8 +39,8 @@ object KoolDesktopMain : KoinComponent {
             HeadlessMain.main(args)
             return
         }
-        LinuxInputMethodBootstrap.install()
         configureDesktopLogging()
+        LinuxInputMethodBootstrap.install()
         System.setProperty(LWJGL_CONTEXT_API_PROPERTY, LWJGL_NATIVE_CONTEXT_API)
         run(args)
     }
@@ -59,8 +59,12 @@ object KoolDesktopMain : KoinComponent {
         configureKoolOverlayFramebuffer()
         val options = AppOptions.parseArgs(args, isDesktop = true)
         val renderBackend = selectedRenderBackend()
+        val fullscreenRequested = SettingsEngine.getInstance().slick2dFullScreen
+        if (fullscreenRequested && isMacOs()) {
+            logger.warn("Starting in a window because macOS fullscreen crashes the AWT OpenGL game canvas")
+        }
         val swingHost = SwingKoolHost.create(
-            fullscreen = SettingsEngine.getInstance().slick2dFullScreen,
+            fullscreen = desktopStartupFullscreen(fullscreenRequested),
             useOpenGl = renderBackend == RenderBackendGl.Companion,
         )
         val bridge=get<PlatformBridge>()
@@ -95,22 +99,27 @@ object KoolDesktopMain : KoinComponent {
         renderBackend = renderBackend,
         windowSubsystem = swingHost.windowSubsystem,
         asyncSceneUpdate = false,
-        useOpenGlFallback = true,
+        // The host provides a different AWT canvas type for Vulkan and OpenGL. Falling back to
+        // OpenGL after creating a regular Vulkan canvas cannot produce a working window.
+        useOpenGlFallback = false,
     )
 
     private fun selectedRenderBackend(): BackendProvider = resolveDesktopRenderBackend(
         System.getProperty(RENDER_BACKEND_PROPERTY) ?: System.getenv(RENDER_BACKEND_ENV),
     )
 
-    /**
-     * Default is OpenGL: the desktop host composites a Kool UI overlay with a Slick/OpenGL game
-     * canvas. Vulkan+OpenGL coexistence regularly aborts the JVM with exit code 1 and no Java
-     * stacktrace on Intel Iris Xe (and similar) drivers. Force Vulkan with
-     * `-Drwx.kool.backend=vulkan` / `-PrwxKoolBackend=vulkan` when desired.
-     */
-    internal fun resolveDesktopRenderBackend(requestedBackend: String?): BackendProvider {
+    /** macOS needs Vulkan for the Kool overlay: its AWT OpenGL path can call Cocoa off the main thread. */
+    internal fun resolveDesktopRenderBackend(
+        requestedBackend: String?,
+        osName: String = System.getProperty("os.name"),
+    ): BackendProvider {
         val backend = when (requestedBackend?.lowercase()) {
-            null, "", "opengl", "gl" -> RenderBackendGl.Companion
+            null, "" -> if (isMacOs(osName)) {
+                RenderBackendVk.Companion
+            } else {
+                RenderBackendGl.Companion
+            }
+            "opengl", "gl" -> RenderBackendGl.Companion
             "vulkan", "vk" -> RenderBackendVk.Companion
             "webgpu", "wgpu" -> throw IllegalArgumentException(
                 "Kool WebGPU backend is not available in kool-core-desktop 0.19.0; " +
@@ -124,6 +133,12 @@ object KoolDesktopMain : KoinComponent {
         logger.info("Using Kool render backend: ${backend.displayName}")
         return backend
     }
+
+    internal fun desktopStartupFullscreen(requested: Boolean, osName: String = System.getProperty("os.name")): Boolean =
+        requested && !isMacOs(osName)
+
+    private fun isMacOs(osName: String = System.getProperty("os.name")): Boolean =
+        osName.startsWith("Mac", ignoreCase = true)
 
     private suspend fun installMsdfFonts() {
         UiTheme.Fonts.install()

@@ -63,6 +63,9 @@
 ./gradlew :android:assembleRelease
 ```
 
+macOS 桌面版默认使用 Vulkan；即使保存了全屏设置，也会以窗口模式启动。目前 AWT OpenGL 全屏路径会触发原生崩溃。
+桌面日志位于 `~/Library/Application Support/rwx/logs/rwx.log`。
+
 更多信息请参考 [CI/CD 配置](.github/workflows/ci.yml) 以及
 [文档站快速开始](https://rwx-docs.netlify.app/zh/tutorial/getting-started)。
 

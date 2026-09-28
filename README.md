@@ -62,6 +62,10 @@ Java 25 is required. Common release tasks:
 ./gradlew :android:assembleRelease
 ```
 
+On macOS, the desktop UI uses Vulkan and starts in a window even if fullscreen was saved. The
+AWT OpenGL fullscreen path currently causes native crashes. Desktop logs are written to
+`~/Library/Application Support/rwx/logs/rwx.log`.
+
 See the [workflow](.github/workflows/ci.yml) and the
 [getting started guide](https://rwx-docs.netlify.app/tutorial/getting-started) for more details.
 

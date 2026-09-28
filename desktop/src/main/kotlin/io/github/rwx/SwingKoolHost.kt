@@ -184,9 +184,11 @@ class SwingKoolHost private constructor(
         launchOnIO("shutdown-slick") {
             runCatching { SlickCanvasHost.shutdownRenderer() }
             windowSubsystem.close {
-                overlayWindow.dispose()
-                frame.dispose()
-                exitProcess(0)
+                SwingUtilities.invokeLater {
+                    overlayWindow.dispose()
+                    frame.dispose()
+                    exitProcess(0)
+                }
             }
         }
     }

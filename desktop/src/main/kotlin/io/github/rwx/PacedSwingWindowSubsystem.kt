@@ -53,6 +53,10 @@ class PacedSwingWindowSubsystem(
 
     fun close(onClosed: () -> Unit) {
         isCloseRequested = true
+        if (delegate.providedCanvas !is KoolGlCanvas) {
+            delegate.close(onClosed)
+            return
+        }
         closeSignal.invokeOnCompletion { onClosed() }
     }
 
@@ -61,11 +65,16 @@ class PacedSwingWindowSubsystem(
 
         override fun run() {
             when {
-                !canvas.isValid -> GL.setCapabilities(null)
                 isCloseRequested -> {
                     scheduler.shutdownNow()
                     shutdownKool()
                     closeSignal.complete(Unit)
+                }
+                !canvas.isValid -> {
+                    // Resizing or recreating the AWT peer can make the canvas invalid for a frame.
+                    // Keep the loop alive so the UI returns when the surface becomes valid again.
+                    GL.setCapabilities(null)
+                    scheduleNext()
                 }
                 else -> {
                     window?.pollEvents()

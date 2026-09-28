@@ -325,7 +325,7 @@ internal fun configureDesktopLogging() {
     configure(
         property = "rwx.log.dir",
         environment = "RWX_LOG_DIR",
-        defaultValue = File(DesktopPlatformStorage.defaultRoot(), "logs").absolutePath,
+        defaultValue = File(DesktopPlatformStorage.defaultLocalBaseDir(), "logs").absolutePath,
     )
     configure("rwx.log.level", "RWX_LOG_LEVEL", "INFO")
     configure("rwx.log.consoleLevel", "RWX_CONSOLE_LOG_LEVEL", "INFO")
