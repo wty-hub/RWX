@@ -3,6 +3,10 @@ package io.github.rwx.render.canvas
 import de.fabmax.kool.Assets
 import de.fabmax.kool.pipeline.*
 import de.fabmax.kool.util.Uint8Buffer
+import io.github.rwx.logger
+
+private const val COMPLETE_SLICK_FRAME_TEXTURE_ID = "slick-complete-frame"
+private const val CPU_TEXTURE_PROFILE_INTERVAL = 120
 
 @JvmInline
 value class KoolCanvasTextureId(val value: String)
@@ -17,6 +21,7 @@ fun interface KoolCanvasTextureResolver {
 interface KoolCanvasTextureStore : KoolCanvasTextureResolver {
     fun register(id: KoolCanvasTextureId, texture: Texture2d)
     fun registerArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray)
+    fun registerOpaqueArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray)
     fun registerPremultipliedArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray) {
         registerArgb(id, width, height, argbPixels)
     }
@@ -49,6 +54,10 @@ interface KoolCanvasFrameSnapshotRetainer {
     fun retainFrameSnapshot(id: KoolCanvasTextureId)
 }
 
+fun interface KoolCanvasOpaquePixelPacker {
+    fun pack(destination: Uint8Buffer, sourceArgb: IntArray, pixelCount: Int)
+}
+
 object KoolCanvasTextureRegistry :
     KoolCanvasTextureStore,
     KoolCanvasRetiredTextureReleaser,
@@ -62,6 +71,9 @@ object KoolCanvasTextureRegistry :
     private val registeredFrames = mutableMapOf<KoolCanvasTextureId, KoolCanvasFrame>()
     private val argbTextures = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Texture2d>()
     private val argbTextureUploadSlots = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Int>()
+    private val opaqueUploadBuffers = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Array<Uint8Buffer?>>()
+    private val completeFrameArgbBuffers = arrayOfNulls<IntArray>(2)
+    private var completeFrameArgbSlot = -1
     private val argbTextureOwnerSerials = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Long>()
     private val assetTextures = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Texture2d>()
     private val placeholderTextures = mutableMapOf<KoolCanvasTextureFilter, Texture2d>()
@@ -71,6 +83,17 @@ object KoolCanvasTextureRegistry :
     private var frameTextureRevisionValue = 0
     private var nextArgbTextureOwnerSerial = 0L
     private var nextAssetTextureOwnerSerial = 0L
+    private var opaqueCpuSampleCount = 0
+    private var opaqueCpuTotalNanos = 0L
+    private var opaqueCpuPeakNanos = 0L
+    private var opaqueCpuWidth = 0
+    private var opaqueCpuHeight = 0
+    @Volatile
+    private var opaquePixelPacker: KoolCanvasOpaquePixelPacker? = null
+
+    fun setCompleteFramePixelPacker(packer: KoolCanvasOpaquePixelPacker?) {
+        opaquePixelPacker = packer
+    }
 
     override val frameTextureRevision: Int
         @Synchronized get() = frameTextureRevisionValue
@@ -95,14 +118,39 @@ object KoolCanvasTextureRegistry :
             return
         }
         val uploadPixels = bleedTransparentRgb(width, height, argbPixels)
-        val image = KoolCanvasArgbImage(width, height, uploadPixels, premultipliedAlpha = false)
-        registeredArgbImages[id] = image
-        registeredTextures.remove(id)?.retireTexture()
-        registeredAssets.remove(id)
-        registeredFrames.remove(id)
-        releaseCachedAssetTextures(id)
-        refreshCachedArgbTextures(id, image)
-        frameTextureRevisionValue++
+        registerArgbImage(id, KoolCanvasArgbImage(width, height, uploadPixels, premultipliedAlpha = false))
+    }
+
+    /**
+     * Registers a complete game frame. The source may be reused after this call returns; the
+     * registry owns one copied pixel array until the next registration. Alpha is forced opaque
+     * so readback alpha values cannot make the final composite transparent.
+     */
+    @Synchronized
+    override fun registerOpaqueArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray) {
+        if (width <= 0 || height <= 0) {
+            unregister(id)
+            return
+        }
+        val pixelCount = width.toLong() * height
+        require(pixelCount <= Int.MAX_VALUE / 4L && argbPixels.size >= pixelCount) {
+            "Opaque ARGB frame must fit its RGBA upload buffer and contain $pixelCount pixels"
+        }
+        val profileCpu = id.value == COMPLETE_SLICK_FRAME_TEXTURE_ID
+        val startedAt = if (profileCpu) System.nanoTime() else 0L
+        val nextSlot = if (profileCpu) (completeFrameArgbSlot + 1) % completeFrameArgbBuffers.size else -1
+        val opaquePixels = if (profileCpu) {
+            completeFrameArgbBuffers[nextSlot]?.takeIf { it.size == pixelCount.toInt() }
+                ?: IntArray(pixelCount.toInt()).also { completeFrameArgbBuffers[nextSlot] = it }
+        } else {
+            IntArray(pixelCount.toInt())
+        }
+        for (index in opaquePixels.indices) {
+            opaquePixels[index] = argbPixels[index] or 0xff000000.toInt()
+        }
+        registerArgbImage(id, KoolCanvasArgbImage(width, height, opaquePixels, premultipliedAlpha = false))
+        if (profileCpu) completeFrameArgbSlot = nextSlot
+        if (profileCpu) recordOpaqueCpuPreparation(System.nanoTime() - startedAt, width, height)
     }
 
     @Synchronized
@@ -117,6 +165,10 @@ object KoolCanvasTextureRegistry :
             pixels = sanitizePremultipliedRgb(width, height, argbPixels),
             premultipliedAlpha = true,
         )
+        registerArgbImage(id, image)
+    }
+
+    private fun registerArgbImage(id: KoolCanvasTextureId, image: KoolCanvasArgbImage) {
         registeredArgbImages[id] = image
         registeredTextures.remove(id)?.retireTexture()
         registeredAssets.remove(id)
@@ -124,6 +176,30 @@ object KoolCanvasTextureRegistry :
         releaseCachedAssetTextures(id)
         refreshCachedArgbTextures(id, image)
         frameTextureRevisionValue++
+    }
+
+    private fun recordOpaqueCpuPreparation(elapsedNanos: Long, width: Int, height: Int) {
+        if (width != opaqueCpuWidth || height != opaqueCpuHeight) {
+            opaqueCpuSampleCount = 0
+            opaqueCpuTotalNanos = 0L
+            opaqueCpuPeakNanos = 0L
+            opaqueCpuWidth = width
+            opaqueCpuHeight = height
+        }
+        opaqueCpuSampleCount++
+        opaqueCpuTotalNanos += elapsedNanos
+        opaqueCpuPeakNanos = maxOf(opaqueCpuPeakNanos, elapsedNanos)
+        if (opaqueCpuSampleCount == CPU_TEXTURE_PROFILE_INTERVAL) {
+            val averageMicros = opaqueCpuTotalNanos / opaqueCpuSampleCount / 1_000L
+            val peakMicros = opaqueCpuPeakNanos / 1_000L
+            logger.info("SlickCapture") {
+                "Complete-frame CPU texture preparation/queue ${width}x$height: " +
+                    "avg=${averageMicros}us peak=${peakMicros}us over $opaqueCpuSampleCount frames"
+            }
+            opaqueCpuSampleCount = 0
+            opaqueCpuTotalNanos = 0L
+            opaqueCpuPeakNanos = 0L
+        }
     }
 
     @Synchronized
@@ -161,6 +237,10 @@ object KoolCanvasTextureRegistry :
             return
         }
         registeredTextures.remove(id)?.retireTexture()
+        if (id.value == COMPLETE_SLICK_FRAME_TEXTURE_ID) {
+            completeFrameArgbBuffers.fill(null)
+            completeFrameArgbSlot = -1
+        }
         registeredArgbImages.remove(id)
         registeredAssets.remove(id)
         registeredFrames.remove(id)
@@ -193,6 +273,7 @@ object KoolCanvasTextureRegistry :
         registeredTextures.clear()
         argbTextures.clear()
         argbTextureUploadSlots.clear()
+        opaqueUploadBuffers.clear()
         argbTextureOwnerSerials.clear()
         assetTextures.clear()
         placeholderTextures.clear()
@@ -230,7 +311,10 @@ object KoolCanvasTextureRegistry :
             argbTextureUploadSlots[key] = 0
             argbTextureOwnerSerials[key] = ownerSerial
             Texture2d(
-                data = argbImageData(id, filter, ownerSerial, 0, image.width, image.height, image.pixels),
+                data = argbImageData(
+                    id, filter, ownerSerial, 0, image.width, image.height, image.pixels,
+                    reusableOpaqueUploadBuffer(key, 0, image.width, image.height),
+                ),
                 mipMapping = MipMapping.Off,
                 samplerSettings = samplerSettings(filter),
                 name = "rwx-canvas-argb-${id.value}-$filter-$ownerSerial",
@@ -286,6 +370,7 @@ object KoolCanvasTextureRegistry :
     private fun releaseCachedArgbTextures(id: KoolCanvasTextureId) {
         releaseCachedTextures(argbTextures, id)
         argbTextureUploadSlots.keys.removeAll { it.first == id }
+        opaqueUploadBuffers.keys.removeAll { it.first == id }
         argbTextureOwnerSerials.keys.removeAll { it.first == id }
     }
 
@@ -315,7 +400,10 @@ object KoolCanvasTextureRegistry :
                 val ownerSerial = checkNotNull(argbTextureOwnerSerials[key])
                 argbTextureUploadSlots[key] = uploadSlot
                 texture.uploadLazy(
-                    argbImageData(id, key.second, ownerSerial, uploadSlot, image.width, image.height, image.pixels)
+                    argbImageData(
+                        id, key.second, ownerSerial, uploadSlot, image.width, image.height, image.pixels,
+                        reusableOpaqueUploadBuffer(key, uploadSlot, image.width, image.height),
+                    )
                 )
             }
         }
@@ -365,17 +453,23 @@ object KoolCanvasTextureRegistry :
         width: Int,
         height: Int,
         argbPixels: IntArray,
+        reusableBuffer: Uint8Buffer? = null,
     ): ImageData2d {
         val pixelCount = width * height
-        val pixels = Uint8Buffer(pixelCount * 4)
-        for (index in 0 until pixelCount) {
-            val argb = argbPixels.getOrElse(index) { 0 }
-            val alpha = (argb ushr 24) and 0xff
-            val offset = index * 4
-            pixels[offset] = ((argb ushr 16) and 0xff).toUByte()
-            pixels[offset + 1] = ((argb ushr 8) and 0xff).toUByte()
-            pixels[offset + 2] = (argb and 0xff).toUByte()
-            pixels[offset + 3] = alpha.toUByte()
+        val pixels = reusableBuffer ?: Uint8Buffer(pixelCount * 4)
+        val packer = opaquePixelPacker?.takeIf { id.value == COMPLETE_SLICK_FRAME_TEXTURE_ID }
+        if (packer != null) {
+            packer.pack(pixels, argbPixels, pixelCount)
+        } else {
+            for (index in 0 until pixelCount) {
+                val argb = argbPixels.getOrElse(index) { 0 }
+                val alpha = (argb ushr 24) and 0xff
+                val offset = index * 4
+                pixels[offset] = ((argb ushr 16) and 0xff).toUByte()
+                pixels[offset + 1] = ((argb ushr 8) and 0xff).toUByte()
+                pixels[offset + 2] = (argb and 0xff).toUByte()
+                pixels[offset + 3] = alpha.toUByte()
+            }
         }
         return BufferedImageData2d(
             data = pixels,
@@ -386,6 +480,19 @@ object KoolCanvasTextureRegistry :
             // filter needs its own key; alternating slots then bound updates for that owner.
             id = "rwx-canvas-argb-${id.value}-$filter-$ownerSerial-$uploadSlot",
         )
+    }
+
+    private fun reusableOpaqueUploadBuffer(
+        key: Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>,
+        slot: Int,
+        width: Int,
+        height: Int,
+    ): Uint8Buffer? {
+        if (key.first.value != COMPLETE_SLICK_FRAME_TEXTURE_ID) return null
+        val byteCount = width * height * 4
+        val buffers = opaqueUploadBuffers.getOrPut(key) { arrayOfNulls(2) }
+        return buffers[slot]?.takeIf { it.capacity == byteCount }
+            ?: Uint8Buffer(byteCount).also { buffers[slot] = it }
     }
 
     private fun bleedTransparentRgb(width: Int, height: Int, argbPixels: IntArray): IntArray {

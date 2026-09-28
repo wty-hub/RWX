@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.scene.geometry.MeshBuilder
 import de.fabmax.kool.util.Color
@@ -19,11 +21,9 @@ fun UiScope.ProgressLoadingDialog(
 ) {
     LoadingDialogTitle(title, theme, contentWidth)
     LoadingDialogMessage(message, theme, contentWidth)
-    LoadingProgressBar(
-        progress = progress,
-        width = contentWidth,
-        theme = theme,
-    )
+    Box(width = contentWidth, height = LoadingDialogIndicatorSlotHeight) {
+        LoadingProgressBar(progress = progress, width = contentWidth, theme = theme)
+    }
     Row {
         modifier.alignX(AlignmentX.Center)
         TextIconButton(I18n.common.cancel(), Icon.Close,  UiTheme.Layout.dialogButtonWidth, theme, onPressed = onCancel)
@@ -39,19 +39,21 @@ fun UiScope.CircularLoadingDialog(
     onCancel: () -> Unit,
 ) {
     LoadingDialogTitle(title, theme, contentWidth)
-    CircularLoadingIndicator(
-        size = LoadingDialogSpinnerSize,
-        strokeWidth = LoadingDialogSpinnerStroke,
-        theme = theme,
-    ).modifier
-        .alignX(AlignmentX.Center)
-        .margin(bottom = UiTheme.Spacing.lg)
     LoadingDialogMessage(message, theme, contentWidth)
+    Box(width = contentWidth, height = LoadingDialogIndicatorSlotHeight) {
+        CircularLoadingIndicator(
+            size = LoadingDialogSpinnerSize,
+            strokeWidth = LoadingDialogSpinnerStroke,
+            theme = theme,
+        ).modifier.alignX(AlignmentX.Center)
+    }
     Row{
         modifier.alignX(AlignmentX.Center)
         TextIconButton(I18n.common.cancel(), Icon.Close,  UiTheme.Layout.dialogButtonWidth, theme,onPressed = onCancel)
     }
 }
+
+private val LoadingDialogIndicatorSlotHeight = Dp(48f)
 
 fun UiScope.CircularLoadingIndicator(
     size: Dp,
@@ -86,14 +88,14 @@ fun UiScope.LoadingProgressBar(
     Box(width = width, height = LoadingProgressHeight) {
         modifier
             .alignX(AlignmentX.Center)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
             .padding(trackPadding)
 
         Box(width = fillWidth, height = LoadingProgressInnerHeight) {
             modifier
                 .align(AlignmentX.Start, AlignmentY.Center)
-                .background(RoundRectBackground(theme.palette.primary, Dp(3f)))
+                .background(RoundRectBackground(theme.palette.primary, theme.smallCornerRadius))
         }
     }
 }
@@ -106,9 +108,12 @@ private fun UiScope.LoadingDialogTitle(
     Text(title) {
         modifier
             .width(contentWidth)
+            .height(Dp(52f))
             .margin(bottom = UiTheme.Spacing.md)
             .font(UiTheme.Fonts.headingMedium)
             .textAlign(AlignmentX.Center, AlignmentY.Center)
+            .isWrapText(false)
+            .clipToBounds(true)
             .textColor(theme.palette.textPrimary)
     }
 }
@@ -121,10 +126,12 @@ private fun UiScope.LoadingDialogMessage(
     Text(message) {
         modifier
             .width(contentWidth)
+            .height(Dp(88f))
             .margin(bottom = UiTheme.Spacing.lg)
             .font(UiTheme.Fonts.bodySmall)
             .textAlign(AlignmentX.Center, AlignmentY.Center)
             .isWrapText(true)
+            .clipToBounds(true)
             .textColor(theme.palette.textSecondary)
     }
 }

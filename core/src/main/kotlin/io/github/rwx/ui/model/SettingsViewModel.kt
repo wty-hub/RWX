@@ -19,12 +19,13 @@ enum class SettingsPage(val title: String, val tabTitle: String) {
     Interface("Interface", "Interface"),
     Gameplay("Gameplay", "Gameplay"),
     KeyBindings("Key Bindings", "Keys"),
-    ColorScheme("Color Scheme", "Colors"),
+    ColorScheme("In-game Color Scheme", "Game Colors"),
 }
 
 sealed interface SettingsPageItem {
     data class Toggle(val toggle: SettingToggle) : SettingsPageItem
     data class Slider(val slider: SettingSlider) : SettingsPageItem
+    data object MaxFrameRate : SettingsPageItem
     data class ColorSchemeSelector(val item: SettingColorSchemeItem, val selected: Boolean) : SettingsPageItem
     data class StorageLocation(val selectedType: Int) : SettingsPageItem
 }
@@ -34,6 +35,7 @@ sealed interface SettingsScrollRow {
     data class BodyText(val text: String) : SettingsScrollRow
     data class Toggle(val toggle: SettingToggle) : SettingsScrollRow
     data class Slider(val slider: SettingSlider) : SettingsScrollRow
+    data object MaxFrameRate : SettingsScrollRow
     data class KeyBinding(val row: SettingKeyBindingRow) : SettingsScrollRow
     data class ColorSchemeSelector(val item: SettingColorSchemeItem, val selected: Boolean) : SettingsScrollRow
     data class StorageLocation(val selectedType: Int) : SettingsScrollRow
@@ -45,6 +47,25 @@ data class SettingsPageContent(
 )
 
 data class SettingToggle(val i18nText: I18nText, val state: MutableStateValue<Boolean>)
+
+enum class MaxFrameRateOption(val framesPerSecond: Int) {
+    Auto(0),
+    Fps30(30),
+    Fps60(60),
+    Fps120(120),
+    Fps144(144),
+    Fps240(240),
+    Fps300(300),
+    ;
+
+    override fun toString(): String =
+        if (this == Auto) I18n.settings.display.maxFrameRateAuto() else "$framesPerSecond FPS"
+
+    companion object {
+        fun fromFramesPerSecond(value: Int): MaxFrameRateOption =
+            entries.firstOrNull { it.framesPerSecond == value } ?: Auto
+    }
+}
 
 enum class AndroidStoragePreference(val storageType: Int, private val text: I18nText) {
     Internal(0, I18n.settings.storage.internal),
@@ -102,6 +123,7 @@ class SettingsModel {
     // Display
     val batterySaving: MutableStateValue<Boolean> = mutableStateOf(false)
     val highRefreshRate: MutableStateValue<Boolean> = mutableStateOf(true)
+    val maxFrameRate: MutableStateValue<Int> = mutableStateOf(0)
     val slick2dFullScreen: MutableStateValue<Boolean> = mutableStateOf(true)
     val vsync: MutableStateValue<Boolean> = mutableStateOf(false)
     val showUnitHp: MutableStateValue<Boolean> = mutableStateOf(true)
@@ -285,6 +307,7 @@ class SettingsViewModel(val model: SettingsModel) {
                 SettingsPage.Display -> SettingsPageContent(
                     page = page,
                     items = displayToggles().map { SettingsPageItem.Toggle(it) } +
+                            (if (isPcPlatform()) listOf(SettingsPageItem.MaxFrameRate) else emptyList()) +
                             displaySliders().map { SettingsPageItem.Slider(it) },
                 )
 

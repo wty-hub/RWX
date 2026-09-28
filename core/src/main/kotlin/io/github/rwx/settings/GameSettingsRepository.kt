@@ -23,6 +23,9 @@ class GameSettingsRepository(
         model.batterySaving.value = live?.batterySaving ?: prefs.getBoolean(KEY_BATTERY_SAVING, false)
         model.highRefreshRate.value =
             live?.highRefreshRate ?: prefs.getBoolean(KEY_HIGH_REFRESH_RATE, GameEngine.isPC())
+        model.maxFrameRate.value = SettingsEngine.normalizeMaxFrameRate(
+            live?.maxFrameRate ?: prefs.getInt(KEY_MAX_FRAME_RATE, 0)
+        )
         model.slick2dFullScreen.value =
             live?.slick2dFullScreen ?: prefs.getBoolean(KEY_SLICK2D_FULL_SCREEN, GameEngine.isPC())
         model.vsync.value = live?.renderVsync ?: prefs.getBoolean(KEY_RENDER_VSYNC, false)
@@ -125,6 +128,7 @@ class GameSettingsRepository(
 
     fun saveFrom(model: SettingsModel) {
         normalizeAudioSettings(model)
+        model.maxFrameRate.value = SettingsEngine.normalizeMaxFrameRate(model.maxFrameRate.value)
         val settings = runtimeSettings()
         applyToLiveSettings(model, settings)
         settings.save()
@@ -146,6 +150,7 @@ class GameSettingsRepository(
     private fun applyToLiveSettings(model: SettingsModel, settings: SettingsEngine) {
         settings.batterySaving = model.batterySaving.value
         settings.highRefreshRate = model.highRefreshRate.value
+        settings.maxFrameRate = model.maxFrameRate.value
         settings.slick2dFullScreen = model.slick2dFullScreen.value
         settings.renderVsync = model.vsync.value
         settings.showHp = model.showUnitHp.value
@@ -220,6 +225,7 @@ class GameSettingsRepository(
         preferences
             .putBoolean(KEY_BATTERY_SAVING, model.batterySaving.value)
             .putBoolean(KEY_HIGH_REFRESH_RATE, model.highRefreshRate.value)
+            .putInt(KEY_MAX_FRAME_RATE, model.maxFrameRate.value)
             .putBoolean(KEY_SLICK2D_FULL_SCREEN, model.slick2dFullScreen.value)
             .putBoolean(KEY_RENDER_VSYNC, model.vsync.value)
             .putBoolean(KEY_SHOW_HP, model.showUnitHp.value)
@@ -276,6 +282,7 @@ class GameSettingsRepository(
         private const val KEY_RWX_COLOR_SCHEME = "rwxColorSchemeId"
         private const val KEY_BATTERY_SAVING = "batterySaving"
         private const val KEY_HIGH_REFRESH_RATE = "highRefreshRate"
+        private const val KEY_MAX_FRAME_RATE = "maxFrameRate"
         private const val KEY_SLICK2D_FULL_SCREEN = "slick2dFullScreen"
         private const val KEY_RENDER_VSYNC = "renderVsync"
         private const val KEY_SHOW_HP = "showHp"

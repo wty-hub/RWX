@@ -42,6 +42,7 @@ class AppSession internal constructor(
     val navigator: ScreenNavigator,
     private val onQuit: () -> Unit,
     private val onBack: () -> Unit,
+    private val releaseInputOnHostFocusLost: () -> Unit,
 ) {
     fun navigateBack() = onBack()
 
@@ -49,6 +50,9 @@ class AppSession internal constructor(
         navigator.current != AppScreen.Loading
 
     fun quit() = onQuit()
+
+    /** Releases input forwarded into the game when the host window loses focus. */
+    fun onHostFocusLost() = releaseInputOnHostFocusLost()
 }
 
 fun installApp(
@@ -347,6 +351,7 @@ fun installApp(
         initialScreen = AppScreen.Loading,
         onScreenChanged = screenLifecycleController::onScreenChanged,
     )
+    lateinit var inputController: InputController
     val session = AppSession(
         navigator = navigator,
         onQuit = onQuit,
@@ -375,6 +380,7 @@ fun installApp(
                 BackNavigationAction.CloseBattleRoom -> actions.battleRoom(BattleRoomAction.Back)
             }
         },
+        releaseInputOnHostFocusLost = { inputController.resetOnHostFocusLost() },
     )
     StartupController(
         battleRoomController = battleRoomController,
@@ -436,10 +442,15 @@ fun installApp(
         }
         if (androidKey != null) gameSession.submitKey(androidKey, false)
     }
-    val inputController = InputController(
+    inputController = InputController(
         gameSession = gameSession,
         currentScreen = { navigator.current },
-        screenScale = { context.window.parentScreenScale },
+        pointerScale = {
+            pointerToGameScale(
+                parentScreenScale = context.window.parentScreenScale,
+                usesLogicalPointerCoordinates = gameSession.usesLogicalPointerCoordinates,
+            )
+        },
         navigateBack = session::navigateBack,
         dismissDialog = dismissDialog,
         isModalOverlayOpen = { dialogSceneHost.isShowing || loadingDialogSceneHost.isShowing },

@@ -2009,6 +2009,15 @@ public abstract class GameEngine {
         }
     }
 
+    /** Clears input left pressed when the application loses focus. Preserves modal capture state. */
+    public void clearInputAfterFocusLoss() {
+        for (int i = 0; i < this.keyDownStates.length; i++) {
+            this.keyDownStates[i] = false;
+            this.keyPressPendingStates[i] = false;
+            this.suppressKeyDownUntilRelease[i] = false;
+        }
+    }
+
     /**
      * Ignores the next press of [keyCode] until a real key-up arrives.
      * Chat submits from the platform editor, which eats that Enter, so the same physical press

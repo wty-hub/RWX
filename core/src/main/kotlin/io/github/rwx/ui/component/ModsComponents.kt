@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.Assets
 import de.fabmax.kool.MimeType
 import de.fabmax.kool.modules.ui2.*
@@ -176,8 +178,8 @@ fun UiScope.ModCard(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(start = UiTheme.Spacing.md, end = UiTheme.Spacing.sm)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(borderColor, UiTheme.Spacing.xs, Dp(if (hasError) 2f else 1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(borderColor, theme.smallCornerRadius, Dp(if (hasError) 2f else 1f)))
 
         if (!mod.thumbnail.isNullOrBlank()) {
             ModCardThumbnail(mod, theme)
@@ -257,8 +259,8 @@ private fun UiScope.ModCardThumbnail(
             .margin(end = UiTheme.Spacing.sm)
             .alignY(AlignmentY.Center)
             .padding(UiTheme.Spacing.xs)
-            .background(RoundRectBackground(theme.palette.surfaceBase, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
         val texture = ModThumbnailTextureCache.textureFor(mod)
         if (texture != null) {
             Image(texture) {
@@ -268,6 +270,7 @@ private fun UiScope.ModCardThumbnail(
                     .imageSize(ImageSize.FitContent)
             }
         }
+        CyberCardRail(theme)
     }
 }
 
@@ -335,8 +338,8 @@ private fun UiScope.ModCardButton(
             .margin(start = UiTheme.Spacing.xs)
             .alignY(AlignmentY.Center)
             .padding(horizontal = UiTheme.Spacing.sm, vertical = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }

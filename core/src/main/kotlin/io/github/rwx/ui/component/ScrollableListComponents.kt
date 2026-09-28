@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.UiTheme
@@ -15,24 +17,61 @@ fun <T> UiScope.StickToEndScrollColumn(
     theme: ColorSchemeDefinition,
     width: Dimension = Grow.Std,
     height: Dimension = Grow.Std,
+    smoothFollow: Boolean = false,
     itemContent: UiScope.(T) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val follow = remember(ListEndFollow())
+    val smoothEnd = remember(SmoothEndFollow()).value
+    val lastLayout = remember(ScrollLayoutSize()).value
     val contentHeight = scrollState.contentHeightDp.use()
     val viewHeight = scrollState.viewHeightDp.use()
-    val yScroll = scrollState.yScrollDp.use()
+    scrollState.yScrollDp.use()
+    val desiredY = scrollState.yScrollDpDesired.use()
     val laidOut = viewHeight > 0f && contentHeight > 0f
-    val remaining = contentHeight - (yScroll + viewHeight)
+    val layoutChanged = contentHeight != lastLayout.contentHeight || viewHeight != lastLayout.viewHeight
+    val previousEnd = (lastLayout.contentHeight - lastLayout.viewHeight).coerceAtLeast(0f)
+    val wasAtPreviousEnd = lastLayout.viewHeight <= 0f || desiredY >= previousEnd - STICK_TO_END_SLACK_DP
+    if (!smoothFollow && layoutChanged && follow.value.pinnedToEnd && wasAtPreviousEnd) {
+        // An appended line is measured after the first scroll request. Follow the new
+        // content height on the next composition so the line actually becomes visible.
+        scrollState.scrollRelativeY(1f, smooth = false)
+    }
+    lastLayout.contentHeight = contentHeight
+    lastLayout.viewHeight = viewHeight
+    val remaining = contentHeight - (scrollState.yScrollDp.value + viewHeight)
+    if (smoothFollow) {
+        val fingerprint = items.hashCode()
+        if (smoothEnd.lastFingerprint != fingerprint) {
+            if (follow.value.pinnedToEnd) {
+                smoothEnd.pendingHeight = if (items.size > smoothEnd.lastItemCount) contentHeight else null
+                scrollState.scrollRelativeY(1f, smooth = true)
+            }
+            smoothEnd.lastFingerprint = fingerprint
+            smoothEnd.lastItemCount = items.size
+        }
+        if (smoothEnd.pendingHeight?.let { contentHeight > it + 0.1f } == true) {
+            scrollState.scrollRelativeY(1f, smooth = true)
+            smoothEnd.pendingHeight = null
+        }
+    }
+    val desiredAtEnd = scrollState.yScrollDpDesired.value >=
+        (contentHeight - viewHeight - STICK_TO_END_SLACK_DP)
+    val currentFollow = if (laidOut && !wasAtPreviousEnd) {
+        follow.value.copy(pinnedToEnd = false, reachedEnd = true)
+    } else {
+        follow.value
+    }
     val decision = nextListEndFollow(
-        follow = follow.value,
+        follow = currentFollow,
         itemCount = items.size,
         laidOut = laidOut,
-        atEnd = !laidOut || remaining <= STICK_TO_END_SLACK_DP,
+        atEnd = !laidOut || (remaining <= STICK_TO_END_SLACK_DP && desiredAtEnd) ||
+            (smoothFollow && desiredAtEnd),
     )
     follow.value = decision.follow
-    if (decision.scrollToIndex != null) {
-        scrollState.scrollRelativeY(1f, smooth = false)
+    if (decision.scrollToIndex != null && !smoothFollow) {
+        scrollState.scrollRelativeY(1f, smooth = smoothFollow)
     }
     ScrollArea(
         width = width,
@@ -66,6 +105,17 @@ fun <T> UiScope.StickToEndScrollColumn(
     }
 }
 
+private class SmoothEndFollow {
+    var lastFingerprint: Int? = null
+    var lastItemCount: Int = 0
+    var pendingHeight: Float? = null
+}
+
+private class ScrollLayoutSize {
+    var contentHeight: Float = 0f
+    var viewHeight: Float = 0f
+}
+
 fun <T> UiScope.ScrollableVerticalList(
     items: List<T>,
     theme: ColorSchemeDefinition,
@@ -88,8 +138,8 @@ fun <T> UiScope.ScrollableVerticalList(
     if (framed) {
         Box(width = width, height = height) {
             modifier
-                .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.sm))
-                .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
+                .background(RoundRectBackground(theme.palette.surfaceSunken, theme.mediumCornerRadius))
+                .border(RoundRectBorder(theme.palette.borderSubtle, theme.mediumCornerRadius, Dp(1f)))
                 .padding(contentPadding)
 
             LazyColumn(

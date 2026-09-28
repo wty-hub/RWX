@@ -1,15 +1,19 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.scene.Node
 import de.fabmax.kool.util.Color
 import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.ColorSchemeRegistry
 import io.github.rwx.ui.UiTheme
+import io.github.rwx.ui.UiAppearance
 import io.github.rwx.ui.model.SettingsModel
 
 enum class PanelStyle {
     Menu,
+    ModWindow,
     Pause,
     Hud,
     Dialog,
@@ -20,11 +24,12 @@ fun Node.addPanelSurface(
     style: PanelStyle,
     name: String,
     model: SettingsModel,
+    showBackdropLabels: Boolean = true,
     backgroundColor: UiScope.(ColorSchemeDefinition) -> Color? = { style.backgroundColor(it) },
     themeBackgroundColor: UiScope.(ColorSchemeDefinition) -> Color = { style.backgroundColor(it) },
     block: UiScope.(ColorSchemeDefinition) -> Unit,
 ): UiSurface {
-    val initialScheme = ColorSchemeRegistry.schemeFor(model.selectedColorSchemeId.value)
+    val initialScheme = visualScheme(style, model.selectedColorSchemeId.value)
     return addPanelSurface(
         name = name,
         colors = UiTheme.colors(initialScheme, style.backgroundColor(initialScheme)),
@@ -45,13 +50,14 @@ fun Node.addPanelSurface(
                     .align(style.alignmentX(), style.alignmentY())
                     .margin(style.outerMargin())
                     .padding(style.innerPadding(isShortViewport))
+                if (theme.appearance == UiAppearance.Cyberpunk) CyberBackdrop(theme, showBackdropLabels)
                 Column(width = FitContent, height = FitContent) {
                     modifier.align(AlignmentX.Center, style.contentAlignmentY(isShortViewport))
                     if (style == PanelStyle.Dialog) {
                         modifier
                             .padding(UiTheme.Spacing.xl)
-                            .background(RoundRectBackground(theme.palette.surfaceBase, UiTheme.Spacing.sm))
-                            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
+                            .background(RoundRectBackground(theme.palette.surfaceBase, theme.mediumCornerRadius))
+                            .border(RoundRectBorder(theme.palette.borderSubtle, theme.mediumCornerRadius, Dp(1f)))
                     }
                     block(theme)
                 }
@@ -67,7 +73,7 @@ fun Node.addPanelSurface(
 }
 
 private fun UiScope.usesShortViewportLayout(style: PanelStyle): Boolean {
-    if (style != PanelStyle.Menu && style != PanelStyle.Pause) {
+    if (style != PanelStyle.Menu && style != PanelStyle.ModWindow && style != PanelStyle.Pause) {
         return false
     }
     val viewportHeightDp = Dp.fromPx(surface.viewportHeight.use()).value
@@ -79,10 +85,16 @@ private fun UiScope.applySelectedColorScheme(
     style: PanelStyle,
     backgroundColor: UiScope.(ColorSchemeDefinition) -> Color,
 ): ColorSchemeDefinition {
-    val scheme = ColorSchemeRegistry.schemeFor(model.selectedColorSchemeId.use())
+    val scheme = visualScheme(style, model.selectedColorSchemeId.use())
     surface.colors = UiTheme.colors(scheme, backgroundColor(scheme))
     return scheme
 }
+
+internal fun visualScheme(style: PanelStyle, id: io.github.rwx.ui.ColorSchemeId): ColorSchemeDefinition =
+    when (style) {
+        PanelStyle.Menu, PanelStyle.Dialog, PanelStyle.Snackbar -> ColorSchemeRegistry.cyberpunkMenuScheme
+        else -> ColorSchemeRegistry.schemeFor(id)
+    }
 
 fun UiScope.ScreenTitle(
     text: String,
@@ -96,7 +108,14 @@ fun UiScope.ScreenTitle(
             .margin(bottom = UiTheme.Spacing.lg)
             .font(UiTheme.Fonts.headingLarge)
             .textAlign(AlignmentX.Center, AlignmentY.Center)
-            .textColor(theme.palette.textPrimary)
+            .textColor(if (theme.appearance == UiAppearance.Cyberpunk) theme.palette.primary else theme.palette.textPrimary)
+    }
+    if (theme.appearance == UiAppearance.Cyberpunk) {
+        Box(width = Dp(82f), height = Dp(2f)) {
+            modifier.alignX(AlignmentX.Center)
+                .margin(bottom = UiTheme.Spacing.md)
+                .backgroundColor(theme.palette.secondary)
+        }
     }
 }
 
@@ -141,6 +160,7 @@ fun UiScope.BackButton(
 
 private fun PanelStyle.backgroundColor(theme: ColorSchemeDefinition) = when (this) {
     PanelStyle.Menu -> theme.palette.panelOverlayLight
+    PanelStyle.ModWindow -> theme.palette.panelOverlayLight
     PanelStyle.Pause -> theme.palette.panelOverlayDark
     PanelStyle.Hud -> theme.palette.panelHud
     PanelStyle.Dialog -> theme.palette.panelOverlayDark
@@ -149,6 +169,7 @@ private fun PanelStyle.backgroundColor(theme: ColorSchemeDefinition) = when (thi
 
 private fun PanelStyle.fillsSurface() = when (this) {
     PanelStyle.Menu,
+    PanelStyle.ModWindow,
     PanelStyle.Pause,
     PanelStyle.Dialog,
     PanelStyle.Snackbar -> true
@@ -159,6 +180,7 @@ private fun PanelStyle.fillsSurface() = when (this) {
 private fun PanelStyle.alignmentX() = when (this) {
     PanelStyle.Hud -> AlignmentX.Start
     PanelStyle.Menu,
+    PanelStyle.ModWindow,
     PanelStyle.Pause,
     PanelStyle.Dialog,
     PanelStyle.Snackbar -> AlignmentX.Center
@@ -168,12 +190,14 @@ private fun PanelStyle.alignmentY() = when (this) {
     PanelStyle.Hud -> AlignmentY.Top
     PanelStyle.Snackbar -> AlignmentY.Bottom
     PanelStyle.Menu,
+    PanelStyle.ModWindow,
     PanelStyle.Pause,
     PanelStyle.Dialog -> AlignmentY.Center
 }
 
 private fun PanelStyle.contentAlignmentY(isShortViewport: Boolean) = when (this) {
     PanelStyle.Menu,
+    PanelStyle.ModWindow,
     PanelStyle.Pause -> if (isShortViewport) AlignmentY.Top else AlignmentY.Center
 
     PanelStyle.Hud,
@@ -184,13 +208,13 @@ private fun PanelStyle.contentAlignmentY(isShortViewport: Boolean) = when (this)
 private fun PanelStyle.outerMargin() = when (this) {
     PanelStyle.Hud -> UiTheme.Spacing.md
     PanelStyle.Dialog, PanelStyle.Snackbar -> Dp.ZERO
-    PanelStyle.Menu, PanelStyle.Pause -> UiTheme.Spacing.xs
+    PanelStyle.Menu, PanelStyle.ModWindow, PanelStyle.Pause -> UiTheme.Spacing.xs
 }
 
 private fun PanelStyle.innerPadding(isShortViewport: Boolean) = when (this) {
     PanelStyle.Hud -> UiTheme.Spacing.sm
     PanelStyle.Dialog, PanelStyle.Snackbar -> Dp.ZERO
-    PanelStyle.Menu, PanelStyle.Pause -> if (isShortViewport) UiTheme.Spacing.sm else UiTheme.Spacing.xl
+    PanelStyle.Menu, PanelStyle.ModWindow, PanelStyle.Pause -> if (isShortViewport) UiTheme.Spacing.sm else UiTheme.Spacing.xl
 }
 
 private const val SHORT_VIEWPORT_HEIGHT_DP: Float = 520f

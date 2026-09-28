@@ -125,6 +125,22 @@ public class Graphics {
      */
     protected int screenHeight;
 
+    /** Ratio between this Graphics' logical coordinates and its framebuffer pixels. */
+    private float framebufferScaleX = 1.0f;
+    private float framebufferScaleY = 1.0f;
+
+    public void setFramebufferScale(float scaleX, float scaleY) {
+        float nextX = scaleX > 0.0f ? scaleX : 1.0f;
+        float nextY = scaleY > 0.0f ? scaleY : 1.0f;
+        if (framebufferScaleX == nextX && framebufferScaleY == nextY) return;
+        framebufferScaleX = nextX;
+        framebufferScaleY = nextY;
+        if (clip != null) {
+            setClip((int) clip.getX(), (int) clip.getY(),
+                    (int) clip.getWidth(), (int) clip.getHeight());
+        }
+    }
+
     /**
      * True if the matrix has been pushed to the stack
      */
@@ -835,7 +851,11 @@ public class Graphics {
             clip.setBounds(x, y, width, height);
         }
 
-        GL.glScissor(x, screenHeight - y - height, width, height);
+        int left = Math.round(x * framebufferScaleX);
+        int right = Math.round((x + width) * framebufferScaleX);
+        int bottom = Math.round((screenHeight - y - height) * framebufferScaleY);
+        int top = Math.round((screenHeight - y) * framebufferScaleY);
+        GL.glScissor(left, bottom, Math.max(1, right - left), Math.max(1, top - bottom));
         postdraw();
     }
 

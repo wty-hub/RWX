@@ -71,8 +71,8 @@ internal class ColorEmojiBitmapFont private constructor(
         fun load(file: File): ColorEmojiBitmapFont? = runCatching { parse(file.readBytes()) }.getOrNull()
 
         fun discover(): ColorEmojiBitmapFont? {
-            for (path in CANDIDATE_PATHS) {
-                val file = File(path)
+            val bundledFont = DesktopPlatformStorage.resolveAssetRoot().resolve("font/NotoColorEmoji.ttf")
+            for (file in listOf(bundledFont) + CANDIDATE_PATHS.map(::File)) {
                 if (file.isFile) {
                     load(file)?.let { return it }
                 }

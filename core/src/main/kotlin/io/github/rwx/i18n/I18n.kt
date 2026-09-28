@@ -1412,6 +1412,22 @@ object I18n {
                 ),
             )
 
+            val maxFrameRate = entry(
+                key = "settings.display.maxFrameRate",
+                translations = linkedMapOf(
+                    "en" to "Maximum frame rate",
+                    "zh-CN" to "最大帧数",
+                ),
+            )
+
+            val maxFrameRateAuto = entry(
+                key = "settings.display.maxFrameRateAuto",
+                translations = linkedMapOf(
+                    "en" to "Auto",
+                    "zh-CN" to "自动",
+                ),
+            )
+
             val renderClouds = entry(
                 key = "settings.display.renderClouds",
                 translations = linkedMapOf(

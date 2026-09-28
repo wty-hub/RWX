@@ -16,7 +16,9 @@ import io.github.rwx.app.installApp
 import io.github.rwx.di.coreModule
 import io.github.rwx.di.desktopModule
 import io.github.rwx.i18n.LocaleSettings
+import io.github.rwx.render.canvas.KoolCanvasTextureRegistry
 import io.github.rwx.settings.GameSettingsRepository
+import io.github.rwx.slick.desktopOpaqueFramePacker
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.host.LoadingSceneHost
 import io.github.rwx.ui.model.SettingsModel
@@ -56,7 +58,11 @@ object KoolDesktopMain : KoinComponent {
         initializeLegacyPreferences()
         LocaleSettings.initialize()
 
-        configureKoolOverlayFramebuffer()
+        val singleWindowCapture = desktopSingleWindowCapture()
+        KoolCanvasTextureRegistry.setCompleteFramePixelPacker(
+            if (singleWindowCapture) desktopOpaqueFramePacker else null,
+        )
+        configureKoolOverlayFramebuffer(singleWindowCapture)
         val options = AppOptions.parseArgs(args, isDesktop = true)
         val renderBackend = selectedRenderBackend()
         val fullscreenRequested = SettingsEngine.getInstance().slick2dFullScreen
@@ -66,6 +72,7 @@ object KoolDesktopMain : KoinComponent {
         val swingHost = SwingKoolHost.create(
             fullscreen = desktopStartupFullscreen(fullscreenRequested),
             useOpenGl = renderBackend == RenderBackendGl.Companion,
+            singleWindowCapture = singleWindowCapture,
         )
         val bridge=get<PlatformBridge>()
         bridge.filePickerHost=swingHost
@@ -80,6 +87,7 @@ object KoolDesktopMain : KoinComponent {
                 options = options,
                 onQuit = swingHost::requestClose,
             )
+            swingHost.setHostFocusLostHandler(session::onHostFocusLost)
             app.ctx.removeScene(loadingScene)
             while (!session.isFinishLoading()) {
                 delay(50L.milliseconds)
@@ -137,6 +145,20 @@ object KoolDesktopMain : KoinComponent {
     internal fun desktopStartupFullscreen(requested: Boolean, osName: String = System.getProperty("os.name")): Boolean =
         requested && !isMacOs(osName)
 
+    internal fun desktopSingleWindowCapture(
+        osName: String = System.getProperty("os.name"),
+        requested: String? = System.getProperty(SINGLE_WINDOW_CAPTURE_PROPERTY),
+    ): Boolean {
+        if (!isMacOs(osName)) return false
+        return when (requested?.trim()?.lowercase()) {
+            null, "", "true" -> true
+            "false" -> false
+            else -> throw IllegalArgumentException(
+                "Invalid $SINGLE_WINDOW_CAPTURE_PROPERTY value '$requested'; expected true or false",
+            )
+        }
+    }
+
     private fun isMacOs(osName: String = System.getProperty("os.name")): Boolean =
         osName.startsWith("Mac", ignoreCase = true)
 
@@ -161,11 +183,12 @@ object KoolDesktopMain : KoinComponent {
         get<GameSettingsRepository>().saveFrom(model)
     }
 
-    private fun configureKoolOverlayFramebuffer() {
-        System.setProperty(KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY, "true")
+    private fun configureKoolOverlayFramebuffer(singleWindowCapture: Boolean) {
+        System.setProperty(KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY, (!singleWindowCapture).toString())
     }
 
     private const val KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY: String = "kool.transparentFramebuffer"
+    private const val SINGLE_WINDOW_CAPTURE_PROPERTY: String = "rwx.capture.singleWindow"
     private const val LWJGL_CONTEXT_API_PROPERTY: String = "org.lwjgl.opengl.contextAPI"
     private const val LWJGL_NATIVE_CONTEXT_API: String = "native"
     private const val RENDER_BACKEND_PROPERTY: String = "rwx.kool.backend"

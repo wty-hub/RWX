@@ -31,6 +31,11 @@ internal fun shouldForwardKoolInputForScreen(
 ): Boolean =
     acceptsKoolInput && AppScreenInput.policyFor(screen).worldInteraction
 
+internal fun shouldKeepKoolVisibleForExternalGame(
+    compositesExternalGameFrameInKool: Boolean,
+    hasActiveHudLayers: Boolean,
+): Boolean = compositesExternalGameFrameInKool || hasActiveHudLayers
+
 internal fun shouldHandleBattleRoomAction(screen: AppScreen): Boolean =
     screen == BattleRoom
 
@@ -50,10 +55,12 @@ internal fun shouldUseRwCanvasFrameForFrame(
     isRwGameLoading: Boolean,
     isLastExternalFrameBackgroundVisible: Boolean,
     rendersIntoKoolCanvas: Boolean,
+    compositesExternalGameFrameInKool: Boolean,
 ): Boolean = isRwMenuBackgroundVisible ||
         isResumeBackgroundVisible ||
         isLastExternalFrameBackgroundVisible ||
-        (rendersIntoKoolCanvas && (isRwGameVisible || isRwGameLoading))
+        (rendersIntoKoolCanvas && (isRwGameVisible || isRwGameLoading)) ||
+        (compositesExternalGameFrameInKool && isRwGameVisible)
 
 internal fun shouldReturnToMainMenuAfterExternalGameClosed(
     isRwGameVisible: Boolean,

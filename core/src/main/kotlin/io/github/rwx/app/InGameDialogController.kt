@@ -38,7 +38,10 @@ internal class InGameDialogController(
                 gameSession.setGameVisible(
                     true,
                     viewport(),
-                    koolOverlay = UiRegistry.hasActiveHudLayers(),
+                    koolOverlay = shouldKeepKoolVisibleForExternalGame(
+                        gameSession.compositesExternalGameFrameInKool,
+                        UiRegistry.hasActiveHudLayers(),
+                    ),
                     pausedBackground = false,
                 )
             }
@@ -97,7 +100,10 @@ internal class InGameDialogController(
         gameSession.setGameVisible(
             true,
             viewport(),
-            koolOverlay = UiRegistry.hasActiveHudLayers(),
+            koolOverlay = shouldKeepKoolVisibleForExternalGame(
+                gameSession.compositesExternalGameFrameInKool,
+                UiRegistry.hasActiveHudLayers(),
+            ),
             pausedBackground = false,
         )
     }

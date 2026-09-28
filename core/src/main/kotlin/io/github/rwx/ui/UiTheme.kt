@@ -35,10 +35,38 @@ data class ColorSchemeDefinition(
     val id: ColorSchemeId,
     val displayName: String,
     val palette: ColorSchemePalette,
+    val appearance: UiAppearance = UiAppearance.Classic,
 )
+
+enum class UiAppearance { Classic, Cyberpunk }
 
 object ColorSchemeRegistry {
     val defaultSchemeId: ColorSchemeId = ColorSchemeId("rwx")
+
+    /** Fixed menu appearance. It is deliberately absent from the in-game color selector. */
+    val cyberpunkMenuScheme = ColorSchemeDefinition(
+        id = ColorSchemeId("cyberpunk-menu"),
+        displayName = "Cyberpunk",
+        appearance = UiAppearance.Cyberpunk,
+        palette = ColorSchemePalette(
+            panelOverlay = Color("07111fe0"),
+            panelOverlayDark = Color("07111ff0"),
+            panelOverlayLight = Color("07111fda"),
+            panelHud = Color("07111fe0"),
+            surfaceBase = Color("07111fff"),
+            surfaceRaised = Color("142d3fff"),
+            surfaceSunken = Color("0b1b2aff"),
+            textPrimary = Color("eaf8ffff"),
+            textSecondary = Color("a9cbd6ff"),
+            textDisabled = Color("7292a1ff"),
+            primary = Color("4debffff"),
+            primaryContainer = Color("124254ff"),
+            onPrimary = Color("07111fff"),
+            secondary = Color("ff4fcbff"),
+            danger = Color("ff637eff"),
+            borderSubtle = Color("326077ff"),
+        ),
+    )
 
     private val materialDarkDefaults = ColorScheme()
 

@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.model.SnackbarData
@@ -30,10 +32,10 @@ fun UiScope.Snackbar(
                 LinearGradientBackground(
                     startColor = theme.palette.surfaceBase.withAlpha(SnackbarSurfaceAlpha),
                     endColor = theme.palette.surfaceRaised.withAlpha(SnackbarSurfaceAlpha),
-                    cornerRadius = io.github.rwx.ui.UiTheme.Spacing.sm,
+                    cornerRadius = theme.mediumCornerRadius,
                 )
             )
-            .border(RoundRectBorder(theme.palette.primary, io.github.rwx.ui.UiTheme.Spacing.sm, Dp(1f)))
+            .border(RoundRectBorder(theme.palette.primary, theme.mediumCornerRadius, Dp(1f)))
 
         Row(width = Grow.Std, height = FitContent) {
             modifier.align(AlignmentX.Center, AlignmentY.Center)

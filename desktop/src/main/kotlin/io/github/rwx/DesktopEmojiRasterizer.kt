@@ -85,6 +85,14 @@ class DesktopEmojiRasterizer : EmojiRasterizer {
         if (!font.canDisplay(0x1F34E) && !font.canDisplay(0x1F600)) return false
         val image = BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB)
         val graphics = image.createGraphics().also { configure(it, font) }
+        val metrics = graphics.fontMetrics
+        // Font.createFont() accepts Apple Color Emoji.ttc but its derived fonts can report
+        // zero metrics at UI sizes. A fixed-baseline probe still paints pixels, then the real
+        // rasterizer draws at ascent=0 and returns null (shown by Kool as a magenta texture).
+        if (metrics.ascent <= 0 || metrics.height <= 0 || metrics.stringWidth("🍎") <= 0) {
+            graphics.dispose()
+            return false
+        }
         graphics.color = Color.WHITE
         graphics.drawString("\uD83C\uDF4E", 4, 48) // 🍎
         graphics.dispose()

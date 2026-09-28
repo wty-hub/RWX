@@ -64,7 +64,8 @@ internal class ScreenPresenter(
             viewport(),
             koolOverlay = isExternalRwBackgroundVisible ||
                     isExternalModWindowOverlayVisible ||
-                    isExternalModHudOverlayVisible,
+                    isExternalModHudOverlayVisible ||
+                    (screen == AppScreen.InGame && gameSession.compositesExternalGameFrameInKool),
             pausedBackground = shouldPauseRwGameForScreen(screen, isResumeBackgroundVisible),
         )
     }

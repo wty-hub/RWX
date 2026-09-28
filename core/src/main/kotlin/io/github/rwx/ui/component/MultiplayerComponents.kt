@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.i18n.I18n
 import io.github.rwx.ui.ColorSchemeDefinition
@@ -38,8 +40,8 @@ fun UiScope.MultiplayerRoomRow(
             modifier
                 .margin(UiTheme.Spacing.xs)
                 .padding(horizontal = UiTheme.Spacing.md, vertical = UiTheme.Spacing.xs)
-                .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-                .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+                .background(RoundRectBackground(background, theme.smallCornerRadius))
+                .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
                 .onEnter { hovered.value = true }
                 .onExit { hovered.value = false }
                 .onClick { onPressed() }
@@ -68,19 +70,19 @@ fun UiScope.MultiplayerRoomRow(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }
 
         multiplayerCell(room.hostName, contentWidth.fraction(0.18f, Dp(120f), Dp(280f)), theme, AlignmentX.Start)
         multiplayerCell(room.mapName, Grow.Std, theme, AlignmentX.Start)
-        multiplayerCell(room.playersLabel, Dp(92f), theme, AlignmentX.Center)
+        multiplayerCell(room.playersLabel, Dp(128f), theme, AlignmentX.Center)
         multiplayerCell(room.stateLabel, Dp(116f), theme, AlignmentX.Center)
-        multiplayerCell(room.versionLabel, Dp(112f), theme, AlignmentX.Center)
+        multiplayerCell(room.versionLabel, Dp(100f), theme, AlignmentX.Center)
         multiplayerCell(room.transportLabel, Dp(120f), theme, AlignmentX.Center)
-        multiplayerCell(roomMarkers(room), Dp(68f), theme, AlignmentX.Center)
+        multiplayerCell(roomMarkers(room), Dp(56f), theme, AlignmentX.Center)
     }
 }
 
@@ -141,11 +143,21 @@ fun UiScope.MultiplayerRoomList(
         onModsSelected = { modIndex.value = it },
     )
 
-    if (model.rooms.isEmpty() && model.statusText.isNotEmpty()) {
-        BodyText(model.statusText, theme, contentWidth)
-    } else if (model.rooms.isNotEmpty() && visibleRooms.isEmpty()) {
-        Box(width = contentWidth, height = viewportHeight) {
-            Text(I18n.multiplayer.noMatches()) {
+    // Keep the room viewport and status lane mounted in every loading / filter state.
+    // Otherwise the centered menu shrinks before the first refresh and the footer jumps.
+    Box(width = contentWidth, height = viewportHeight) {
+        ScrollableVerticalList(
+            items = visibleRooms,
+            theme = theme,
+            width = Grow.Std,
+            height = Grow.Std,
+        ) { room ->
+            MultiplayerRoomRow(room, theme, contentWidth) {
+                actions.onJoinRoom(room.roomId)
+            }
+        }
+        if (visibleRooms.isEmpty()) {
+            Text(if (model.rooms.isEmpty()) model.statusText else I18n.multiplayer.noMatches()) {
                 modifier
                     .width(Grow.Std)
                     .height(Grow.Std)
@@ -154,20 +166,18 @@ fun UiScope.MultiplayerRoomList(
                     .textColor(theme.palette.textSecondary)
             }
         }
-    } else {
-        ScrollableVerticalList(
-            items = visibleRooms,
-            theme = theme,
-            width = contentWidth,
-            height = viewportHeight,
-        ) { room ->
-            MultiplayerRoomRow(room, theme, contentWidth) {
-                actions.onJoinRoom(room.roomId)
-            }
-        }
+    }
 
-        if (model.statusText.isNotEmpty()) {
-            BodyText(model.statusText, theme, contentWidth)
+    Box(width = contentWidth, height = MULTIPLAYER_STATUS_HEIGHT) {
+        if (visibleRooms.isNotEmpty() && model.statusText.isNotEmpty()) {
+            Text(model.statusText) {
+                modifier
+                    .width(Grow.Std)
+                    .height(Grow.Std)
+                    .font(UiTheme.Fonts.caption)
+                    .textAlign(AlignmentX.Center, AlignmentY.Center)
+                    .textColor(theme.palette.textSecondary)
+            }
         }
     }
 
@@ -353,11 +363,39 @@ private fun UiScope.MultiplayerLobbySwitcher(
 ) {
     val kinds = MultiplayerLobbyKind.entries.filter { it != MultiplayerLobbyKind.P2P }
     val nameButtonWidth = Dp(196f)
+    if (contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP) {
+        Column(width = contentWidth) {
+            modifier.margin(bottom = UiTheme.Spacing.sm)
+            Row(width = contentWidth, height = UiTheme.Layout.menuButtonHeight) {
+                IconButton(Icon.Back, theme, onPressed = onBack)
+                Box(width = Grow.Std, height = Grow.Std) { }
+                TextIconButton(
+                    label = I18n.multiplayer.configurePlayerName(),
+                    icon = Icon.Settings,
+                    width = nameButtonWidth,
+                    theme = theme,
+                    font = UiTheme.Fonts.bodySmall,
+                    onPressed = onConfigure,
+                )
+            }
+            kinds.forEach { kind ->
+                TextIconButton(
+                    label = kind.label,
+                    icon = Icon.Refresh,
+                    width = contentWidth,
+                    theme = theme,
+                    emphasized = kind == selected,
+                    font = UiTheme.Fonts.bodySmall,
+                ) { onSelected(kind) }
+            }
+        }
+        return
+    }
     val buttonsWidth = contentWidth.remainingAfter(Dp(UiTheme.Layout.iconButtonSize.value + nameButtonWidth.value))
     val buttonWidth = buttonsWidth.splitEvenly(
         count = kinds.size,
         totalGap = Dp(kinds.size * UiTheme.Spacing.sm.value),
-        minWidth = if (contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP) Dp(88f) else Dp(140f),
+        minWidth = Dp(140f),
         maxWidth = UiTheme.Layout.menuButtonWidth,
     )
     Row(width = contentWidth, height = UiTheme.Layout.menuButtonHeight) {
@@ -376,14 +414,17 @@ private fun UiScope.MultiplayerLobbySwitcher(
                 onSelected(kind)
             }
         }
-        TextIconButton(
-            label = I18n.multiplayer.configurePlayerName(),
-            icon = Icon.Settings,
-            width = nameButtonWidth,
-            theme = theme,
-            font = UiTheme.Fonts.bodySmall,
-            onPressed = onConfigure,
-        )
+        Row(width = Grow.Std, height = Grow.Std) {
+            Box(width = Grow.Std, height = Grow.Std) { }
+            TextIconButton(
+                label = I18n.multiplayer.configurePlayerName(),
+                icon = Icon.Settings,
+                width = nameButtonWidth,
+                theme = theme,
+                font = UiTheme.Fonts.bodySmall,
+                onPressed = onConfigure,
+            )
+        }
     }
 }
 
@@ -393,16 +434,18 @@ private fun UiScope.multiplayerCell(
     theme: ColorSchemeDefinition,
     align: AlignmentX,
 ) {
-    EmojiAwareText(
-        text = text,
-        textFont = UiTheme.Fonts.bodySmall,
-        textColor = theme.palette.textPrimary,
-        contentWidth = width,
-        contentHeight = UiTheme.Layout.menuButtonHeight,
-        alignX = align,
-        alignY = AlignmentY.Center,
-        clip = true,
-    )
+    Box(width = width, height = UiTheme.Layout.menuButtonHeight) {
+        EmojiAwareText(
+            text = text,
+            textFont = UiTheme.Fonts.bodySmall,
+            textColor = theme.palette.textPrimary,
+            contentWidth = Grow.Std,
+            contentHeight = UiTheme.Layout.menuButtonHeight,
+            alignX = align,
+            alignY = AlignmentY.Center,
+            clip = true,
+        )
+    }
 }
 
 private fun roomStatusLabel(room: MultiplayerRoomItem): String =
@@ -418,6 +461,7 @@ private fun roomMarkers(room: MultiplayerRoomItem): String = buildString {
 }
 
 internal const val MULTIPLAYER_COMPACT_WIDTH_DP: Float = 720f
+internal val MULTIPLAYER_STATUS_HEIGHT: Dp = Dp(28f)
 private const val MULTIPLAYER_SEARCH_MIN_WIDTH_DP: Float = 200f
 private const val MULTIPLAYER_FILTER_COMBO_MIN_WIDTH_DP: Float = 88f
 private const val MULTIPLAYER_FILTER_COMBO_MAX_WIDTH_DP: Float = 168f

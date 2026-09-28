@@ -27,4 +27,14 @@ class DesktopRenderBackendTest {
         assertTrue(KoolDesktopMain.desktopStartupFullscreen(true, "Linux"))
         assertFalse(KoolDesktopMain.desktopStartupFullscreen(false, "Linux"))
     }
+
+    @Test
+    fun `only macOS uses the single window capture host`() {
+        assertTrue(KoolDesktopMain.desktopSingleWindowCapture("Mac OS X", null))
+        assertTrue(KoolDesktopMain.desktopSingleWindowCapture("macOS", null))
+        assertFalse(KoolDesktopMain.desktopSingleWindowCapture("Windows 11", null))
+        assertFalse(KoolDesktopMain.desktopSingleWindowCapture("Linux", null))
+        assertFalse(KoolDesktopMain.desktopSingleWindowCapture("Mac OS X", "false"))
+        assertTrue(KoolDesktopMain.desktopSingleWindowCapture("Mac OS X", "true"))
+    }
 }

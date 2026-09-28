@@ -1,5 +1,7 @@
 package io.github.rwx.ui.host
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import com.corrodinggames.rts.gameFramework.GameEngine
 import de.fabmax.kool.AssetLoader
 import de.fabmax.kool.Assets
@@ -340,13 +342,13 @@ private fun UiScope.ResourceBrowserCard(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md, vertical = UiTheme.Spacing.sm)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
         Box(width = Dp(92f), height = Grow.Std) {
             modifier
-                .background(RoundRectBackground(theme.palette.surfaceBase, UiTheme.Spacing.xs))
-                .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+                .background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
+                .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
             val previewTexture = item.imageUrl?.let(ResourceBrowserPreviewTextureCache::textureFor)
             if (previewTexture != null) {
                 Image(previewTexture) {
@@ -363,6 +365,7 @@ private fun UiScope.ResourceBrowserCard(
                     theme.palette.primary,
                 ).modifier.align(AlignmentX.Center, AlignmentY.Center)
             }
+            CyberCardRail(theme)
         }
 
         Column(width = Grow.Std, height = Grow.Std) {

@@ -40,7 +40,7 @@ class BattleRoomSceneHost(
     fun dispatch(action: BattleRoomAction) = onAction(action)
 
     fun createScene(): Scene = UiScene(BATTLE_ROOM_SCENE_NAME) {
-        addPanelSurface(PanelStyle.Menu, "rwx-battleroom-panel", model) { theme ->
+        addPanelSurface(PanelStyle.Menu, "rwx-battleroom-panel", model, showBackdropLabels = false) { theme ->
             BattleRoom(
                 model = BattleRoomModel(
                     info = info.use(),

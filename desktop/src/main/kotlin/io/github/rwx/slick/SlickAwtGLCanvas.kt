@@ -5,11 +5,20 @@ import org.lwjgl.opengl.awt.AWTGLCanvas
 import org.lwjgl.opengl.awt.GLData
 import org.lwjgl.opengl.awt.PlatformLinuxGLCanvas
 import org.lwjgl.system.Platform
+import java.awt.Dimension
 
 internal class SlickAwtGLCanvas(
     data: GLData,
     private var requestedSwapInterval: Int? = null,
+    offscreenOnMac: Boolean = false,
 ) : AWTGLCanvas(data) {
+    init {
+        if (offscreenOnMac) {
+            check(Platform.get() == Platform.MACOSX) { "Offscreen Slick canvas is only supported on macOS" }
+            platformCanvas = MacOffscreenPlatformCanvas()
+        }
+    }
+
     private var appliedSwapInterval: Int? = null
 
     @Volatile
@@ -33,6 +42,13 @@ internal class SlickAwtGLCanvas(
     fun requestSwapInterval(interval: Int?) {
         requestedSwapInterval = interval
     }
+
+    fun bindOffscreenFramebuffer() {
+        (platformCanvas as? MacOffscreenPlatformCanvas)?.bindFramebuffer()
+    }
+
+    fun offscreenFramebufferSize(): Dimension? =
+        (platformCanvas as? MacOffscreenPlatformCanvas)?.framebufferSize()
 
     fun applyRuntimeGlSettings() {
         val interval = requestedSwapInterval ?: return

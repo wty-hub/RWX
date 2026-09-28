@@ -266,6 +266,8 @@ drawable/water_layer1.png
 drawable/water_layer2.png
 drawable/zoom_button.png
 font/DroidSansFallback.ttf
+font/NotoColorEmoji-OFL.txt
+font/NotoColorEmoji.ttf
 font/NotoSansCJKsc-Regular.json
 font/NotoSansCJKsc-Regular.png
 font/Roboto-Regular.ttf

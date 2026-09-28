@@ -4,6 +4,7 @@ import com.corrodinggames.rts.gameFramework.GameEngine
 import com.corrodinggames.rts.gameFramework.PlatformCallbacks
 import com.corrodinggames.rts.gameFramework.graphics.GraphicsEngine
 import io.github.rwx.DesktopRendererMode
+import io.github.rwx.KoolDesktopMain
 import io.github.rwx.PlatformStorage
 import io.github.rwx.logger
 import io.github.rwx.platform.CoreGameView
@@ -22,8 +23,11 @@ import javax.swing.SwingUtilities
 class SlickGameSession(
     private val storage: PlatformStorage,
     registerShutdownHook: Boolean = true,
+    private val singleWindowCapture: Boolean = KoolDesktopMain.desktopSingleWindowCapture(),
 ) : GameSession() {
     override val rendererMode: RendererMode= DesktopRendererMode.Slick
+    override val compositesExternalGameFrameInKool: Boolean = singleWindowCapture
+    override val usesLogicalPointerCoordinates: Boolean = true
     private val running = AtomicBoolean(false)
     private val requestState = SlickSessionRequestState()
     private val stopRequested = AtomicBoolean(false)
@@ -51,6 +55,10 @@ class SlickGameSession(
 
     private val frameSnapshotState =
         AtomicReference(SlickFrameSnapshotState.empty(KoolCanvasViewport(1280, 720)))
+    private val completeFrameSnapshotState =
+        AtomicReference(SlickFrameSnapshotState.empty(KoolCanvasViewport(1280, 720)))
+    @Volatile
+    private var nextCompleteFrameRequestNanos = 0L
     @Volatile
     private var rendererStartupError: Throwable? = null
 
@@ -63,6 +71,7 @@ class SlickGameSession(
     init {
         SlickCanvasHost.setResizeController(::resizeFromCanvasHost)
         SlickCanvasHost.setRendererShutdown(::stopRendererAndWait)
+        SlickCanvasHost.setHostFocusLostHandler { activeGame()?.noteFocusLost() }
         configureRendererProfile(
             GameSessionRendererProfile(
                 rendersIntoKoolCanvas = false,
@@ -124,6 +133,7 @@ class SlickGameSession(
                         false,
                         parentCanvas = canvas,
                         onParentCanvasResize = createdGame::requestSize,
+                        singleWindowCapture = singleWindowCapture,
                     )
                     containerToDestroy = createdContainer
                     container = createdContainer
@@ -197,6 +207,7 @@ class SlickGameSession(
             initialWidth = width,
             initialHeight = height,
             initialRequest = request,
+            captureCompleteFrames = singleWindowCapture,
             onTextInputRequest = textInputBridge::deliver,
             onMapReady = ::handleMapReady,
             onMapError = ::handleMapError,
@@ -221,7 +232,7 @@ class SlickGameSession(
                 } else {
                     SwingUtilities.invokeAndWait {
                         canvas.addNotify()
-                        canvas.requestFocusInWindow()
+                        if (!singleWindowCapture) canvas.requestFocusInWindow()
                         ready = canvas.isDisplayable && canvas.isShowing && canvas.width > 0 && canvas.height > 0
                     }
                 }
@@ -310,13 +321,28 @@ class SlickGameSession(
        syncRequestedMapFromSession()
         startSlickGameIfNeeded()
         pollSlickFrameSnapshot()
+        if (shouldPresentCompleteFrame()) {
+            pollSlickCompleteFrame()
+            activeGame()?.let { active ->
+                val now = System.nanoTime()
+                if (now >= nextCompleteFrameRequestNanos) {
+                    nextCompleteFrameRequestNanos = now + COMPLETE_FRAME_REQUEST_INTERVAL_NANOS
+                    active.requestCompleteFrame()
+                }
+            }
+        }
         activeGame()?.let(textInputBridge::poll)
         return currentFrame()
     }
 
     override fun currentFrame(): KoolCanvasFrame {
         val viewport = lastSlickViewport
-        val snapshotState = frameSnapshotState.get()
+        val presentCompleteFrame = shouldPresentCompleteFrame()
+        val snapshotState = if (presentCompleteFrame) {
+            completeFrameSnapshotState.get()
+        } else {
+            frameSnapshotState.get()
+        }
         if (!snapshotState.isAvailable) {
             return emptyFrameFor(viewport)
         }
@@ -324,9 +350,21 @@ class SlickGameSession(
         return if (frame.viewport == viewport) {
             frame
         } else {
-            frameForSnapshotTexture(viewport, snapshotState.width, snapshotState.height)
+            frameForSnapshotTexture(
+                viewport,
+                snapshotState.width,
+                snapshotState.height,
+                if (presentCompleteFrame) SLICK_COMPLETE_FRAME_TEXTURE_ID else SLICK_CURRENT_FRAME_TEXTURE_ID,
+            )
         }
     }
+
+    override fun isReadyForDisplay(mapPath: String?): Boolean =
+        if (shouldPresentCompleteFrame()) {
+            isMapLoaded(mapPath) && completeFrameSnapshotState.get().isAvailable
+        } else {
+            super.isReadyForDisplay(mapPath)
+        }
 
     override fun loadPendingMapNow(): KoolCanvasFrame {
         syncRequestedMapFromSession()
@@ -657,6 +695,17 @@ class SlickGameSession(
         updateFrameSnapshot(snapshot)
     }
 
+    private fun shouldPresentCompleteFrame(): Boolean =
+        singleWindowCapture && gameVisible && !pausedBackground &&
+            requestState.desired !is SlickSessionRequest.MenuBackground &&
+            !loadState.menuBackgroundActive
+
+    private fun pollSlickCompleteFrame() {
+        activeGame()?.consumeCompleteFrame { slot ->
+            updateCompleteFrameSnapshot(slot)
+        }
+    }
+
     private fun startSlickGameIfNeeded() {
         val request = requestState.desired ?: return
         val shouldShowGame = gameVisible
@@ -807,10 +856,43 @@ class SlickGameSession(
         }
     }
 
+    private fun updateCompleteFrameSnapshot(slot: SlickCompleteFrameMailbox.Slot) {
+        if (slot.width <= 0 || slot.height <= 0 || slot.pixels.size < slot.width * slot.height) return
+        val viewport = lastSlickViewport
+        val previousState = completeFrameSnapshotState.get()
+        if (slot.sequence != previousState.sequence ||
+            slot.width != previousState.width || slot.height != previousState.height
+        ) {
+            // The store copies the producer's slot before it is returned to the two-slot pool.
+            KoolCanvasTextureRegistry.registerOpaqueArgb(
+                SLICK_COMPLETE_FRAME_TEXTURE_ID,
+                slot.width,
+                slot.height,
+                slot.pixels,
+            )
+        }
+        completeFrameSnapshotState.set(
+            SlickFrameSnapshotState(
+                sequence = slot.sequence,
+                width = slot.width,
+                height = slot.height,
+                frame = frameForSnapshotTexture(
+                    viewport,
+                    slot.width,
+                    slot.height,
+                    SLICK_COMPLETE_FRAME_TEXTURE_ID,
+                ),
+            ),
+        )
+    }
+
     private fun clearFrameSnapshot(unregisterTexture: Boolean) {
+        nextCompleteFrameRequestNanos = 0L
         frameSnapshotState.set(SlickFrameSnapshotState.empty(lastSlickViewport))
+        completeFrameSnapshotState.set(SlickFrameSnapshotState.empty(lastSlickViewport))
         if (unregisterTexture) {
             KoolCanvasTextureRegistry.unregister(SLICK_CURRENT_FRAME_TEXTURE_ID)
+            KoolCanvasTextureRegistry.unregister(SLICK_COMPLETE_FRAME_TEXTURE_ID)
         }
     }
     companion object{
@@ -828,7 +910,9 @@ private const val RENDER_THREAD_JOIN_TIMEOUT_MILLIS = 2_000L
 private const val SLICK_CANVAS_INSTALL_TIMEOUT_MILLIS = 15_000L
 private const val SLICK_ENGINE_INITIALIZATION_TIMEOUT_MILLIS = 60_000L
 private const val SLICK_ENGINE_START_POLL_MILLIS = 50L
+private const val COMPLETE_FRAME_REQUEST_INTERVAL_NANOS = 1_000_000_000L / 30L
 private val SLICK_CURRENT_FRAME_TEXTURE_ID = KoolCanvasTextureId("slick-current-frame")
+private val SLICK_COMPLETE_FRAME_TEXTURE_ID = KoolCanvasTextureId("slick-complete-frame")
 
 private data class SlickFrameSnapshotState(
     val sequence: Long,
@@ -861,12 +945,13 @@ private fun frameForSnapshotTexture(
     viewport: KoolCanvasViewport,
     width: Int,
     height: Int,
+    textureId: KoolCanvasTextureId = SLICK_CURRENT_FRAME_TEXTURE_ID,
 ): KoolCanvasFrame {
     if (viewport.width <= 0 || viewport.height <= 0 || width <= 0 || height <= 0) {
         return emptyFrameFor(viewport)
     }
     val texture = KoolCanvasTextureRef(
-        id = SLICK_CURRENT_FRAME_TEXTURE_ID,
+        id = textureId,
         width = width,
         height = height,
         hasAlpha = false,

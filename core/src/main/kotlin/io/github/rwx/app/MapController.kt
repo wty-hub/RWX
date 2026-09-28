@@ -273,11 +273,14 @@ internal class MapController(
         setPendingStart(targetMapPath, AppScreen.InGame)
         navigateToInGame()
         if (!gameSession.rendersIntoKoolCanvas) {
-            koolCanvasScene.isVisible = false
+            koolCanvasScene.isVisible = gameSession.compositesExternalGameFrameInKool
             gameSession.setGameVisible(
                 true,
                 viewport(),
-                koolOverlay = UiRegistry.hasActiveHudLayers(),
+                koolOverlay = shouldKeepKoolVisibleForExternalGame(
+                    gameSession.compositesExternalGameFrameInKool,
+                    UiRegistry.hasActiveHudLayers(),
+                ),
             )
         }
     }

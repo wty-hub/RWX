@@ -29,7 +29,7 @@ class MultiplayerSceneHost(
     fun dispatch(action: MultiplayerAction) = onAction(action)
 
     fun createScene(): Scene = UiScene(MULTIPLAYER_SCENE_NAME) {
-        addPanelSurface(PanelStyle.Menu, "multiplayer-panel", model) { theme ->
+        addPanelSurface(PanelStyle.Menu, "multiplayer-panel", model, showBackdropLabels = false) { theme ->
             val metrics = multiplayerLayoutMetrics()
             MultiplayerRoomList(
                 model = MultiplayerRoomListModel(
@@ -71,15 +71,17 @@ private fun UiScope.multiplayerLayoutMetrics(): MultiplayerLayoutMetrics {
         maxWidth = UiTheme.Layout.multiplayerMaxContentWidth,
     )
     val compact = contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP
-    val filterRow = UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.sm.value
+    val controlRow = UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.sm.value
     val filterRows = if (compact) 3f else 1f
+    val extraCompactRows = if (compact) 3f else 0f // second lobby row and two extra footer buttons
     return MultiplayerLayoutMetrics(
         contentWidth = contentWidth,
         viewportHeight = ResponsiveViewportHeight(
             defaultHeight = UiTheme.Layout.scrollViewportHeight,
             minHeight = UiTheme.Layout.multiplayerMinViewportHeight,
             maxHeight = UiTheme.Layout.multiplayerMaxViewportHeight,
-            verticalChrome = Dp(160f + filterRows * filterRow),
+            verticalChrome = Dp(176f + filterRows * controlRow +
+                extraCompactRows * UiTheme.Layout.menuButtonHeight.value + MULTIPLAYER_STATUS_HEIGHT.value),
         ),
     )
 }

@@ -19,12 +19,37 @@ object SlickCanvasHost {
     @Volatile
     private var rendererShutdown: (() -> Unit)? = null
 
+    @Volatile
+    private var preferKoolCanvasFocus: Boolean = false
+
+    @Volatile
+    private var hostFocusLostHandler: (() -> Unit)? = null
+
+    @Volatile
+    private var pointerCursorController: ((Boolean) -> Unit)? = null
+
     fun install(
         canvasProvider: () -> Canvas?,
         visibilityController: (Boolean, Boolean) -> Unit,
+        preferKoolCanvasFocus: Boolean = false,
+        pointerCursorController: ((Boolean) -> Unit)? = null,
     ) {
         this.canvasProvider = canvasProvider
         this.visibilityController = visibilityController
+        this.preferKoolCanvasFocus = preferKoolCanvasFocus
+        this.pointerCursorController = pointerCursorController
+    }
+
+    fun setInGamePointerCursorActive(active: Boolean) {
+        pointerCursorController?.invoke(active)
+    }
+
+    fun setHostFocusLostHandler(handler: (() -> Unit)?) {
+        hostFocusLostHandler = handler
+    }
+
+    fun notifyHostFocusLost() {
+        hostFocusLostHandler?.invoke()
     }
 
     fun setRendererShutdown(shutdown: (() -> Unit)?) {
@@ -56,6 +81,7 @@ object SlickCanvasHost {
     }
 
     fun requestGameFocus() {
+        if (preferKoolCanvasFocus) return
         if (PlatformTextInputBridge.isEditing()) {
             return
         }

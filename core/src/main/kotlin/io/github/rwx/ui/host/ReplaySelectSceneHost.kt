@@ -1,5 +1,7 @@
 package io.github.rwx.ui.host
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.scene.Scene
 import io.github.rwx.i18n.I18n
@@ -144,12 +146,13 @@ private fun UiScope.ReplayRow(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md, vertical = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }
 
+        CyberCardRail(theme, isHovered)
         Row(width = Grow.Std, height = Grow.Std) {
             Box(width = UiTheme.Layout.replaySelectIconSlotWidth, height = Grow.Std) {
                 Icon(Icon.Replay, UiTheme.Layout.iconButtonGlyphSize, iconColor).modifier

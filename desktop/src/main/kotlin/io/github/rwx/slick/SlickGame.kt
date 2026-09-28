@@ -26,11 +26,15 @@ import io.github.rwx.ui.InGameMenuController
 import kotlinx.coroutines.CompletableDeferred
 import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11
+import org.lwjgl.opengl.GL12
+import org.lwjgl.opengl.GL30
 import org.newdawn.slick.BasicGame
 import org.newdawn.slick.GameContainer
 import org.newdawn.slick.Graphics
 import org.newdawn.slick.Input
 import org.newdawn.slick.opengl.renderer.QuadBatch
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -190,6 +194,7 @@ class SlickGame(
     private val initialWidth: Int,
     private val initialHeight: Int,
     initialRequest: SlickSessionRequest? = null,
+    private val captureCompleteFrames: Boolean = false,
     private val noFog: Boolean = System.getenv("RWX_SLICK_NO_FOG") == "1",
     private val onTextInputRequest: (SlickGame, SlickTextInputRequest) -> Boolean = { _, _ -> false },
     private val onMapReady: (String) -> Unit = { mapPath ->
@@ -270,6 +275,14 @@ class SlickGame(
     private var latestFrameSnapshot: SlickFrameSnapshot? = null
     private var latestFrameSnapshotSequence: Long = 0L
     private val pendingFrameSnapshotRequest = AtomicReference<CompletableFuture<SlickFrameSnapshot?>?>(null)
+    private val completeFrameMailbox = SlickCompleteFrameMailbox()
+    private var completeFrameReadback: ByteBuffer? = null
+    private val captureReadBuffer = if (captureCompleteFrames) GL30.GL_COLOR_ATTACHMENT0 else GL11.GL_BACK
+    private var completeFrameTimingSamples = 0
+    private var completeFrameReadbackNanos = 0L
+    private var completeFrameConversionNanos = 0L
+    private var completeFrameReadbackMaxNanos = 0L
+    private var completeFrameConversionMaxNanos = 0L
 
     override fun init(container: GameContainer) {
         GameEngine.screenSize = Point(initialWidth, initialHeight)
@@ -440,7 +453,7 @@ class SlickGame(
 
     private fun applyContainerRuntimeSettings(activeEngine: GameEngine, container: GameContainer) {
         val vsync = activeEngine.settingsEngine.renderVsync
-        val targetFrameRate = targetFrameRateFor(activeEngine, container)
+        val targetFrameRate = targetFrameRateFor(activeEngine)
         if (lastAppliedTargetFrameRate != targetFrameRate) {
             container.setTargetFrameRate(targetFrameRate)
             lastAppliedTargetFrameRate = targetFrameRate
@@ -456,12 +469,13 @@ class SlickGame(
         }
     }
 
-    private fun targetFrameRateFor(activeEngine: GameEngine, container: GameContainer): Int {
-        SLICK_TARGET_FPS_OVERRIDE?.let { return it }
-        val highRefreshRate = activeEngine.settingsEngine.highRefreshRate
-        return (container as? EmbeddedSlickGameContainer)
-            ?.recommendedTargetFrameRate(highRefreshRate)
-            ?: if (highRefreshRate) 300 else 120
+    private fun targetFrameRateFor(activeEngine: GameEngine): Int {
+        val settings = activeEngine.settingsEngine
+        return resolveSlickTargetFrameRate(
+            maxFrameRate = settings.maxFrameRate,
+            highRefreshRate = settings.highRefreshRate,
+            environmentOverride = SLICK_TARGET_FPS_OVERRIDE,
+        )
     }
 
     private fun applyPendingSize(activeEngine: GameEngine, container: GameContainer) {
@@ -786,6 +800,11 @@ class SlickGame(
                 runningMapPath != null &&
                 !runningMenuBackground
         if (shouldApply == pointerCursorApplied) return
+        if (captureCompleteFrames) {
+            pointerCursorApplied = shouldApply
+            SlickCanvasHost.setInGamePointerCursorActive(shouldApply)
+            return
+        }
         pointerCursorApplied = if (shouldApply) {
             applyPointerCursor(container)
         } else {
@@ -805,6 +824,89 @@ class SlickGame(
     }
 
     fun currentFrameSnapshot(): SlickFrameSnapshot? = latestFrameSnapshot
+
+    internal fun requestCompleteFrame() {
+        if (captureCompleteFrames) completeFrameMailbox.requestNext()
+    }
+
+    internal fun consumeCompleteFrame(consumer: (SlickCompleteFrameMailbox.Slot) -> Unit): Boolean =
+        completeFrameMailbox.consumeLatest(consumer)
+
+    /** Called with the Slick GL context current after all game and Slick UI draws, before swap. */
+    internal fun captureCompleteFrameAfterRender(container: EmbeddedSlickGameContainer) {
+        if (!captureCompleteFrames || !gameVisible || pausedBackground || runningMenuBackground) return
+        val size = container.currentFramebufferSize()
+        val slot = runCatching { completeFrameMailbox.beginCapture(size.width, size.height) }
+            .onFailure { GameEngine.log("Failed to prepare Slick complete frame", it) }
+            .getOrNull() ?: return
+        runCatching {
+            val byteCount = Math.multiplyExact(slot.pixels.size, 4)
+            val buffer = completeFrameReadback?.takeIf { it.capacity() == byteCount }
+                ?: BufferUtils.createByteBuffer(byteCount).also { completeFrameReadback = it }
+            buffer.clear()
+            QuadBatch.flush()
+            GL11.glReadBuffer(captureReadBuffer)
+            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1)
+            val readbackStart = System.nanoTime()
+            val nativeBgra = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN
+            GL11.glReadPixels(
+                0, 0, slot.width, slot.height,
+                if (nativeBgra) GL12.GL_BGRA else GL11.GL_RGBA,
+                GL11.GL_UNSIGNED_BYTE, buffer,
+            )
+            val conversionStart = System.nanoTime()
+            if (nativeBgra) {
+                val pixelBuffer = buffer.order(ByteOrder.LITTLE_ENDIAN).asIntBuffer()
+                for (y in 0 until slot.height) {
+                    pixelBuffer.position((slot.height - 1 - y) * slot.width)
+                    pixelBuffer.get(slot.pixels, y * slot.width, slot.width)
+                }
+            } else {
+                for (y in 0 until slot.height) {
+                    val sourceRow = slot.height - 1 - y
+                    for (x in 0 until slot.width) {
+                        val sourceOffset = (sourceRow * slot.width + x) * 4
+                        val red = buffer.get(sourceOffset).toInt() and 0xff
+                        val green = buffer.get(sourceOffset + 1).toInt() and 0xff
+                        val blue = buffer.get(sourceOffset + 2).toInt() and 0xff
+                        slot.pixels[y * slot.width + x] =
+                            0xff000000.toInt() or (red shl 16) or (green shl 8) or blue
+                    }
+                }
+            }
+            recordCompleteFrameTiming(
+                readbackNanos = conversionStart - readbackStart,
+                conversionNanos = System.nanoTime() - conversionStart,
+                width = slot.width,
+                height = slot.height,
+            )
+            completeFrameMailbox.publish(slot)
+        }.onFailure { error ->
+            completeFrameMailbox.abandon(slot)
+            GameEngine.log("Failed to capture Slick complete frame", error)
+        }
+    }
+
+    private fun recordCompleteFrameTiming(readbackNanos: Long, conversionNanos: Long, width: Int, height: Int) {
+        completeFrameTimingSamples++
+        completeFrameReadbackNanos += readbackNanos
+        completeFrameConversionNanos += conversionNanos
+        completeFrameReadbackMaxNanos = maxOf(completeFrameReadbackMaxNanos, readbackNanos)
+        completeFrameConversionMaxNanos = maxOf(completeFrameConversionMaxNanos, conversionNanos)
+        if (completeFrameTimingSamples < 120) return
+        GameEngine.log(
+            "Single-window capture ${width}x${height}: " +
+                "GL readback avg=${completeFrameReadbackNanos / completeFrameTimingSamples / 1_000_000.0}ms " +
+                "max=${completeFrameReadbackMaxNanos / 1_000_000.0}ms, " +
+                "pixel row transfer avg=${completeFrameConversionNanos / completeFrameTimingSamples / 1_000_000.0}ms " +
+                "max=${completeFrameConversionMaxNanos / 1_000_000.0}ms",
+        )
+        completeFrameTimingSamples = 0
+        completeFrameReadbackNanos = 0L
+        completeFrameConversionNanos = 0L
+        completeFrameReadbackMaxNanos = 0L
+        completeFrameConversionMaxNanos = 0L
+    }
 
     fun requestFrameSnapshot(timeoutMillis: Long): SlickFrameSnapshot? {
         val request = CompletableFuture<SlickFrameSnapshot?>()
@@ -991,6 +1093,7 @@ class SlickGame(
 
     private fun resetFrameSnapshot() {
         latestFrameSnapshot = null
+        completeFrameMailbox.clear()
     }
 
     private fun captureFrameSnapshot(container: GameContainer): SlickFrameSnapshot? {
@@ -1021,7 +1124,7 @@ class SlickGame(
     private fun readBackBufferSnapshot(width: Int, height: Int, sequence: Long): SlickFrameSnapshot {
         val buffer = BufferUtils.createByteBuffer(width * height * 4)
         QuadBatch.flush()
-        GL11.glReadBuffer(GL11.GL_BACK)
+        GL11.glReadBuffer(captureReadBuffer)
         GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1)
         GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer)
 
@@ -1086,7 +1189,12 @@ class SlickGame(
                 }
             }
 
-            SlickInputEvent.FocusLost -> releaseLatchedKeys(activeEngine)
+            SlickInputEvent.FocusLost -> {
+                releaseLatchedKeys(activeEngine)
+                activeEngine.clearInputAfterFocusLoss()
+                val pointer = view.pointerState
+                pointer.processEvent(pointer.x[0], pointer.y[0], false, -1)
+            }
         }
     }
 

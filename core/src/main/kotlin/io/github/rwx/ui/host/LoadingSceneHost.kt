@@ -17,13 +17,20 @@ class LoadingSceneHost(
     private val warmupUiTextures: MutableStateValue<Boolean> = mutableStateOf(false)
 
     fun update(status: GameLoadingStatus) {
-        label.value = status.text.ifBlank { LOADING_LABEL }
-        progress.value = (status.progress ?: LOADING_MIN_VISIBLE_PROGRESS)
+        val nextLabel = status.text.ifBlank { LOADING_LABEL }
+        val nextProgress = (status.progress ?: LOADING_MIN_VISIBLE_PROGRESS)
             .coerceIn(0.0f, 1.0f)
             .coerceAtLeast(LOADING_MIN_VISIBLE_PROGRESS)
-        recentSteps.value = status.recentSteps
-            .filter { it.isNotBlank() }
-            .takeLast(LOADING_HISTORY_ROW_COUNT + 1)
+        val historyBase = if (nextProgress + 0.5f < progress.value) emptyList() else recentSteps.value
+        val reportedSteps = status.recentSteps.filter { it.isNotBlank() }
+        val newSteps = reportedSteps.filterNot { it in historyBase }
+        recentSteps.value = (historyBase + newSteps + nextLabel)
+            .fold(emptyList<String>()) { steps, step ->
+                if (steps.lastOrNull() == step) steps else steps + step
+            }
+            .takeLast(LOADING_HISTORY_MAX_ROWS)
+        label.value = nextLabel
+        progress.value = nextProgress
     }
 
     fun showUiTextureWarmup() {
@@ -62,9 +69,10 @@ private const val LOADING_MIN_VISIBLE_PROGRESS: Float = 0.02f
 private val LoadingTextHeight: Dp = Dp(64f)
 private val LoadingTextSpinnerSize: Dp = Dp(28f)
 private val LoadingTextSpinnerStroke: Dp = Dp(3f)
-private val LoadingHistoryHeight: Dp = Dp(92f)
-private val LoadingHistoryRowHeight: Dp = Dp(22f)
-private const val LOADING_HISTORY_ROW_COUNT: Int = 4
+private val LoadingHistoryHeight: Dp = Dp(136f)
+private val LoadingHistoryViewportHeight: Dp = Dp(96f)
+private val LoadingHistoryRowHeight: Dp = Dp(24f)
+private const val LOADING_HISTORY_MAX_ROWS: Int = 32
 
 private fun createLoadingScene(
     model: SettingsModel,
@@ -74,14 +82,14 @@ private fun createLoadingScene(
     recentSteps: MutableStateValue<List<String>>,
     warmupUiTextures: MutableStateValue<Boolean>,
 ): Scene {
-    val theme = ColorSchemeRegistry.schemeFor(model.selectedColorSchemeId.value)
+    val theme = ColorSchemeRegistry.cyberpunkMenuScheme
     return UiScene(sceneName, clearColor = ClearColorFill(theme.palette.surfaceBase)) {
         addPanelSurface(PanelStyle.Menu, "loading-panel", model) { activeTheme ->
             val contentWidth = loadingContentWidth()
             MainMenuHeader(contentWidth, activeTheme)
             LoadingStatus(label.use(), progress.use(), recentSteps.use(), activeTheme, contentWidth)
-            if (warmupUiTextures.use()) {
-                UiIconWarmup(activeTheme)
+            Box(width = Dp(1f), height = Dp(1f)) {
+                if (warmupUiTextures.use()) UiIconWarmup(activeTheme)
             }
         }
     }
@@ -100,21 +108,26 @@ private fun UiScope.LoadingStatus(
             .margin(bottom = UiTheme.Spacing.md)
             .alignX(AlignmentX.Center)
 
-        Row(width = FitContent, height = Grow.Std) {
-            modifier.align(AlignmentX.Center, AlignmentY.Center)
+        Row(width = Grow.Std, height = Grow.Std) {
+            modifier.align(AlignmentX.Start, AlignmentY.Center)
 
-            CircularLoadingIndicator(
-                size = LoadingTextSpinnerSize,
-                strokeWidth = LoadingTextSpinnerStroke,
-                theme = theme,
-            ).modifier
-                .alignY(AlignmentY.Center)
-                .margin(end = UiTheme.Spacing.sm)
+            Box(width = Dp(42f), height = Grow.Std) {
+                CircularLoadingIndicator(
+                    size = LoadingTextSpinnerSize,
+                    strokeWidth = LoadingTextSpinnerStroke,
+                    theme = theme,
+                ).modifier.align(AlignmentX.Start, AlignmentY.Center)
+            }
 
             Text(text) {
                 modifier
+                    .width(Grow.Std)
                     .height(Grow.Std)
-                    .font(UiTheme.Fonts.bodySmall)
+                    .font(if (text.all { it.code in 32..126 }) {
+                        UiTheme.Fonts.titleBase.derive(17f)
+                    } else {
+                        UiTheme.Fonts.bodySmall
+                    })
                     .textAlign(AlignmentX.Start, AlignmentY.Center)
                     .isWrapText(false)
                     .clipToBounds(true)
@@ -127,39 +140,77 @@ private fun UiScope.LoadingStatus(
         width = statusWidth,
         theme = theme,
     )
-    LoadingStepHistory(text, recentSteps, statusWidth, theme)
+    LoadingStepHistory(recentSteps, statusWidth, theme)
 }
 
 private fun UiScope.LoadingStepHistory(
-    currentText: String,
     recentSteps: List<String>,
     width: Dp,
     theme: ColorSchemeDefinition,
 ) {
-    val completedSteps = recentSteps
-        .dropLastWhile { it == currentText }
-        .takeLast(LOADING_HISTORY_ROW_COUNT)
     Box(width = width, height = LoadingHistoryHeight) {
         modifier
             .alignX(AlignmentX.Center)
             .margin(top = UiTheme.Spacing.md)
+            .padding(UiTheme.Spacing.sm)
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
-        Column(width = Grow.Std, height = FitContent) {
-            completedSteps.forEach { step ->
-                Text(step) {
+        Column(width = Grow.Std, height = Grow.Std) {
+            Row(width = Grow.Std, height = Dp(24f)) {
+                Text("BOOT / EVENT LOG") {
                     modifier
                         .width(Grow.Std)
-                        .height(LoadingHistoryRowHeight)
-                        .font(UiTheme.Fonts.bodySmall)
-                        .textAlign(AlignmentX.Start, AlignmentY.Center)
-                        .isWrapText(false)
-                        .clipToBounds(true)
-                        .textColor(theme.palette.textSecondary)
+                        .font(UiTheme.Fonts.titleBase.derive(13f))
+                        .textColor(theme.palette.primary)
+                }
+                Text("AUTO SCROLL") {
+                    modifier
+                        .font(UiTheme.Fonts.titleBase.derive(11f))
+                        .textColor(theme.palette.secondary)
+                }
+            }
+            Box(width = Grow.Std, height = LoadingHistoryViewportHeight) {
+                modifier.background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
+                StickToEndScrollColumn(
+                    items = recentSteps.mapIndexed { index, step -> LoadingLogLine(index, step) },
+                    theme = theme,
+                    width = Grow.Std,
+                    height = Grow.Std,
+                    smoothFollow = true,
+                ) { line ->
+                    Row(width = Grow.Std, height = LoadingHistoryRowHeight) {
+                        modifier.padding(horizontal = UiTheme.Spacing.xs)
+                        Text(line.index.toString().padStart(2, '0')) {
+                            modifier
+                                .width(Dp(32f))
+                                .height(Grow.Std)
+                                .font(UiTheme.Fonts.titleBase.derive(12f))
+                                .textAlign(AlignmentX.Start, AlignmentY.Center)
+                                .textColor(theme.palette.secondary)
+                        }
+                        Text(line.text) {
+                            modifier
+                                .width(Grow.Std)
+                                .height(Grow.Std)
+                                .font(if (line.text.all { it.code in 32..126 }) {
+                                    UiTheme.Fonts.titleBase.derive(14f)
+                                } else {
+                                    UiTheme.Fonts.base.derive(16f)
+                                })
+                                .textAlign(AlignmentX.Start, AlignmentY.Center)
+                                .isWrapText(false)
+                                .clipToBounds(true)
+                                .textColor(theme.palette.textSecondary)
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+private data class LoadingLogLine(val index: Int, val text: String)
 
 private fun UiScope.loadingContentWidth(): Dp =
     ResponsiveContentWidth(

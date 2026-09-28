@@ -8,12 +8,12 @@ import kotlin.test.assertTrue
 class ColorEmojiBitmapFontTest {
     @Test
     fun `noto color emoji paints flags and pictographs in color`() {
-        val fontFile = File("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf")
-        if (!fontFile.isFile) return
+        val fontFile = File("../assets/font/NotoColorEmoji.ttf")
+        assertTrue(fontFile.isFile, "bundled emoji font is missing")
         val font = ColorEmojiBitmapFont.load(fontFile)
         assertNotNull(font)
         for (emoji in listOf("🍎", "🚀", "🎮", "🇨🇳", "🇺🇳")) {
-            val image = font!!.rasterize(emoji)
+            val image = font.rasterize(emoji)
             assertNotNull(image, emoji)
             assertTrue(image.width > 8 && image.height > 8, emoji)
             assertTrue(coloredPixels(image) > 20, emoji)

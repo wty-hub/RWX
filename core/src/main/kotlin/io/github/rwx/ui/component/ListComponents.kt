@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.AssetLoader
 import de.fabmax.kool.Assets
 import de.fabmax.kool.MimeType
@@ -39,12 +41,13 @@ fun UiScope.MapTileButton(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.sm))
-            .border(RoundRectBorder(border, UiTheme.Spacing.sm, Dp(1f)))
+            .background(RoundRectBackground(background, theme.mediumCornerRadius))
+            .border(RoundRectBorder(border, theme.mediumCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }
 
+        CyberCardRail(theme, isHovered)
         Column(width = Grow.Std, height = Grow.Std) {
             MapPreview(map, theme, previewHeight)
             Text(map.displayName) {
@@ -91,8 +94,8 @@ private fun UiScope.MapModeBadge(
                 .zLayer(UiSurface.LAYER_FLOATING)
         }
         modifier
-            .background(RoundRectBackground(theme.palette.primaryContainer, Dp(4f)))
-            .border(RoundRectBorder(theme.palette.primary, Dp(4f), Dp(1f)))
+            .background(RoundRectBackground(theme.palette.primaryContainer, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.primary, theme.smallCornerRadius, Dp(1f)))
         Text(label) {
             modifier
                 .width(Grow.Std)
@@ -114,8 +117,8 @@ internal fun UiScope.MapPreviewImage(
 ) {
     Box(width = width, height = height) {
         modifier
-            .background(RoundRectBackground(theme.palette.surfaceBase, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
         val previewTexture = previewAssetPath?.let { MapPreviewTextureCache.textureFor(it) }
         if (previewTexture != null) {
@@ -135,6 +138,7 @@ internal fun UiScope.MapPreviewImage(
                     .textColor(theme.palette.textDisabled)
             }
         }
+        CyberCardRail(theme)
     }
 }
 

@@ -22,7 +22,7 @@ class ModWindowSceneHost(
     }
 
     fun createScene(): Scene = UiScene(SCENE_NAME) {
-        addPanelSurface(PanelStyle.Menu, "mod-window-panel", model) { theme ->
+        addPanelSurface(PanelStyle.ModWindow, "mod-window-panel", model) { theme ->
             revision.use()
             val active = UiRegistry.activeWindow()
             val contentWidth = ResponsiveContentWidth(

@@ -108,6 +108,18 @@ class SettingsSceneHost(
                         )
                     }
 
+                    SettingsScrollRow.MaxFrameRate -> {
+                        SettingsMaxFrameRateCard(
+                            selected = MaxFrameRateOption.fromFramesPerSecond(model.maxFrameRate.use()),
+                            theme = theme,
+                            contentWidth = metrics.rowWidth,
+                            icon = pageContent.page.settingsIcon,
+                        ) { option ->
+                            model.maxFrameRate.value = option.framesPerSecond
+                            dispatch(SettingsAction.ApplyChanges)
+                        }
+                    }
+
                     is SettingsScrollRow.KeyBinding -> {
                         SettingsKeyBindingCard(
                             row = row.row,
@@ -159,6 +171,7 @@ class SettingsSceneHost(
                     when (item) {
                         is SettingsPageItem.Toggle -> rows.add(SettingsScrollRow.Toggle(item.toggle))
                         is SettingsPageItem.Slider -> rows.add(SettingsScrollRow.Slider(item.slider))
+                        SettingsPageItem.MaxFrameRate -> rows.add(SettingsScrollRow.MaxFrameRate)
                         is SettingsPageItem.ColorSchemeSelector -> Unit
                         is SettingsPageItem.StorageLocation -> rows.add(
                             SettingsScrollRow.StorageLocation(item.selectedType)
@@ -321,8 +334,8 @@ class SettingsSceneHost(
         const val KEY_BINDINGS_SECTION_TITLE: String = "Key Bindings"
         const val KEY_BINDINGS_HINT: String =
             "Click a binding slot, then press the replacement key. Escape cancels capture."
-        const val COLOR_SCHEME_SECTION_TITLE: String = "Color Scheme"
-        const val COLOR_SCHEME_HINT: String = "Color scheme changes apply immediately."
+        const val COLOR_SCHEME_SECTION_TITLE: String = "In-game Color Scheme"
+        const val COLOR_SCHEME_HINT: String = "These colors apply to the game HUD, pause menu, and in-game mod windows. Menus use the fixed cyberpunk theme."
         private const val PRIMARY_KEY_SLOT: Int = 0
         private const val SECONDARY_KEY_SLOT: Int = 1
     }

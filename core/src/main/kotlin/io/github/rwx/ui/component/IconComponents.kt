@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.AssetLoader
 import de.fabmax.kool.Assets
 import de.fabmax.kool.math.Vec2i
@@ -8,6 +10,7 @@ import de.fabmax.kool.pipeline.Texture2d
 import de.fabmax.kool.util.Color
 import de.fabmax.kool.util.Font
 import io.github.rwx.ui.ColorSchemeDefinition
+import io.github.rwx.ui.UiAppearance
 import io.github.rwx.ui.UiTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -86,8 +89,8 @@ fun UiScope.IconButton(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(2f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(2f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }
@@ -123,7 +126,11 @@ fun UiScope.TextIconButton(
         emphasized -> theme.palette.primaryContainer
         else -> theme.palette.surfaceSunken
     }
-    val border = if (isHovered) theme.palette.primary else theme.palette.borderSubtle
+    val border = if (isHovered || (emphasized && theme.appearance == UiAppearance.Cyberpunk)) {
+        theme.palette.primary
+    } else {
+        theme.palette.borderSubtle
+    }
     val textColor = if (isHovered) theme.palette.primary else theme.palette.textPrimary
     val iconColor = if (isHovered) theme.palette.secondary else theme.palette.primary
 
@@ -131,12 +138,18 @@ fun UiScope.TextIconButton(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md, vertical = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onPressed() }
 
+        if (theme.appearance == UiAppearance.Cyberpunk) {
+            Box(width = Dp(2f), height = Grow.Std) {
+                modifier.alignX(AlignmentX.Start)
+                    .backgroundColor(if (isHovered) theme.palette.secondary else theme.palette.primary)
+            }
+        }
         Row(width = Grow.Std, height = Grow.Std) {
             modifier.align(AlignmentX.Center, AlignmentY.Center)
             if (showIcon) {

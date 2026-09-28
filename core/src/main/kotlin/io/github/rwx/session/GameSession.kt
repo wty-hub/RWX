@@ -53,8 +53,16 @@ abstract class GameSession {
     private var rendererProfile: GameSessionRendererProfile = GameSessionRendererProfile()
     open val rendersIntoKoolCanvas: Boolean
         get() = rendererProfile.rendersIntoKoolCanvas
+    /**
+     * The native renderer still owns the game frame, but its completed frame is presented behind
+     * Kool's UI in the same window. This does not change [rendersIntoKoolCanvas]: callers that
+     * manage engine startup and input continue to treat this as an external renderer.
+     */
+    open val compositesExternalGameFrameInKool: Boolean = false
     open val acceptsKoolInput: Boolean
         get() = rendererProfile.acceptsKoolInput
+    /** True when the game accepts window logical pixels rather than Kool framebuffer pixels. */
+    open val usesLogicalPointerCoordinates: Boolean = false
     open val canStartNewSessionInPlace: Boolean
         get() = rendererProfile.canStartNewSessionInPlace
     open val usesNativeSurfaceForResumeBackground: Boolean

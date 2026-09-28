@@ -4533,11 +4533,7 @@ public final class GameUI extends Serializable {
     public void a(int i, int i2, int i3, int i4, String str, int i5, KoolPaint paint) {
         GameEngine gameEngine = GameEngine.getInstance();
         this.bx.a(i, i2, i + i3, i2 + i4);
-        if (GameEngine.isPCOrIOSVersion) {
-            gameEngine.renderGraphicsEngine.a(str, this.bx.d(), this.bx.e() + (gameEngine.renderGraphicsEngine.a(str, paint) / 2), paint);
-        } else {
-            gameEngine.renderGraphicsEngine.a(str, this.bx.d(), this.bx.e() - ((paint.l() + paint.m()) / 2.0f), paint);
-        }
+        gameEngine.renderGraphicsEngine.a(str, this.bx.d(), this.bx.e() - ((paint.l() + paint.m()) / 2.0f), paint);
     }
 
     /* JADX INFO: renamed from: J */

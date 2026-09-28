@@ -1,8 +1,11 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.i18n.I18n
 import io.github.rwx.ui.model.AndroidStoragePreference
+import io.github.rwx.ui.model.MaxFrameRateOption
 import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.model.SettingColorSchemeItem
 import io.github.rwx.ui.model.SettingKeyBindingRow
@@ -66,8 +69,8 @@ fun UiScope.SettingsTabs(
         modifier
             .margin(bottom = UiTheme.Spacing.md)
             .padding(UiTheme.Spacing.xs)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.sm))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.mediumCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.mediumCornerRadius, Dp(1f)))
         IconButton(Icon.Back, theme, onPressed = onBack)
         pages.forEach { page ->
             val isSelected = page == currentPage
@@ -101,8 +104,8 @@ fun UiScope.SettingsToggleCard(
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
         if (icon != null) {
             Box(width = iconSlotWidth, height = Grow.Std) {
                 Icon(icon, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary).modifier
@@ -128,6 +131,67 @@ fun UiScope.SettingsToggleCard(
     }
 }
 
+fun UiScope.SettingsMaxFrameRateCard(
+    selected: MaxFrameRateOption,
+    theme: ColorSchemeDefinition,
+    contentWidth: Dp = UiTheme.Layout.settingsContentWidth,
+    icon: Icon? = null,
+    onSelected: (MaxFrameRateOption) -> Unit,
+) {
+    val rowInnerWidth = contentWidth.remainingAfter(Dp(UiTheme.Spacing.md.value * 2f), Dp(240f))
+    val iconSlotWidth = if (icon == null) Dp.ZERO else UiTheme.Layout.settingsRowIconSlotSize
+    val controlWidth = rowInnerWidth.fraction(0.4f, Dp(204f), Dp(260f))
+    val labelWidth = rowInnerWidth.remainingAfter(Dp(iconSlotWidth.value + controlWidth.value), Dp(96f))
+    Row(width = contentWidth, height = UiTheme.Layout.settingsRowHeight) {
+        modifier
+            .margin(bottom = UiTheme.Spacing.xs)
+            .padding(horizontal = UiTheme.Spacing.md)
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
+        if (icon != null) {
+            Box(width = iconSlotWidth, height = Grow.Std) {
+                Icon(icon, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary).modifier
+                    .align(AlignmentX.Start, AlignmentY.Center)
+            }
+        }
+        Text(I18n.settings.display.maxFrameRate()) {
+            modifier
+                .width(labelWidth)
+                .height(UiTheme.Layout.settingsRowHeight)
+                .font(UiTheme.Fonts.bodySmall)
+                .textAlign(AlignmentX.Start, AlignmentY.Center)
+                .textColor(theme.palette.textPrimary)
+        }
+        Row(width = controlWidth, height = UiTheme.Layout.menuButtonHeight) {
+            val options = MaxFrameRateOption.entries
+            val stepWidth = Dp(44f)
+            val valueWidth = controlWidth.remainingAfter(Dp(stepWidth.value * 2f))
+            Button("-") {
+                modifier
+                    .width(stepWidth)
+                    .height(UiTheme.Layout.menuButtonHeight)
+                    .font(UiTheme.Fonts.bodySmall)
+                    .onClick { options.getOrNull(selected.ordinal - 1)?.let(onSelected) }
+            }
+            Text(selected.toString()) {
+                modifier
+                    .width(valueWidth)
+                    .height(UiTheme.Layout.menuButtonHeight)
+                    .font(UiTheme.Fonts.bodySmall)
+                    .textAlign(AlignmentX.Center, AlignmentY.Center)
+                    .textColor(theme.palette.textPrimary)
+            }
+            Button("+") {
+                modifier
+                    .width(stepWidth)
+                    .height(UiTheme.Layout.menuButtonHeight)
+                    .font(UiTheme.Fonts.bodySmall)
+                    .onClick { options.getOrNull(selected.ordinal + 1)?.let(onSelected) }
+            }
+        }
+    }
+}
+
 fun UiScope.SettingsStorageLocationCard(
     selected: AndroidStoragePreference,
     theme: ColorSchemeDefinition,
@@ -147,8 +211,8 @@ fun UiScope.SettingsStorageLocationCard(
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
         Box(width = UiTheme.Layout.settingsRowIconSlotSize, height = Grow.Std) {
             Icon(Icon.Save, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary)
@@ -208,8 +272,8 @@ fun UiScope.SettingsSliderCard(
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
         if (icon != null) {
             Box(width = iconSlotWidth, height = Grow.Std) {
                 Icon(icon, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary).modifier
@@ -269,8 +333,8 @@ fun UiScope.SettingsKeyBindingCard(
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
         Box(width = iconSlotWidth, height = Grow.Std) {
             Icon(Icon.Interface, UiTheme.Layout.textButtonGlyphSize, theme.palette.primary).modifier
@@ -340,8 +404,8 @@ private fun UiScope.KeyBindingSlotButton(
             .alignY(AlignmentY.Center)
             .margin(start = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.sm)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onBind(slot) }
@@ -371,8 +435,8 @@ private fun UiScope.ClearKeyBindingButton(
         modifier
             .alignY(AlignmentY.Center)
             .margin(start = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(theme.palette.surfaceBase, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onClear(slot) }
@@ -394,14 +458,14 @@ fun UiScope.SettingsColorSchemeCard(
         selected -> activeScheme.palette.primaryContainer
         else -> activeScheme.palette.surfaceSunken
     }
-    val border = if (selected || isHovered) item.scheme.palette.primary else activeScheme.palette.borderSubtle
+    val border = if (selected || isHovered) activeScheme.palette.primary else activeScheme.palette.borderSubtle
 
     Box(width = contentWidth, height = UiTheme.Layout.settingsRowHeight) {
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.md, vertical = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, activeScheme.smallCornerRadius))
+            .border(RoundRectBorder(border, activeScheme.smallCornerRadius, Dp(1f)))
             .onEnter { hovered.value = true }
             .onExit { hovered.value = false }
             .onClick { onSelected() }

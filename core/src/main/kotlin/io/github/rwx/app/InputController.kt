@@ -11,16 +11,17 @@ import io.github.rwx.ui.component.PlatformTextInputBridge
 internal class InputController(
     private val gameSession: GameSession,
     private val currentScreen: () -> AppScreen,
-    screenScale: () -> Float,
+    pointerScale: () -> Float,
     private val navigateBack: () -> Unit,
     private val dismissDialog: () -> Boolean = { false },
     private val isModalOverlayOpen: () -> Boolean = { false },
 ) {
     private val legacyPointerSink = LegacyGamePointerSink(
         gameSession = gameSession,
-        scaleProvider = KoolScreenScaleProvider(screenScale),
+        scaleProvider = KoolPointerScaleProvider(pointerScale),
         blockWorldWheel = isModalOverlayOpen,
     )
+    private val legacyKeyboardSink = LegacyGameKeyboardSink(gameSession)
 
     val preparedComponentName: String
         get() = legacyPointerSink::class.simpleName ?: "LegacyGamePointerSink"
@@ -52,8 +53,13 @@ internal class InputController(
                 shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) &&
                     !isModalOverlayOpen()
             },
-            LegacyGameKeyboardSink(gameSession),
+            legacyKeyboardSink,
         )
+    }
+
+    fun resetOnHostFocusLost() {
+        legacyPointerSink.resetOnHostFocusLost()
+        legacyKeyboardSink.resetOnHostFocusLost()
     }
 
     fun forwardPointerForFrame() {
@@ -62,3 +68,11 @@ internal class InputController(
         }
     }
 }
+
+/** Kool pointer positions are already in framebuffer pixels; Slick's engine uses AWT logical pixels. */
+internal fun pointerToGameScale(parentScreenScale: Float, usesLogicalPointerCoordinates: Boolean): Float =
+    if (usesLogicalPointerCoordinates && parentScreenScale.isFinite() && parentScreenScale > 0f) {
+        1f / parentScreenScale
+    } else {
+        1f
+    }

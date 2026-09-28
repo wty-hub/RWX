@@ -75,14 +75,18 @@ internal class FrameRenderController(
             isRwGameLoading = isRwGameLoading,
             isLastExternalFrameBackgroundVisible = isLastExternalFrameBackgroundVisible,
             rendersIntoKoolCanvas = gameSession.rendersIntoKoolCanvas,
+            compositesExternalGameFrameInKool = gameSession.compositesExternalGameFrameInKool,
         )
         koolCanvasSceneHost.render(
             if (shouldUseRwCanvasFrame) {
                 val frame = externalFrameBackground ?: rwCanvasFrame
                 // Canvas/OpenGL Android backends render into a native surface below Kool's transparent
                 // surface. A synthetic opaque clear here hides that native frame completely;
-                // only the Kool-owned backend needs the fallback black clear.
-                if (gameSession.rendersIntoKoolCanvas) frame.withDefaultSurfaceClear() else frame
+                // the Kool-owned backend and an external frame presented by Kool need the fallback
+                // black clear, including while the first external frame is not ready yet.
+                if (gameSession.rendersIntoKoolCanvas ||
+                    (isRwGameVisible && gameSession.compositesExternalGameFrameInKool)
+                ) frame.withDefaultSurfaceClear() else frame
             } else {
                 KoolCanvasFrame(canvasViewport, emptyList())
             },

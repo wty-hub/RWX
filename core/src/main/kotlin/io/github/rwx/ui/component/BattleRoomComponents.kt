@@ -1,5 +1,7 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
 import com.corrodinggames.rts.gameFramework.GameEngine
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.util.Color
@@ -18,34 +20,34 @@ fun UiScope.BattleRoom(
         isAndroid = GameEngine.isAndroidPlatform(),
     )
 
-    if (metrics.isPageScrollable) {
-        val scrollState = rememberScrollState()
-        ScrollArea(
-            width = metrics.contentWidth,
-            height = metrics.pageViewportHeight,
-            withVerticalScrollbar = false,
-            withHorizontalScrollbar = false,
-            isScrollableVertical = true,
-            isScrollableHorizontal = false,
-            //scrollbarColor = theme.palette.primary,
-            state = scrollState,
-            containerModifier = {
-                it
-                    .backgroundColor(null)
-                    .onDrag { event ->
-                        scrollState.scrollDpY(Dp.fromPx(-event.pointer.delta.y).value)
-                    }
-            },
-        ) {
-            modifier.width(Grow.Std).height(FitContent)
-            Column(width = metrics.contentWidth, height = FitContent) {
-                BattleRoomContent(model, theme, metrics, actions)
-            }
-        }
+    // Allocate the same remember slot when a window crosses the fixed/scrolling breakpoint.
+    val scrollState = rememberScrollState()
+    if (metrics.isFixedViewport) {
+        BattleRoomContent(model, theme, metrics, actions)
         return
     }
 
-    BattleRoomContent(model, theme, metrics, actions)
+    ScrollArea(
+        width = metrics.contentWidth,
+        height = metrics.pageViewportHeight,
+        withVerticalScrollbar = false,
+        withHorizontalScrollbar = false,
+        isScrollableVertical = true,
+        isScrollableHorizontal = false,
+        state = scrollState,
+        containerModifier = {
+            it
+                .backgroundColor(null)
+                .onDrag { event ->
+                    scrollState.scrollDpY(Dp.fromPx(-event.pointer.delta.y).value)
+                }
+        },
+    ) {
+        modifier.width(Grow.Std).height(FitContent)
+        Column(width = metrics.contentWidth, height = FitContent) {
+            BattleRoomContent(model, theme, metrics, actions)
+        }
+    }
 }
 
 private fun UiScope.BattleRoomContent(
@@ -63,8 +65,11 @@ private fun UiScope.BattleRoomContent(
             BattleRoomChatPanel(model.chatLines, model.players, theme, metrics, actions.onSendChat)
             BattleRoomActionBar(model.isHost, theme, metrics, actions)
         }
-    } else if (metrics.isAndroid) {
-        Column(width = metrics.contentWidth) {
+    } else {
+        Column(
+            width = metrics.contentWidth,
+            height = if (metrics.isFixedViewport) metrics.pageViewportHeight else FitContent,
+        ) {
             modifier.align(AlignmentX.Center, AlignmentY.Top)
             Row(width = metrics.contentWidth) {
                 BattleRoomInfoPanel(
@@ -81,19 +86,11 @@ private fun UiScope.BattleRoomContent(
                     BattleRoomPlayersPanel(model, theme, metrics, actions)
                 }
             }
-            BattleRoomChatPanel(model.chatLines, model.players, theme, metrics, actions.onSendChat)
+            BattleRoomChatPanel(
+                model.chatLines, model.players, theme, metrics, actions.onSendChat,
+                fillAvailableHeight = metrics.isFixedViewport,
+            )
             BattleRoomActionBar(model.isHost, theme, metrics, actions)
-        }
-    } else {
-        Row(width = metrics.contentWidth) {
-            modifier.align(AlignmentX.Center, AlignmentY.Top)
-            BattleRoomInfoPanel(model, model.isHost, theme, metrics, actions.onBack, actions.onSelectMap,actions.onOpenOptions)
-            Column(width = metrics.playersWidth) {
-                modifier.margin(start = UiTheme.Spacing.lg)
-                BattleRoomPlayersPanel(model, theme, metrics, actions)
-                BattleRoomChatPanel(model.chatLines, model.players, theme, metrics, actions.onSendChat)
-                BattleRoomActionBar(model.isHost, theme, metrics, actions)
-            }
         }
     }
 }
@@ -112,8 +109,12 @@ private fun UiScope.BattleRoomInfoPanel(
         modifier
             .margin(UiTheme.Spacing.xs)
             .padding(UiTheme.Spacing.sm)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.sm))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.sm, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.mediumCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.mediumCornerRadius, Dp(1f)))
+
+        Box(width = Grow.Std, height = Dp(2f)) {
+            modifier.margin(bottom = UiTheme.Spacing.sm).backgroundColor(theme.palette.primary)
+        }
 
         Box(width = Grow.Std, height = metrics.mapPreviewHeight) {
             if (canSelectMap) {
@@ -147,7 +148,7 @@ private fun UiScope.BattleRoomInfoPanel(
                 .textColor(theme.palette.textPrimary)
         }
         if (model.info.rwxModeLabel != null) {
-            BattleRoomModeBadge(model.info.rwxModeLabel, theme, width)
+            BattleRoomModeBadge(model.info.rwxModeLabel, theme)
             model.info.rwxCompatibilityLabel?.let { line ->
                 Text(line) {
                     modifier
@@ -190,14 +191,13 @@ private fun UiScope.BattleRoomInfoPanel(
 private fun UiScope.BattleRoomModeBadge(
     label: String,
     theme: ColorSchemeDefinition,
-    panelWidth: Dp,
 ) {
-    Box(width = panelWidth, height = Dp(26f)) {
+    Box(width = Grow.Std, height = Dp(26f)) {
         Box(width = Dp(132f), height = Dp(24f)) {
             modifier
                 .align(AlignmentX.Center, AlignmentY.Center)
-                .background(RoundRectBackground(theme.palette.primaryContainer, Dp(4f)))
-                .border(RoundRectBorder(theme.palette.primary, Dp(4f), Dp(1f)))
+                .background(RoundRectBackground(theme.palette.primaryContainer, theme.smallCornerRadius))
+                .border(RoundRectBorder(theme.palette.primary, theme.smallCornerRadius, Dp(1f)))
             Text(label) {
                 modifier
                     .width(Grow.Std)
@@ -221,6 +221,14 @@ private fun UiScope.BattleRoomPlayersPanel(
     Column(width = metrics.playersWidth) {
         if (metrics.isCompact) {
             modifier.margin(top = UiTheme.Spacing.sm)
+        }
+
+        Text("${I18n.battleroom.players()}  /  ${model.players.size}") {
+            modifier
+                .width(Grow.Std)
+                .margin(bottom = UiTheme.Spacing.xs)
+                .font(UiTheme.Fonts.bodySmall)
+                .textColor(theme.palette.primary)
         }
 
         BattleRoomHeaderRow(theme, metrics)
@@ -263,7 +271,8 @@ private fun UiScope.BattleRoomHeaderRow(
     ) {
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(theme.palette.surfaceRaised, UiTheme.Spacing.xs))
+            .background(RoundRectBackground(theme.palette.surfaceRaised, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
         battleRoomCell(
             I18n.battleroom.heading.name(),
@@ -309,7 +318,16 @@ private fun UiScope.BattleRoomPlayerRow(
     ) {
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
-            .background(RoundRectBackground(rowBg, UiTheme.Spacing.xs))
+            .background(RoundRectBackground(rowBg, theme.smallCornerRadius))
+            .border(RoundRectBorder(
+                when {
+                    player.isLocal -> theme.palette.secondary
+                    clickable && isHovered -> theme.palette.primary
+                    else -> theme.palette.borderSubtle
+                },
+                theme.smallCornerRadius,
+                Dp(1f),
+            ))
         if (clickable) {
             modifier
                 .onEnter { hovered.value = true }
@@ -364,8 +382,12 @@ private fun UiScope.BattleRoomChatPanel(
     theme: ColorSchemeDefinition,
     metrics: BattleRoomLayoutMetrics,
     onSend: (String) -> Unit,
+    fillAvailableHeight: Boolean = false,
 ) {
-    Column(width = metrics.actionAreaWidth) {
+    Column(
+        width = metrics.actionAreaWidth,
+        height = if (fillAvailableHeight) Grow.Std else FitContent,
+    ) {
         modifier.margin(top = UiTheme.Spacing.sm)
 
         Text(I18n.battleroom.chat()) {
@@ -382,9 +404,11 @@ private fun UiScope.BattleRoomChatPanel(
         val draft = remember("")
         Box(
             width = metrics.actionAreaWidth,
-            height = metrics.chatViewportHeight,
+            height = if (fillAvailableHeight) Grow.Std else metrics.chatViewportHeight,
         ) {
-            modifier.background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
+            modifier
+                .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+                .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
             StickToEndScrollColumn(
                 items = chatLines,
                 theme = theme,
@@ -395,7 +419,10 @@ private fun UiScope.BattleRoomChatPanel(
                     ?.let { BattleRoomTeamColors.colorFor(it, theme.palette.textPrimary) }
                     ?: theme.palette.textSecondary
                 Box(width = Grow.Std) {
-                    modifier.padding(horizontal = UiTheme.Spacing.xs, vertical = Dp(2f))
+                    modifier
+                        .margin(horizontal = UiTheme.Spacing.xs, vertical = Dp(2f))
+                        .padding(horizontal = UiTheme.Spacing.sm, vertical = Dp(3f))
+                        .background(RoundRectBackground(theme.palette.surfaceRaised.withAlpha(0.55f), theme.smallCornerRadius))
                     EmojiAwareText(
                         text = line.text,
                         textFont = UiTheme.Fonts.bodySmall,
@@ -550,10 +577,8 @@ private data class BattleRoomLayoutMetrics(
     val actionAreaWidth: Dp,
     val compactActionButtonWidth: Dp,
     val isCompact: Boolean,
-    val isAndroid: Boolean,
     val pageViewportHeight: Dp,
-    val isShortLandscape: Boolean,
-    val isPageScrollable: Boolean,
+    val isFixedViewport: Boolean,
 )
 
 private fun UiScope.battleRoomLayoutMetrics(
@@ -579,21 +604,16 @@ private fun UiScope.battleRoomLayoutMetrics(
     val infoWidth = if (isShortLandscape) {
         contentWidth.fraction(0.38f, Dp(240f), Dp(320f))
     } else if (isCompact) {
-        contentWidth
+        Dp(contentWidth.value.coerceAtMost(420f))
     } else {
-        contentWidth.fraction(0.48f, Dp(420f), Dp(780f))
+        contentWidth.fraction(0.30f, Dp(300f), Dp(440f))
     }
     val playersWidth = if (isCompact) {
         contentWidth
     } else {
         contentWidth.remainingAfter(Dp(infoWidth.value + UiTheme.Spacing.lg.value + UiTheme.Spacing.sm.value), Dp(440f))
     }
-    val mapPreviewHeight = if (isShortLandscape) Dp(150f) else ResponsiveViewportHeight(
-        defaultHeight = UiTheme.Layout.battleRoomPreviewHeight,
-        minHeight = UiTheme.Layout.battleRoomMinPreviewHeight,
-        maxHeight = UiTheme.Layout.battleRoomMaxPreviewHeight,
-        verticalChrome = if (isCompact) Dp(560f) else Dp(360f),
-    )
+    val mapPreviewHeight = Dp(if (isShortLandscape) 150f else if (isCompact) 200f else 180f)
     val responsivePlayersViewportHeight = if (isShortLandscape) {
         UiTheme.Layout.battleRoomMinPlayersViewportHeight
     } else ResponsiveViewportHeight(
@@ -602,17 +622,22 @@ private fun UiScope.battleRoomLayoutMetrics(
         maxHeight = UiTheme.Layout.battleRoomMaxPlayersViewportHeight,
         verticalChrome = if (isCompact) Dp(560f) else Dp(520f),
     )
-    val playersViewportHeight = battleRoomPlayersViewportHeight(
+    val calculatedPlayersViewportHeight = battleRoomPlayersViewportHeight(
         playerCount = playerCount,
         responsiveHeight = responsivePlayersViewportHeight,
     )
+    val playersViewportHeight = if (isCompact) calculatedPlayersViewportHeight else {
+        Dp(calculatedPlayersViewportHeight.value.coerceAtMost(BATTLE_ROOM_WIDE_MAX_PLAYERS_HEIGHT_DP))
+    }
     val responsiveChatViewportHeight = if (isShortLandscape) {
-        UiTheme.Layout.battleRoomMinChatViewportHeight
+        Dp(220f)
+    } else if (!isCompact) {
+        battleRoomWideChatViewportHeight(viewportHeightDp, mapPreviewHeight)
     } else ResponsiveViewportHeight(
-        defaultHeight = UiTheme.Layout.battleRoomChatViewportHeight,
-        minHeight = UiTheme.Layout.battleRoomMinChatViewportHeight,
-        maxHeight = UiTheme.Layout.battleRoomMaxChatViewportHeight,
-        verticalChrome = if (isCompact) Dp(660f) else Dp(700f),
+        defaultHeight = Dp(260f),
+        minHeight = Dp(220f),
+        maxHeight = Dp(460f),
+        verticalChrome = Dp(660f),
     )
     val chatViewportHeight = battleRoomChatViewportHeight(
         responsiveHeight = responsiveChatViewportHeight,
@@ -635,19 +660,22 @@ private fun UiScope.battleRoomLayoutMetrics(
         playerTeamWidth = teamWidth,
         playerPingWidth = pingWidth,
         sendButtonWidth = if (isCompact) Dp(96f) else UiTheme.Layout.battleRoomSendButtonWidth,
-        actionAreaWidth = if (isCompact || isAndroid) contentWidth else playersWidth,
+        actionAreaWidth = contentWidth,
         compactActionButtonWidth = contentWidth.remainingAfter(UiTheme.Spacing.sm, Dp(180f)),
         isCompact = isCompact,
-        isAndroid = isAndroid,
         pageViewportHeight = if (viewportHeightDp > 0f) {
             Dp((viewportHeightDp - pageVerticalChrome.value).coerceAtLeast(240f))
         } else {
             UiTheme.Layout.scrollViewportHeight
         },
-        isShortLandscape = isShortLandscape,
-        isPageScrollable = isAndroid || isCompact || isShortLandscape,
+        isFixedViewport = !isCompact && !isShortLandscape &&
+            viewportHeightDp >= BATTLE_ROOM_FIXED_VIEWPORT_MIN_HEIGHT_DP,
     )
 }
+
+internal fun battleRoomWideChatViewportHeight(viewportHeightDp: Float, mapPreviewHeight: Dp): Dp =
+    Dp((viewportHeightDp - mapPreviewHeight.value - BATTLE_ROOM_WIDE_VERTICAL_CHROME_DP)
+        .coerceIn(BATTLE_ROOM_WIDE_MIN_CHAT_HEIGHT_DP, BATTLE_ROOM_WIDE_MAX_CHAT_HEIGHT_DP))
 
 internal fun battleRoomPlayersViewportHeight(
     playerCount: Int,
@@ -672,3 +700,8 @@ private const val BATTLE_ROOM_COMPACT_WIDTH_DP: Float = 980f
 private const val BATTLE_ROOM_SHORT_LANDSCAPE_HEIGHT_DP: Float = 520f
 private const val BATTLE_ROOM_MAX_VISIBLE_PLAYER_ROWS: Int = 12
 private const val BATTLE_ROOM_ANDROID_MIN_CHAT_HEIGHT_DP: Float = 200f
+private const val BATTLE_ROOM_WIDE_VERTICAL_CHROME_DP: Float = 310f
+private const val BATTLE_ROOM_WIDE_MIN_CHAT_HEIGHT_DP: Float = 260f
+private const val BATTLE_ROOM_WIDE_MAX_CHAT_HEIGHT_DP: Float = 460f
+private const val BATTLE_ROOM_WIDE_MAX_PLAYERS_HEIGHT_DP: Float = 320f
+private const val BATTLE_ROOM_FIXED_VIEWPORT_MIN_HEIGHT_DP: Float = 680f

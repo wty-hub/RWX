@@ -1,8 +1,8 @@
 package io.github.rwx.ui.component
 
-import de.fabmax.kool.AssetLoader
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.pipeline.BufferedImageData2d
+import de.fabmax.kool.pipeline.MipMapping
 import de.fabmax.kool.pipeline.TexFormat
 import de.fabmax.kool.pipeline.Texture2d
 import de.fabmax.kool.util.Color
@@ -106,13 +106,23 @@ private fun UiScope.emojiLine(
                 is TextRun.Emoji -> {
                     val sizePx = textFont.sizePts.roundToInt().coerceIn(12, 96)
                     val cached = EmojiTextureCache.entryFor(run.value, sizePx)
-                    val width = Dp(textFont.sizePts * cached.aspectRatio)
-                    Image(cached.texture) {
-                        modifier
-                            .width(width)
-                            .height(emojiHeight)
-                            .alignY(alignY)
-                            .imageSize(ImageSize.Stretch)
+                    if (cached != null) {
+                        val width = Dp(textFont.sizePts * cached.aspectRatio)
+                        Image(cached.texture) {
+                            modifier
+                                .width(width)
+                                .height(emojiHeight)
+                                .alignY(alignY)
+                                .imageSize(ImageSize.Stretch)
+                        }
+                    } else {
+                        Text(run.value) {
+                            modifier
+                                .alignY(alignY)
+                                .font(textFont)
+                                .textColor(textColor)
+                                .isWrapText(false)
+                        }
                     }
                 }
             }
@@ -128,30 +138,33 @@ private data class EmojiTextureEntry(
 private object EmojiTextureCache {
     private val entries = mutableMapOf<String, EmojiTextureEntry>()
 
-    fun entryFor(emoji: String, sizePx: Int): EmojiTextureEntry {
+    fun entryFor(emoji: String, sizePx: Int): EmojiTextureEntry? {
         val key = "$sizePx:$emoji"
-        return entries.getOrPut(key) {
-            val raster = EmojiRasterizerBridge.rasterize(emoji, sizePx)
-            val aspect = if (raster != null && raster.height > 0) {
-                (raster.width.toFloat() / raster.height.toFloat()).coerceIn(0.5f, 4f)
-            } else {
-                1f
-            }
-            val texture = Texture2d(name = "emoji:$key") {
-                if (raster == null) return@Texture2d AssetLoader.textureDataLoadFailed
-                val pixels = Uint8Buffer(raster.rgba.size)
-                for (index in raster.rgba.indices) {
-                    pixels[index] = raster.rgba[index].toUByte()
-                }
-                BufferedImageData2d(
-                    data = pixels,
-                    width = raster.width,
-                    height = raster.height,
-                    format = TexFormat.RGBA,
-                    id = "emoji:$key",
-                )
-            }
-            EmojiTextureEntry(texture = texture, aspectRatio = aspect)
+        entries[key]?.let { return it }
+        val raster = EmojiRasterizerBridge.rasterize(emoji, sizePx) ?: return null
+        if (raster.width <= 0 || raster.height <= 0 || raster.rgba.size != raster.width * raster.height * 4) {
+            return null
+        }
+        val pixels = Uint8Buffer(raster.rgba.size)
+        for (index in raster.rgba.indices) {
+            pixels[index] = raster.rgba[index].toUByte()
+        }
+        val texture = Texture2d(
+            data = BufferedImageData2d(
+                data = pixels,
+                width = raster.width,
+                height = raster.height,
+                format = TexFormat.RGBA,
+                id = "emoji:$key",
+            ),
+            mipMapping = MipMapping.Off,
+            name = "emoji:$key",
+        )
+        return EmojiTextureEntry(
+            texture = texture,
+            aspectRatio = (raster.width.toFloat() / raster.height.toFloat()).coerceIn(0.5f, 4f),
+        ).also { entry ->
+            entries[key] = entry
         }
     }
 }

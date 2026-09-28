@@ -1,5 +1,8 @@
 package io.github.rwx.ui.component
 
+import io.github.rwx.ui.smallCornerRadius
+import io.github.rwx.ui.mediumCornerRadius
+import io.github.rwx.ui.UiAppearance
 import com.corrodinggames.rts.gameFramework.GameEngine
 import de.fabmax.kool.modules.ui2.*
 import io.github.rwx.ui.*
@@ -107,8 +110,8 @@ private fun UiScope.DialogScrollableList(
     ) {
         modifier
             .margin(bottom = if (compact) UiTheme.Spacing.sm else UiTheme.Spacing.lg)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
             .padding(UiTheme.Spacing.sm)
 
         ScrollableVerticalList(
@@ -136,25 +139,37 @@ private fun UiScope.DialogHeader(
     contentWidth: Dp,
     compact: Boolean,
 ) {
-    val cornerRadius = UiTheme.Spacing.sm
+    val cornerRadius = theme.mediumCornerRadius
     val headerHeight = if (compact) CompactDialogHeaderHeight else UiTheme.Layout.dialogHeaderHeight
     Box(width = contentWidth, height = headerHeight) {
         modifier
             .margin(bottom = if (compact) UiTheme.Spacing.sm else UiTheme.Spacing.md)
-            .background(RoundRectBackground(theme.palette.primary, cornerRadius))
+            .background(RoundRectBackground(
+                if (theme.appearance == UiAppearance.Cyberpunk) theme.palette.surfaceRaised else theme.palette.primary,
+                cornerRadius,
+            ))
 
-        Box(width = Grow.Std, height = Grow.Std) {
-            modifier.background(
-                RoundRectGradientBackground(
-                    cornerRadius = cornerRadius,
-                    colorA = theme.palette.primary,
-                    colorB = theme.palette.secondary,
-                    gradientCx = Dp.ZERO,
-                    gradientCy = Dp(headerHeight.value * 0.5f),
-                    gradientRx = contentWidth,
-                    gradientRy = Dp(contentWidth.value * 4f),
+        if (theme.appearance == UiAppearance.Cyberpunk) {
+            Box(width = Grow.Std, height = Dp(2f)) {
+                modifier.alignY(AlignmentY.Top).backgroundColor(theme.palette.primary)
+            }
+            Box(width = Dp(46f), height = Dp(2f)) {
+                modifier.align(AlignmentX.End, AlignmentY.Top).backgroundColor(theme.palette.secondary)
+            }
+        } else {
+            Box(width = Grow.Std, height = Grow.Std) {
+                modifier.background(
+                    RoundRectGradientBackground(
+                        cornerRadius = cornerRadius,
+                        colorA = theme.palette.primary,
+                        colorB = theme.palette.secondary,
+                        gradientCx = Dp.ZERO,
+                        gradientCy = Dp(headerHeight.value * 0.5f),
+                        gradientRx = contentWidth,
+                        gradientRy = Dp(contentWidth.value * 4f),
+                    )
                 )
-            )
+            }
         }
         Box(width = Grow.Std, height = Grow.Std) {
             modifier.border(RoundRectBorder(theme.palette.borderSubtle, cornerRadius, Dp(1f)))
@@ -167,7 +182,7 @@ private fun UiScope.DialogHeader(
                 .padding(horizontal = UiTheme.Spacing.lg)
                 .font(UiTheme.Fonts.headingMedium)
                 .textAlign(AlignmentX.Center, AlignmentY.Center)
-                .textColor(theme.palette.onPrimary)
+                .textColor(if (theme.appearance == UiAppearance.Cyberpunk) theme.palette.textPrimary else theme.palette.onPrimary)
         }
     }
 }
@@ -208,8 +223,8 @@ private fun UiScope.ScrollableDialogMessage(
     ) {
         modifier
             .margin(bottom = UiTheme.Spacing.xl)
-            .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
             .padding(UiTheme.Spacing.sm)
 
         ScrollArea(
@@ -286,8 +301,8 @@ private fun UiScope.DialogInfoRow(
         modifier
             .margin(bottom = UiTheme.Spacing.xs)
             .padding(horizontal = UiTheme.Spacing.sm)
-            .background(RoundRectBackground(background, UiTheme.Spacing.xs))
-            .border(RoundRectBorder(border, UiTheme.Spacing.xs, Dp(1f)))
+            .background(RoundRectBackground(background, theme.smallCornerRadius))
+            .border(RoundRectBorder(border, theme.smallCornerRadius, Dp(1f)))
         if (clickable) {
             modifier
                 .onEnter { hovered.value = true }
@@ -416,8 +431,8 @@ fun UiScope.DialogForm(
         ) {
             modifier
                 .margin(bottom = if (compact) UiTheme.Spacing.sm else UiTheme.Spacing.lg)
-                .background(RoundRectBackground(theme.palette.surfaceSunken, UiTheme.Spacing.xs))
-                .border(RoundRectBorder(theme.palette.borderSubtle, UiTheme.Spacing.xs, Dp(1f)))
+                .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+                .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
                 .padding(UiTheme.Spacing.sm)
             ScrollArea(
                 width = Grow.Std,

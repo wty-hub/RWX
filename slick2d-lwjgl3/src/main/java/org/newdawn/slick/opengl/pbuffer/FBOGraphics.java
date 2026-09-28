@@ -28,6 +28,10 @@ public class FBOGraphics extends Graphics {
      * The ID of the FBO in use
      */
     private int FBO;
+    private int previousFramebuffer;
+    private int previousReadBuffer;
+    private int previousDrawBuffer;
+    private boolean framebufferBound;
     /**
      * True if this context is valid
      */
@@ -81,13 +85,15 @@ public class FBOGraphics extends Graphics {
         try {
             Texture tex = InternalTextureLoader.get().createTexture(image.getWidth(), image.getHeight(), image.getFilter());
 
-            EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, FBO);
-            EXTFramebufferObject.glFramebufferTexture2DEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT,
-                    EXTFramebufferObject.GL_COLOR_ATTACHMENT0_EXT,
-                    GL11.GL_TEXTURE_2D, tex.getTextureID(), 0);
-
-            completeCheck();
-            unbind();
+            bind();
+            try {
+                EXTFramebufferObject.glFramebufferTexture2DEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT,
+                        EXTFramebufferObject.GL_COLOR_ATTACHMENT0_EXT,
+                        GL11.GL_TEXTURE_2D, tex.getTextureID(), 0);
+                completeCheck();
+            } finally {
+                unbind();
+            }
 
             // Clear our destination area before using it
             clear();
@@ -106,16 +112,24 @@ public class FBOGraphics extends Graphics {
      * Bind to the FBO created
      */
     private void bind() {
+        previousFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
+        previousReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
+        previousDrawBuffer = GL11.glGetInteger(GL11.GL_DRAW_BUFFER);
         EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, FBO);
         GL11.glReadBuffer(EXTFramebufferObject.GL_COLOR_ATTACHMENT0_EXT);
+        GL11.glDrawBuffer(EXTFramebufferObject.GL_COLOR_ATTACHMENT0_EXT);
+        framebufferBound = true;
     }
 
     /**
      * Unbind from the FBO created
      */
     private void unbind() {
-        EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, 0);
-        GL11.glReadBuffer(GL11.GL_BACK);
+        if (!framebufferBound) return;
+        EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
+        GL11.glReadBuffer(previousReadBuffer);
+        GL11.glDrawBuffer(previousDrawBuffer);
+        framebufferBound = false;
     }
 
     /**

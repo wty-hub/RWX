@@ -40,6 +40,7 @@ public class SettingsEngine {
     public boolean batterySaving;
 
     public boolean highRefreshRate;
+    public int maxFrameRate;
     public boolean slick2dFullScreen;
 
     public boolean renderBackground;
@@ -218,6 +219,21 @@ public class SettingsEngine {
         return this.prefs != null ? this.prefs.getInt(str, i) : i;
     }
 
+    public static int normalizeMaxFrameRate(int value) {
+        switch (value) {
+            case 0:
+            case 30:
+            case 60:
+            case 120:
+            case 144:
+            case 240:
+            case 300:
+                return value;
+            default:
+                return 0;
+        }
+    }
+
     public float getFloatPref(String str, float f) {
         return this.prefs != null ? this.prefs.getFloat(str, f) : f;
     }
@@ -278,6 +294,7 @@ public class SettingsEngine {
         this.dpad = getBooleanPref("dpad", true);
         this.batterySaving = getBooleanPref("batterySaving", false);
         this.highRefreshRate = getBooleanPref("highRefreshRate", GameEngine.isPC());
+        this.maxFrameRate = normalizeMaxFrameRate(getIntPref("maxFrameRate", 0));
         this.slick2dFullScreen = getBooleanPref("slick2dFullScreen", GameEngine.isPC());
         this.renderVsync = getBooleanPref("renderVsync", false);
         this.renderSmoothDelta = getBooleanPref("renderSmoothDelta", false);
@@ -456,6 +473,7 @@ public class SettingsEngine {
         editorEdit.putBoolean("dpad", this.dpad);
         editorEdit.putBoolean("batterySaving", this.batterySaving);
         editorEdit.putBoolean("highRefreshRate", this.highRefreshRate);
+        editorEdit.putInt("maxFrameRate", normalizeMaxFrameRate(this.maxFrameRate));
         editorEdit.putBoolean("slick2dFullScreen", this.slick2dFullScreen);
         editorEdit.putBoolean("renderVsync", this.renderVsync);
         editorEdit.putBoolean("renderSmoothDelta", this.renderSmoothDelta);

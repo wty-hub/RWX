@@ -1,6 +1,7 @@
 package io.github.rwx.slick
 
 import com.corrodinggames.rts.gameFramework.GameEngine
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import io.github.rwx.isSwingComponentHostActive
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.awt.AWTGLCanvas
@@ -25,6 +26,7 @@ internal class EmbeddedSlickGameContainer(
     fullscreen: Boolean,
     parentCanvas: Canvas? = null,
     private val onParentCanvasResize: (Int, Int) -> Unit = { _, _ -> },
+    private val singleWindowCapture: Boolean = false,
 ) : GameContainer(game) {
     private val awtCanvas = parentCanvas as? AWTGLCanvas
         ?: error("Slick AWT backend requires an AWTGLCanvas parent")
@@ -112,7 +114,7 @@ internal class EmbeddedSlickGameContainer(
                         requestCanvasFocus()
                         getDelta()
                     }
-                    val framebufferSize = awtCanvas.resolveFramebufferSize(width, height)
+                    val framebufferSize = currentFramebufferSize()
                     logFramebufferGeometryOnce(width, height, framebufferSize)
                     val viewport = framebufferViewportSize(
                         logicalWidth = width,
@@ -121,12 +123,23 @@ internal class EmbeddedSlickGameContainer(
                         framebufferHeight = framebufferSize.height,
                     )
                     GL11.glViewport(0, 0, viewport.width, viewport.height)
+                    getGraphics()?.setFramebufferScale(
+                        if (singleWindowCapture) viewport.width.toFloat() / width else 1f,
+                        if (singleWindowCapture) viewport.height.toFloat() / height else 1f,
+                    )
                     frameTimeLog?.beginWork()
                     updateAndRender(getDelta())
                     frameTimeLog?.endWork()
                     updateFPS()
-                    awtCanvas.swapBuffers()
-                    frameTimeLog?.endSwap()
+                    if (singleWindowCapture) {
+                        // Slick can temporarily render its layer buffers into another FBO.
+                        // The complete-frame read must always target our offscreen surface.
+                        (awtCanvas as? SlickAwtGLCanvas)?.bindOffscreenFramebuffer()
+                        slickGame?.captureCompleteFrameAfterRender(this)
+                    } else {
+                        awtCanvas.swapBuffers()
+                        frameTimeLog?.endSwap()
+                    }
                 } catch (error: SlickException) {
                     Log.error(error)
                     terminalFailure = error
@@ -219,9 +232,6 @@ internal class EmbeddedSlickGameContainer(
             slickCanvas.applyRuntimeGlSettings()
         }
     }
-
-    fun recommendedTargetFrameRate(highRefreshRate: Boolean): Int =
-        legacySlickTargetFrameRate(highRefreshRate)
 
     private fun Canvas.isRenderable(): Boolean =
         isDisplayable && isVisible && isShowing && width > 0 && height > 0
@@ -456,6 +466,7 @@ internal class EmbeddedSlickGameContainer(
         }
 
     private fun requestCanvasFocus() {
+        if (singleWindowCapture) return
         val action = {
             if (awtCanvas.isVisible && awtCanvas.isShowing && isSwingComponentHostActive(awtCanvas)) {
                 awtCanvas.isFocusable = true
@@ -470,7 +481,14 @@ internal class EmbeddedSlickGameContainer(
     }
 
     internal fun currentFramebufferSize(): Dimension =
-        awtCanvas.resolveFramebufferSize(width, height)
+        if (singleWindowCapture) {
+            // The offscreen FBO is sized from the current display scale on every makeCurrent.
+            // lwjgl3-awt's cache updates only on component resize and can lag a screen move.
+            (awtCanvas as? SlickAwtGLCanvas)?.offscreenFramebufferSize()
+                ?: awtCanvas.deviceSizeFor(width, height)
+        } else {
+            awtCanvas.resolveFramebufferSize(width, height)
+        }
 
     private fun logFramebufferGeometryOnce(logicalWidth: Int, logicalHeight: Int, framebufferSize: Dimension) {
         if (framebufferGeometryLogged) return
@@ -535,6 +553,14 @@ private const val SYNC_LOW_RES_DAMPEN_FACTOR = 0.9f
 
 internal fun legacySlickTargetFrameRate(highRefreshRate: Boolean): Int =
     if (highRefreshRate) MAX_HIGH_REFRESH_TARGET_FPS else MAX_STANDARD_TARGET_FPS
+
+internal fun resolveSlickTargetFrameRate(
+    maxFrameRate: Int,
+    highRefreshRate: Boolean,
+    environmentOverride: Int?,
+): Int = environmentOverride
+    ?: SettingsEngine.normalizeMaxFrameRate(maxFrameRate).takeIf { it > 0 }
+    ?: legacySlickTargetFrameRate(highRefreshRate)
 
 // Mirrors LWJGL2 Display.sync -> org.lwjgl.opengl.Sync.sync, used by the original desktop build.
 internal class LwjglDisplayFrameSynchronizer(
