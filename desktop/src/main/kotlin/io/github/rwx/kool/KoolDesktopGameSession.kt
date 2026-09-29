@@ -39,6 +39,7 @@ internal class KoolDesktopGameSession(
 
     private val graphicsEngine = KoolGraphicsEngine()
     private val view = KoolDesktopCoreGameView(inGameMenuController)
+    private val frameTimeLog = KoolFrameTimeLog.fromEnvironment()
 
     private var appliedViewport = KoolCanvasViewport(0, 0)
     private var directoriesCreated = false
@@ -71,6 +72,7 @@ internal class KoolDesktopGameSession(
             return lastFrame
         }
         synchronized(gameLock) {
+            frameTimeLog?.beginFrame()
             lastViewport = viewport
             val engine = ensureStarted(viewport)
             applyViewport(engine, viewport)
@@ -87,10 +89,13 @@ internal class KoolDesktopGameSession(
             graphicsEngine.beginFrame(viewport.width.coerceAtLeast(1), viewport.height.coerceAtLeast(1))
             engine.renderGraphicsEngine = graphicsEngine
             runGameLoop(engine, deltaSeconds)
+            frameTimeLog?.endGameWork()
             if (drainVisibleLayerBuffers && engine.hasLoadedLevel) {
                 TileMap.layerBufferManager.renderVisiblePendingRedrawsNow()
             }
+            frameTimeLog?.endLayerRedraw()
             lastFrame = graphicsEngine.snapshot()
+            frameTimeLog?.endSnapshot()
             return lastFrame
         }
     }
