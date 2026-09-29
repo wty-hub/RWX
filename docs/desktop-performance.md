@@ -263,3 +263,27 @@ pixelRevision = (e * 31) + getPixelRevision()   // e 是提交计数器
 | Slick 画布基线 | 119.1 | 8.33ms | 0.62ms |
 
 `RWX_TEXTURE_DEBUG=1` 的逐 id 计数、JFR 记录与 `RWX_PERF_LOG` 原始输出留在 `/tmp/rwxperf/`。
+
+### 11.4 为什么没有把 IMMEDIATE 目标改成 frame-backed（实测反而 4.5fps）
+
+11.3 之后还剩一个"理论上更干净"的做法：`RenderTargetMode.IMMEDIATE` 在 Kool 桌面后端意味着
+CPU 位图（Android 的语义），图层缓冲/Fog 图集/小地图/瓦片图集这些"画完再采样"的目标于是每帧都走
+CPU 光栅化 + 上传。把它们改成 Kool 的 frame-backed 目标（`DEFAULT`，把绘制命令记成 frame 由画布重放）
+看起来能彻底去掉这条路径，于是加了一个后端能力开关试了一遍：
+
+- `GraphicsBackendCapabilities.usesGpuRenderTargets`（默认 `false`，Android 保持 `IMMEDIATE`）
+- Kool 后端置 `true`，十几处 `b(texture, RenderTargetMode.IMMEDIATE)` 改成按能力取模式
+
+实测（`--replay=双桥`，1280×720 窗口，tick 37-873，units 8-35）：
+
+| 版本 | fps | 帧间隔 p50 | 游戏 work p50 |
+|---|---|---|---|
+| IMMEDIATE + 脏检查（11.3） | 60（面板 60Hz 时）/ 113-117（120Hz 时） | 8.33-16.67ms | 0.12-0.15ms |
+| frame-backed 目标 | **4.1-5.0** | **199-239ms** | 0.20-0.50ms |
+
+游戏自己的活没有变（0.2-0.5ms），全部代价在画布重放：`KoolCanvasFrameRenderer` 的 frame 纹理是
+把 frame 里的命令**投影展开**回场景（`addFrameTexture`），而图层缓冲是 6×6 个格子、格子又引用
+`bufferLayerTexture`，于是每帧要把这些嵌套 frame 重新展开一遍，量级是 CPU 光栅化的几十倍。
+
+结论：Kool 桌面路径继续用 CPU 目标 + 脏检查（11.3）；只有当 frame 目标改成真正的离屏渲染 pass
+（而不是每帧展开命令树）之后，才值得重新评估这条路线。
