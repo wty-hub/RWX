@@ -146,3 +146,11 @@ internal fun backActionForScreen(
         AppScreen.BattleRoom -> BackNavigationAction.CloseBattleRoom
         else -> BackNavigationAction.MainMenu
     }
+
+/**
+ * Screens whose own back action must win over [backActionForScreen]. The settings page remembers
+ * where it was opened from — the main menu, or the in-game pause menu — while the global table would
+ * send both to the main menu and drop the player out of a running match.
+ */
+internal fun screenHandlesOwnBackNavigation(screen: AppScreen): Boolean =
+    screen == AppScreen.Settings

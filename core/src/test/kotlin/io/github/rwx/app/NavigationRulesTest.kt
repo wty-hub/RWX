@@ -25,6 +25,20 @@ class NavigationRulesTest {
     }
 
     @Test
+    fun `the settings page handles its own escape instead of the global table`() {
+        // ESC in the settings page must mirror its own Back button: the global table would send a
+        // page opened from the in-game pause menu to the main menu and drop the running match.
+        assertEquals(
+            BackNavigationAction.MainMenu,
+            backActionForScreen(AppScreen.Settings, rendersIntoKoolCanvas = true),
+        )
+        assertTrue(screenHandlesOwnBackNavigation(AppScreen.Settings))
+        for (screen in AppScreen.entries.filterNot { it == AppScreen.Settings }) {
+            assertFalse(screenHandlesOwnBackNavigation(screen), "unexpected own-back screen: $screen")
+        }
+    }
+
+    @Test
     fun `escape from other screens keeps the existing destinations`() {
         assertEquals(
             BackNavigationAction.MainMenu,

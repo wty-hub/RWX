@@ -15,6 +15,7 @@ import io.github.rwx.ui.model.MainMenuConditions
 import io.github.rwx.ui.model.PauseMenuConditions
 import io.github.rwx.ui.model.ReplaySelectViewModel
 import io.github.rwx.ui.model.ResourceBrowserType
+import io.github.rwx.ui.model.SettingsAction
 import kotlinx.coroutines.*
 import kotlin.coroutines.CoroutineContext
 
@@ -356,7 +357,10 @@ fun installApp(
         navigator = navigator,
         onQuit = onQuit,
         onBack = {
-            when (backActionForScreen(navigator.current, gameSession.rendersIntoKoolCanvas)) {
+            if (screenHandlesOwnBackNavigation(navigator.current)) {
+                // The page knows where it was opened from and saves its own state on the way out.
+                actions.settings(SettingsAction.Back)
+            } else when (backActionForScreen(navigator.current, gameSession.rendersIntoKoolCanvas)) {
                 BackNavigationAction.Pause -> {
                     pauseSceneHost.updateItems(
                         PauseMenuConditions(
