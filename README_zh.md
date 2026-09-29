@@ -66,6 +66,15 @@
 macOS 桌面版默认使用 Vulkan；即使保存了全屏设置，也会以窗口模式启动。目前 AWT OpenGL 全屏路径会触发原生崩溃。
 桌面日志位于 `~/Library/Application Support/rwx/logs/rwx.log`。
 
+游戏画面默认仍由 Slick 的 AWT OpenGL 画布渲染（macOS 上 Apple 的 GL 只是 Metal 垫片，逐帧回读还有崩溃风险）。
+可以改用 Kool 桌面渲染器：整个窗口走 Kool 的 Vulkan 后端（macOS = MoltenVK = Metal），进程里不再有 OpenGL：
+
+```bash
+./gradlew :desktop:run -PrwxDesktopRenderer=kool        # 或 -Drwx.desktop.renderer=kool / RWX_DESKTOP_RENDERER=kool
+```
+
+两条路径并存，去掉该参数即回退到 Slick。原理与实测见 [docs/desktop-performance.md](docs/desktop-performance.md) 第 11 节。
+
 更多信息请参考 [CI/CD 配置](.github/workflows/ci.yml) 以及
 [文档站快速开始](https://rwx-docs.netlify.app/zh/tutorial/getting-started)。
 

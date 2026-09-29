@@ -170,3 +170,44 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 - 没有重打完整发行 zip；只替换桌面 jar
 
 联机仍应与原版铁锈互为主机各测一轮 1000+ 单位房间。仿真路径未改，但最终以实机联机为准。
+
+## 11. Kool 桌面渲染器：macOS 上彻底不用 OpenGL
+
+macOS 的 OpenGL 已废弃，Apple 的实现本身就是 Metal 之上的一层垫片（崩溃栈里的 `AppleMetalOpenGLRenderer`）。
+旧路径里 Slick 画布是离屏 CGL FBO，每帧 `glReadPixels` 整帧回读再上传给 Kool 覆盖层，
+`hs_err` 已经崩在 `gldReadFramebufferData` 里；3800×1782 时这一趟 CPU 拷贝本身也要几毫秒。
+
+没有可直接切换的 Metal 后端：LWJGL 3.3.6 没有 Metal 绑定，Kool 0.19.0 JVM 只有 `gl` / `vk` 两个后端，
+而 macOS 上 Kool 的 GL 后端根本起不来（要求 3.3，系统给 2.1）。所以「改用 Metal」的落地方式是让**整个窗口**
+走 Kool 的 Vulkan 后端——macOS 上就是 LWJGL 自带的 `libMoltenVK.dylib`，即 MoltenVK → Metal。
+
+- 开关：`-Drwx.desktop.renderer=kool`（或环境变量 `RWX_DESKTOP_RENDERER=kool`；`./gradlew :desktop:run -PrwxDesktopRenderer=kool`）。
+  默认仍是 `slick`，两条路径并存，随时可回退。
+- `KoolDesktopGameSession` 在 Kool 渲染循环里内联跑 `gameLoop`，把 `KoolGraphicsEngine.snapshot()` 交给 Kool 画布；
+  `SwingKoolHost` 在该模式下不创建 AWT OpenGL 画布（`useSlickCanvas=false`），Kool 画布就是唯一的窗口表面。
+- 因此进程里不再有 `OpenGL.framework` / `GLEngine` / `AppleMetalOpenGLRenderer`，也没有逐帧回读。
+
+### 11.1 必须让「alpha 外扩」按需执行
+
+第一次实测只有约 11.5fps（p50）。JFR 采样显示热点全在
+`KoolGraphicsEngine.registerTexturePixels → KoolCanvasTextureRegistry.registerArgb → bleedTransparentRgb`：
+图层缓冲/迷雾叠加这类**后端自己生成的纹理每帧都会重新注册**，而每次注册都对 3800×1782
+做一遍 O(pixels) 的洪水填充外扩，加上克隆与打包，单帧要几百毫秒。
+
+处理：外扩只对**解码出来的图片**有意义（它们透明像素的 RGB 是任意的，线性过滤会把黑边渗进精灵边缘），
+后端生成的像素不需要。于是：
+
+- `Texture.alphaBleedRequired`（显示用标志，`clone` / `a(width,height,copyPixels)` 会继承）
+- `KoolCanvasTextureRegistry.registerArgb(..., alphaBleed = false)`：不复制、直接接管调用方数组
+- 只有 `KoolGraphicsEngine.createLegacyTexture(argbPixels != null)`（解码图片）置 `true`
+
+### 11.2 实测（MacBook Pro M 系列，`--replay=双桥`，3800×1782）
+
+| 版本 | p50 帧率 | p90 | OpenGL 框架 |
+|---|---|---|---|
+| Kool 渲染器（外扩未按需） | 11.5 | 12.8 | 未加载 |
+| Kool 渲染器（本提交） | 56.5 | 59.9 | 未加载 |
+| Slick 画布 + 逐帧回读（旧 macOS 路径） | 约 24 | — | `AppleMetalOpenGLRenderer` |
+
+回放 checksum 全程 matching（仿真未改）；`lsof` 中只有 `libMoltenVK.dylib` 与 `AGXMetal*`。
+启动/载图瞬间仍有 8fps 级别的掉帧，属于资源准备阶段。

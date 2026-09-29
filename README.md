@@ -66,6 +66,18 @@ On macOS, the desktop UI uses Vulkan and starts in a window even if fullscreen w
 AWT OpenGL fullscreen path currently causes native crashes. Desktop logs are written to
 `~/Library/Application Support/rwx/logs/rwx.log`.
 
+The game itself is still drawn by the Slick AWT OpenGL canvas by default (on macOS Apple's GL is a
+Metal shim, and its per-frame readback has crashed in `glReadFramebufferData`). The Kool desktop
+renderer moves the whole window to Kool's Vulkan backend — MoltenVK/Metal on macOS — so no OpenGL
+framework is loaded at all:
+
+```bash
+./gradlew :desktop:run -PrwxDesktopRenderer=kool        # or -Drwx.desktop.renderer=kool / RWX_DESKTOP_RENDERER=kool
+```
+
+Both paths stay available; drop the flag to go back to Slick. See section 11 of
+[docs/desktop-performance.md](docs/desktop-performance.md).
+
 See the [workflow](.github/workflows/ci.yml) and the
 [getting started guide](https://rwx-docs.netlify.app/tutorial/getting-started) for more details.
 
