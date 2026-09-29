@@ -21,11 +21,16 @@ internal object DesktopRendererSelection {
             ?: System.getenv(ENV)?.takeIf { it.isNotBlank() }
 
     /**
-     * Default renderer per OS. The Kool renderer stays opt-in until the macOS gate is verified;
-     * once it is, macOS flips to [DesktopRendererKind.Kool] here and Slick remains the fallback.
+     * Default renderer per OS. macOS has no usable game OpenGL path (Apple's GL is a deprecated
+     * 2.1 shim and the Slick host has to read every frame back), so it presents through the Kool
+     * renderer — Vulkan, i.e. MoltenVK/Metal. Linux and Windows keep the Slick canvas.
      */
     fun defaultFor(osName: String = System.getProperty("os.name")): DesktopRendererKind =
-        DesktopRendererKind.Slick
+        if (osName.lowercase().startsWith("mac")) {
+            DesktopRendererKind.Kool
+        } else {
+            DesktopRendererKind.Slick
+        }
 
     fun resolve(
         requested: String? = requestedValue(),

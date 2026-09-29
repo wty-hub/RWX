@@ -181,8 +181,8 @@ macOS 的 OpenGL 已废弃，Apple 的实现本身就是 Metal 之上的一层�
 而 macOS 上 Kool 的 GL 后端根本起不来（要求 3.3，系统给 2.1）。所以「改用 Metal」的落地方式是让**整个窗口**
 走 Kool 的 Vulkan 后端——macOS 上就是 LWJGL 自带的 `libMoltenVK.dylib`，即 MoltenVK → Metal。
 
-- 开关：`-Drwx.desktop.renderer=kool`（或环境变量 `RWX_DESKTOP_RENDERER=kool`；`./gradlew :desktop:run -PrwxDesktopRenderer=kool`）。
-  默认仍是 `slick`，两条路径并存，随时可回退。
+- 开关：`-Drwx.desktop.renderer=slick`（或环境变量 `RWX_DESKTOP_RENDERER=slick`；`./gradlew :desktop:run -PrwxDesktopRenderer=slick`）。
+  **macOS 默认 `kool`**（即 Vulkan/MoltenVK），Linux / Windows 默认 `slick`，两条路径并存，随时可互切。
 - `KoolDesktopGameSession` 在 Kool 渲染循环里内联跑 `gameLoop`，把 `KoolGraphicsEngine.snapshot()` 交给 Kool 画布；
   `SwingKoolHost` 在该模式下不创建 AWT OpenGL 画布（`useSlickCanvas=false`），Kool 画布就是唯一的窗口表面。
 - 因此进程里不再有 `OpenGL.framework` / `GLEngine` / `AppleMetalOpenGLRenderer`，也没有逐帧回读。

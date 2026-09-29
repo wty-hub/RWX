@@ -6,10 +6,12 @@ import kotlin.test.assertFailsWith
 
 class DesktopRendererSelectionTest {
     @Test
-    fun `defaults to the Slick canvas renderer until the Kool gate passes`() {
-        assertEquals(DesktopRendererKind.Slick, DesktopRendererSelection.defaultFor("Mac OS X"))
+    fun `macOS defaults to the Kool Vulkan renderer and other desktops keep Slick`() {
+        assertEquals(DesktopRendererKind.Kool, DesktopRendererSelection.defaultFor("Mac OS X"))
+        assertEquals(DesktopRendererKind.Kool, DesktopRendererSelection.defaultFor("macOS"))
         assertEquals(DesktopRendererKind.Slick, DesktopRendererSelection.defaultFor("Linux"))
-        assertEquals(DesktopRendererKind.Slick, DesktopRendererSelection.resolve(null, "Mac OS X"))
+        assertEquals(DesktopRendererKind.Slick, DesktopRendererSelection.defaultFor("Windows 11"))
+        assertEquals(DesktopRendererKind.Kool, DesktopRendererSelection.resolve(null, "Mac OS X"))
         assertEquals(DesktopRendererKind.Slick, DesktopRendererSelection.resolve("", "Linux"))
     }
 

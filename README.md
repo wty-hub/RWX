@@ -62,20 +62,18 @@ Java 25 is required. Common release tasks:
 ./gradlew :android:assembleRelease
 ```
 
-On macOS, the desktop UI uses Vulkan and starts in a window even if fullscreen was saved. The
-AWT OpenGL fullscreen path currently causes native crashes. Desktop logs are written to
-`~/Library/Application Support/rwx/logs/rwx.log`.
+On macOS the game itself is drawn through the Kool renderer too, i.e. Vulkan with MoltenVK/Metal,
+so no OpenGL framework is loaded at all; the app starts in a window even if fullscreen was saved.
+Desktop logs are written to `~/Library/Application Support/rwx/logs/rwx.log`.
 
-The game itself is still drawn by the Slick AWT OpenGL canvas by default (on macOS Apple's GL is a
-Metal shim, and its per-frame readback has crashed in `glReadFramebufferData`). The Kool desktop
-renderer moves the whole window to Kool's Vulkan backend — MoltenVK/Metal on macOS — so no OpenGL
-framework is loaded at all:
+To fall back to the old Slick AWT OpenGL canvas (Apple's GL is a deprecated Metal shim there and
+its per-frame readback has crashed in `glReadFramebufferData`):
 
 ```bash
-./gradlew :desktop:run -PrwxDesktopRenderer=kool        # or -Drwx.desktop.renderer=kool / RWX_DESKTOP_RENDERER=kool
+./gradlew :desktop:run -PrwxDesktopRenderer=slick       # or -Drwx.desktop.renderer=slick / RWX_DESKTOP_RENDERER=slick
 ```
 
-Both paths stay available; drop the flag to go back to Slick. See section 11 of
+Linux and Windows still default to Slick. See section 11 of
 [docs/desktop-performance.md](docs/desktop-performance.md).
 
 See the [workflow](.github/workflows/ci.yml) and the
