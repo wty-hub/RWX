@@ -321,7 +321,20 @@ Kool 桌面路径把 gameLoop 内联在渲染回调里（`KoolDesktopGameSession
 任何 present 侧阻塞（显示器休眠、surface 丢失、驱动挂起）都会**停住整个游戏循环**，而不是掉几帧画面；
 `swing` 循环本身只看 `isMinimized`/`isVisible`，不判断遮挡。
 
-实测补充：**遮挡不会**触发这个停。把游戏窗口用别的窗口完全盖住（CoreGraphics 覆盖度 1.000）后，
-当前版本仍然 106-116fps（面板此时切到 120Hz），并没有出现呈现阻塞。要真正消除这个风险需要
-（a）给 acquire 设有界超时并在超时时跳过该帧，或（b）把 gameLoop 从呈现循环里拆出来（像 Slick 那样
-离屏渲染 + 自己节流）。两者都还没做。
+实测补充：**遮挡和显示器休眠都不会**触发这个停。把游戏窗口用别的窗口完全盖住（CoreGraphics 覆盖度
+1.000）后仍然 106-116fps；`pmset displaysleepnow` 睡 18 秒期间帧照跑（tick 604→1054，110-115fps），
+swapchain 重建次数 0。也就是说这条风险在本机是"理论上会、实测触发不到"。
+
+**已做的部分（a）**：`KoolVulkanOverlayPatchTask` 现在把
+`Swapchain.acquireNextImage` 的 `vkAcquireNextImageKHR(..., -1, ...)` 超时改成 100ms，并在
+`when` 里把 `VK_TIMEOUT`(2) 和 `VK_ERROR_OUT_OF_DATE_KHR` 归为同一支（返回 `false`）——
+掉到超时不再抛 `IllegalStateException`，而是让 Kool 跳过该帧并重建 swapchain，游戏循环继续跑。
+前面的 `vkWaitForFences(..., -1)` 故意保持无限：它等的是自己上一帧的提交，超时后复用可能仍在
+in-flight 的缓冲更危险。
+
+验证边界（照实说）：超时分支是**静态验证**的（javap 反汇编确认 `2 → iconst_0`、acquire 超时为
+100000000l），正常运行零重建、无异常；但没法在这台机器上真正触发一次超时——遮挡、显示器休眠、
+甚至把超时临时改成 0ns 都拿到 drawable（0 重建、0 异常、113fps），所以"真卡住时会怎样"还没有实机证据。
+
+**仍未做的部分（b）**：把 gameLoop 从呈现循环里拆出来（Slick 那样离屏渲染 + 自己节流）。
+另外 `recreateSwapchain` 里还有 `device.waitForIdle()`，GPU 真挂起时它同样会阻塞，这条没动。

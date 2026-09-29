@@ -12,6 +12,8 @@ import org.objectweb.asm.Opcodes.*
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.InsnList
 import org.objectweb.asm.tree.IntInsnNode
+import org.objectweb.asm.tree.LdcInsnNode
+import org.objectweb.asm.tree.LookupSwitchInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import org.objectweb.asm.tree.VarInsnNode
 import java.util.zip.ZipFile
@@ -83,11 +85,54 @@ abstract class KoolVulkanOverlayPatchTask : DefaultTask() {
         )
         method.instructions.remove(originalArgument)
 
+        patchSwapchainAcquireTimeout(classNode)
+
         val writer = ClassWriter(ClassWriter.COMPUTE_MAXS)
         classNode.accept(writer)
         writeClass(SWAPCHAIN_CLASS_ENTRY, writer.toByteArray())
 
         patchDrawPipeline()
+    }
+
+    /**
+     * Bounds the swapchain image acquisition.
+     *
+     * Kool waits for the next swapchain image with an infinite timeout
+     * (`vkAcquireNextImageKHR(..., -1, ...)`) and its Swing loop drives the game loop from the same
+     * thread, so an occluded window, a sleeping display or a lost surface stops the whole game
+     * instead of dropping frames. The acquire timeout becomes finite (see [ACQUIRE_TIMEOUT_NANOS])
+     * and `VK_TIMEOUT` is handled like `VK_ERROR_OUT_OF_DATE_KHR` (return `false`), which makes
+     * Kool skip the frame and recreate the swapchain until drawables come back.
+     *
+     * The fence wait before it stays infinite on purpose: it waits for our own previous submission,
+     * and timing that out would let the next frame reuse a still in-flight buffer.
+     */
+    private fun patchSwapchainAcquireTimeout(classNode: ClassNode) {
+        val method = classNode.methods.singleOrNull { it.name == "acquireNextImage" && it.desc == "()Z" }
+            ?: error("Kool Swapchain.acquireNextImage was not found")
+        val instructions = method.instructions.toArray()
+
+        val timeouts = instructions.filterIsInstance<LdcInsnNode>().filter { it.cst == -1L }
+        check(timeouts.size == 2) {
+            "Expected two infinite swapchain timeouts, found ${timeouts.size}"
+        }
+        // First is the fence wait, second the image acquisition; only the acquisition is bounded.
+        timeouts.last().cst = ACQUIRE_TIMEOUT_NANOS
+
+        val switch = instructions.filterIsInstance<LookupSwitchInsnNode>()
+            .singleOrNull { VK_ERROR_OUT_OF_DATE_KHR in it.keys }
+            ?: error("Kool Swapchain.acquireNextImage switch was not found")
+        check(VK_TIMEOUT !in switch.keys) {
+            "Kool already handles the swapchain acquire timeout"
+        }
+        val skipFrameLabel = switch.labels[switch.keys.indexOf(VK_ERROR_OUT_OF_DATE_KHR)]
+        val keys = switch.keys.toMutableList()
+        val labels = switch.labels.toMutableList()
+        val insertAt = keys.indexOfFirst { it > VK_TIMEOUT }.let { if (it < 0) keys.size else it }
+        keys.add(insertAt, VK_TIMEOUT)
+        labels.add(insertAt, skipFrameLabel)
+        switch.keys = keys
+        switch.labels = labels
     }
 
     private fun patchDrawPipeline() {
@@ -160,5 +205,10 @@ abstract class KoolVulkanOverlayPatchTask : DefaultTask() {
         private const val COLOR_BLEND_ATTACHMENT_OWNER =
             "org/lwjgl/vulkan/VkPipelineColorBlendAttachmentState"
         private const val VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA = 7
+
+        /** 100ms: long enough not to fire on a healthy compositor, short enough to keep the loop alive. */
+        private const val ACQUIRE_TIMEOUT_NANOS = 100_000_000L
+        private const val VK_TIMEOUT = 2
+        private const val VK_ERROR_OUT_OF_DATE_KHR = -1000001004
     }
 }
