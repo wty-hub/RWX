@@ -234,6 +234,28 @@ public class SettingsEngine {
         }
     }
 
+    public static final float MIN_UI_RENDER_SCALE = 0.5f;
+
+    public static final float MAX_UI_RENDER_SCALE = 2.0f;
+
+    /**
+     * Interface scale bounds. Desktop has no per-display density scaling, so
+     * {@code GameLogic.getScreenScale()} equals this value there; a stored 0/NaN would otherwise
+     * collapse the whole HUD to nothing.
+     */
+    public static float normalizeUiRenderScale(float value) {
+        if (Float.isNaN(value) || value <= 0.0f) {
+            return 1.0f;
+        }
+        if (value < MIN_UI_RENDER_SCALE) {
+            return MIN_UI_RENDER_SCALE;
+        }
+        if (value > MAX_UI_RENDER_SCALE) {
+            return MAX_UI_RENDER_SCALE;
+        }
+        return value;
+    }
+
     public float getFloatPref(String str, float f) {
         return this.prefs != null ? this.prefs.getFloat(str, f) : f;
     }
@@ -305,6 +327,7 @@ public class SettingsEngine {
         this.immersiveFullScreen = getBooleanPref("immersiveFullScreen", true);
         this.displayOverCutout = getBooleanPref("displayOverCutout", false);
         this.renderDoubleScale = getBooleanPref("renderDoubleScale", false);
+        this.uiRenderScale = normalizeUiRenderScale(getFloatPref("uiRenderScale", 1.0f));
         this.showUnitGroups = getBooleanPref("showUnitGroups", true);
         this.renderClouds = getBooleanPref("renderClouds", GameEngine.isIOSVersion ? true : GameEngine.isPC());
         this.renderWithLineWidth = getBooleanPref("renderWithLineWidth", true);
@@ -468,6 +491,7 @@ public class SettingsEngine {
         editorEdit.putFloat("interfaceVolume", this.interfaceVolume);
         editorEdit.putFloat("scrollSpeed", this.scrollSpeed);
         editorEdit.putFloat("edgeScrollSpeed", this.edgeScrollSpeed);
+        editorEdit.putFloat("uiRenderScale", normalizeUiRenderScale(this.uiRenderScale));
         editorEdit.putBoolean("onscreenControls", this.onscreenControls);
         editorEdit.putBoolean("trackpad", this.trackpad);
         editorEdit.putBoolean("dpad", this.dpad);

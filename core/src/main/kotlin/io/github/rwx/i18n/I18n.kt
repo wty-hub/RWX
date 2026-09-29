@@ -889,6 +889,7 @@ object I18n {
             ),
         )
 
+
         val p2pRoomIdHint = entry(
             key = "multiplayer.p2pRoomIdHint",
             translations = linkedMapOf(
@@ -912,6 +913,7 @@ object I18n {
                 "zh-CN" to "输入向其他玩家显示的名称。",
             ),
         )
+
 
         object roomInfo {
             val host = entry(
@@ -1537,6 +1539,14 @@ object I18n {
                 translations = linkedMapOf(
                     "en" to "Team color shaders",
                     "zh-CN" to "团队颜色着色器",
+                ),
+            )
+
+            val uiScale = entry(
+                key = "settings.display.uiScale",
+                translations = linkedMapOf(
+                    "en" to "Interface scale (HUD and build menu)",
+                    "zh-CN" to "界面缩放（HUD 与建造菜单）",
                 ),
             )
 

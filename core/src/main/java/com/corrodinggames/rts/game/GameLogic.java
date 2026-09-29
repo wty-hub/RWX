@@ -72,6 +72,12 @@ public class GameLogic extends GameEngine {
     /* JADX INFO: renamed from: e */
     public float densityScaleMultiplier;
 
+    /**
+     * Last {@code settingsEngine.uiRenderScale} this engine laid its UI out for. Display-only:
+     * checked once per frame so the interface-scale setting applies without a resolution change.
+     */
+    private float appliedUiRenderScale = 1.0f;
+
     /* JADX INFO: renamed from: f */
     public static String safeModeReasonText = null;
 
@@ -1079,6 +1085,7 @@ public class GameLogic extends GameEngine {
     /* JADX WARN: Removed duplicated region for block: B:314:0x0948 A[EXC_TOP_SPLITTER, SYNTHETIC] */
     /* JADX INFO: renamed from: b */
     public void runGameLoopFrame(float float1, int integer) throws IOException, ConfigParseException {
+        this.applyPendingUiRenderScale();
         if (this.currentTick == 2) {
             this.probeLowMemory();
         } else if (this.currentTick % 10000 == 0 && this.currentTick != 0) {
@@ -2016,6 +2023,24 @@ public class GameLogic extends GameEngine {
                 }
             }
         }
+    }
+
+    /**
+     * Applies a changed interface-scale setting on the game thread. {@code screenScale} is otherwise
+     * only recomputed when the window resolution changes, so without this the UI scale would need a
+     * restart (or a resize) to take effect.
+     */
+    private void applyPendingUiRenderScale() {
+        if (this.settingsEngine == null) {
+            return;
+        }
+        float requested = this.settingsEngine.uiRenderScale;
+        if (requested == this.appliedUiRenderScale) {
+            return;
+        }
+        this.appliedUiRenderScale = requested;
+        GameEngine.log("uiRenderScale changed to " + requested + ", relaying out the interface");
+        updateCameraSystem();
     }
 
     /* JADX INFO: renamed from: k */

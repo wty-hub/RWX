@@ -93,6 +93,9 @@ class GameSettingsRepository(
             .coerceIn(0f, 1f)
         model.scrollSpeed.value = live?.scrollSpeed ?: prefs.getFloat(KEY_SCROLL_SPEED, 1.0f)
         model.edgeScrollSpeed.value = live?.edgeScrollSpeed ?: prefs.getFloat(KEY_EDGE_SCROLL_SPEED, 1.0f)
+        model.uiScale.value = SettingsEngine.normalizeUiRenderScale(
+            live?.uiRenderScale ?: prefs.getFloat(KEY_UI_SCALE, 1.0f)
+        )
         val storedStorageType = live?.storageType
             ?: prefs.getInt(KEY_STORAGE_TYPE, if (GameEngine.isAndroidPlatform()) 2 else 0)
         val externalStorageLink = live?.externalSAFLink ?: prefs.getString(KEY_EXTERNAL_SAF_LINK, null)
@@ -198,6 +201,7 @@ class GameSettingsRepository(
         settings.musicVolume = model.musicVolume.value
         settings.scrollSpeed = model.scrollSpeed.value
         settings.edgeScrollSpeed = model.edgeScrollSpeed.value
+        settings.uiRenderScale = SettingsEngine.normalizeUiRenderScale(model.uiScale.value)
         settings.storageType = model.storageType.value
         if (GameEngine.isAndroidPlatform()) {
             settings.hasSelectedAStorageType = true
@@ -212,6 +216,7 @@ class GameSettingsRepository(
         settings.musicVolume = model.musicVolume.value
         settings.scrollSpeed = model.scrollSpeed.value
         settings.edgeScrollSpeed = model.edgeScrollSpeed.value
+        settings.uiRenderScale = SettingsEngine.normalizeUiRenderScale(model.uiScale.value)
     }
 
     private fun normalizeAudioSettings(model: SettingsModel) {
@@ -274,6 +279,7 @@ class GameSettingsRepository(
             .putFloat(KEY_MUSIC_VOLUME, model.musicVolume.value)
             .putFloat(KEY_SCROLL_SPEED, model.scrollSpeed.value)
             .putFloat(KEY_EDGE_SCROLL_SPEED, model.edgeScrollSpeed.value)
+            .putFloat(KEY_UI_SCALE, SettingsEngine.normalizeUiRenderScale(model.uiScale.value))
             .putInt(KEY_STORAGE_TYPE, model.storageType.value)
             .putString(KEY_RWX_COLOR_SCHEME, model.selectedColorSchemeId.value.value)
     }
@@ -330,6 +336,7 @@ class GameSettingsRepository(
         private const val KEY_MUSIC_VOLUME = "musicVolume"
         private const val KEY_SCROLL_SPEED = "scrollSpeed"
         private const val KEY_EDGE_SCROLL_SPEED = "edgeScrollSpeed"
+        private const val KEY_UI_SCALE = "uiRenderScale"
         private const val KEY_STORAGE_TYPE = "storageType"
         private const val KEY_EXTERNAL_SAF_LINK = "externalSAFLink"
     }

@@ -2,6 +2,7 @@ package io.github.rwx.ui.model
 
 import com.corrodinggames.rts.gameFramework.GameEngine
 import com.corrodinggames.rts.gameFramework.KeyBinding
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import de.fabmax.kool.modules.ui2.MutableStateValue
 import de.fabmax.kool.modules.ui2.mutableStateOf
 import io.github.rwx.i18n.I18n
@@ -185,6 +186,9 @@ class SettingsModel {
     val scrollSpeed: MutableStateValue<Float> = mutableStateOf(1.0f)
     val edgeScrollSpeed: MutableStateValue<Float> = mutableStateOf(1.0f)
 
+    // Interface scale: multiplies the in-game HUD/sidebar/font scale.
+    val uiScale: MutableStateValue<Float> = mutableStateOf(1.0f)
+
     // Color scheme
     val selectedColorSchemeId: MutableStateValue<ColorSchemeId> = mutableStateOf(ColorSchemeRegistry.defaultSchemeId)
 
@@ -240,6 +244,14 @@ class SettingsViewModel(val model: SettingsModel) {
     }
 
     private fun displaySliders(): List<SettingSlider> = buildList {
+        add(
+            SettingSlider(
+                I18n.settings.display.uiScale,
+                model.uiScale,
+                min = SettingsEngine.MIN_UI_RENDER_SCALE,
+                max = SettingsEngine.MAX_UI_RENDER_SCALE,
+            )
+        )
         add(SettingSlider(I18n.settings.display.scrollSpeed, model.scrollSpeed, min = 0.5f, max = 2.0f))
         if (isPcPlatform()) {
             add(SettingSlider(I18n.settings.display.edgeScrollSpeed, model.edgeScrollSpeed, min = 0.5f, max = 2.0f))
