@@ -121,11 +121,12 @@ object KoolDesktopMain : KoinComponent {
         // The host provides a different AWT canvas type for Vulkan and OpenGL. Falling back to
         // OpenGL after creating a regular Vulkan canvas cannot produce a working window.
         useOpenGlFallback = false,
-        // A vsync swapchain is the only throttle Kool's unmanaged (Vulkan) loop has, and on macOS it
-        // is MoltenVK's FIFO mode: it pins the game to the display refresh rate and ignores the
-        // settings' maximum frame rate. Present without vsync and let the frame-rate limiter below
-        // pace the loop instead, exactly like the Slick canvas does.
-        isVsync = false,
+        // The in-game "vertical sync" setting used to do nothing on the Kool renderer: the swapchain
+        // was created with Kool's own default (FIFO, which pins the game to the display refresh rate
+        // and ignores the settings' maximum frame rate). Honour the setting, and when it is off let
+        // the frame-rate limiter below pace the loop like the Slick canvas does. Kool reads this when
+        // it creates the swapchain, so toggling it in game applies on the next swapchain recreation.
+        isVsync = SettingsEngine.getInstance().renderVsync,
         maxFrameRate = desktopTargetFrameRate(),
         // Same limit whether or not the window has focus: a stale focus flag must not silently
         // throttle a focused game, and the Slick path has no unfocused variant either.
