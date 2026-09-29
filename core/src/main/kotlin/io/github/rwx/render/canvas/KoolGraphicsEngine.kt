@@ -515,6 +515,9 @@ class KoolGraphicsEngine private constructor(
         }
         if (argbPixels != null) {
             val pixels = argbPixels.copyOf()
+            // Decoded image: its transparent texels carry an arbitrary RGB, so expand opaque
+            // neighbours over them once per pixel revision.
+            texture.alphaBleedRequired = true
             texture.j = pixels
             textureStore.registerArgb(texture.toCanvasTextureId(), texture.width(), texture.height(), pixels)
         } else if (assetPath != null) {
@@ -552,6 +555,7 @@ class KoolGraphicsEngine private constructor(
                     width = texture.width().coerceAtLeast(1),
                     height = texture.height().coerceAtLeast(1),
                     argbPixels = pixels,
+                    alphaBleed = texture.alphaBleedRequired,
                 )
                 registeredTexturePixelRevisions[id] = texture.pixelRegistration()
                 commandBuffer.beginFrame(frame.viewport)
@@ -1867,12 +1871,21 @@ class KoolGraphicsEngine private constructor(
         pendingPixelDependencySnapshots[sourceId]?.takeIf { it.registration == registration }?.let { snapshot ->
             return textureRef.copy(id = snapshot.textureId)
         }
-        val pixels = texture.argbPixelsCopy ?: textureStore.argbImageView(sourceId)?.pixels ?: return textureRef
+        val ownedPixels = texture.argbPixelsCopy
+        // Without the bleed pass the store keeps the array it is handed, so fall back to a copy
+        // when the pixels would otherwise alias an image the store already owns.
+        val pixels = ownedPixels ?: textureStore.argbImageView(sourceId)?.pixels?.copyOf() ?: return textureRef
         val snapshotId = sourceId.snapshotId()
         if (texture.usesPremultipliedAlpha()) {
             textureStore.registerPremultipliedArgb(snapshotId, registration.width, registration.height, pixels)
         } else {
-            textureStore.registerArgb(snapshotId, registration.width, registration.height, pixels)
+            textureStore.registerArgb(
+                snapshotId,
+                registration.width,
+                registration.height,
+                pixels,
+                alphaBleed = texture.alphaBleedRequired,
+            )
         }
         pendingFrameDependencySnapshotIds += snapshotId
         pendingPixelDependencySnapshots[sourceId] = ImmediatePixelSnapshot(registration, snapshotId)
@@ -1923,7 +1936,7 @@ class KoolGraphicsEngine private constructor(
         if (texture.usesPremultipliedAlpha()) {
             textureStore.registerPremultipliedArgb(id, width, height, pixels)
         } else {
-            textureStore.registerArgb(id, width, height, pixels)
+            textureStore.registerArgb(id, width, height, pixels, alphaBleed = texture.alphaBleedRequired)
         }
         registeredTexturePixelRevisions[id] = registration
     }

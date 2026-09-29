@@ -20,9 +20,28 @@ fun interface KoolCanvasTextureResolver {
 
 interface KoolCanvasTextureStore : KoolCanvasTextureResolver {
     fun register(id: KoolCanvasTextureId, texture: Texture2d)
-    fun registerArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray)
+
+    /**
+     * Registers CPU ARGB pixels for [id].
+     *
+     * @param alphaBleed expand each opaque texel's RGB into neighbouring transparent texels so that
+     *   linear filtering cannot bleed an arbitrary transparent RGB into sprite edges. Decoded
+     *   images need it; backend-generated pixels (layer buffers, fog overlays, render targets) do
+     *   not, and the per-update pass is O(width * height), so callers must opt in deliberately.
+     *   When it is `false` the store takes ownership of [argbPixels] instead of copying it.
+     */
+    fun registerArgb(
+        id: KoolCanvasTextureId,
+        width: Int,
+        height: Int,
+        argbPixels: IntArray,
+        alphaBleed: Boolean = true,
+    )
+
     fun registerOpaqueArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray)
     fun registerPremultipliedArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray) {
+        // Keep the historical behaviour of the fallback: bleed copies the pixels, so the caller
+        // keeps ownership of [argbPixels].
         registerArgb(id, width, height, argbPixels)
     }
 
@@ -112,12 +131,18 @@ object KoolCanvasTextureRegistry :
     }
 
     @Synchronized
-    override fun registerArgb(id: KoolCanvasTextureId, width: Int, height: Int, argbPixels: IntArray) {
+    override fun registerArgb(
+        id: KoolCanvasTextureId,
+        width: Int,
+        height: Int,
+        argbPixels: IntArray,
+        alphaBleed: Boolean,
+    ) {
         if (width <= 0 || height <= 0) {
             unregister(id)
             return
         }
-        val uploadPixels = bleedTransparentRgb(width, height, argbPixels)
+        val uploadPixels = if (alphaBleed) bleedTransparentRgb(width, height, argbPixels) else argbPixels
         registerArgbImage(id, KoolCanvasArgbImage(width, height, uploadPixels, premultipliedAlpha = false))
     }
 

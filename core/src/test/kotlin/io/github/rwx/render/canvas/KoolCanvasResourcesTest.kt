@@ -126,4 +126,28 @@ class KoolCanvasResourcesTest {
             KoolCanvasTextureRegistry.unregister(id)
         }
     }
+
+    @Test
+    fun `alpha bleed is opt in so backend generated textures skip the per update pass`() {
+        val bleededId = KoolCanvasTextureId("argb-bleed-decoded-image")
+        val rawId = KoolCanvasTextureId("argb-bleed-generated-texture")
+        // One opaque red texel, one fully transparent texel, one opaque blue texel.
+        val source = intArrayOf(0xffff0000.toInt(), 0x00000000, 0xff0000ff.toInt())
+        try {
+            KoolCanvasTextureRegistry.registerArgb(bleededId, 3, 1, source)
+            assertEquals(
+                listOf(0xffff0000.toInt(), 0x00ff0000, 0xff0000ff.toInt()),
+                KoolCanvasTextureRegistry.argbImage(bleededId)!!.pixels.toList(),
+            )
+
+            KoolCanvasTextureRegistry.registerArgb(rawId, 3, 1, source, alphaBleed = false)
+            assertEquals(
+                listOf(0xffff0000.toInt(), 0x00000000, 0xff0000ff.toInt()),
+                KoolCanvasTextureRegistry.argbImage(rawId)!!.pixels.toList(),
+            )
+        } finally {
+            KoolCanvasTextureRegistry.unregister(bleededId)
+            KoolCanvasTextureRegistry.unregister(rawId)
+        }
+    }
 }

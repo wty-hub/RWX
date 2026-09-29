@@ -111,6 +111,16 @@ open class Texture : Cloneable {
     val argbPixelsCopy: IntArray?
         get() = loadArgbPixelsIfNeeded()?.clone()
 
+    /**
+     * Whether the backend should expand the RGB of opaque texels into neighbouring transparent
+     * ones before uploading. Only decoded images need it: their transparent texels carry an
+     * arbitrary RGB that linear filtering would bleed into sprite edges. Textures whose pixels are
+     * produced by the backend itself (layer buffers, fog overlays, render targets) are drawn with
+     * matching extents, so bleeding them only costs an O(pixels) pass on every update.
+     */
+    @JvmField
+    var alphaBleedRequired: Boolean = false
+
     open fun c(): Texture = this
 
     open fun a(value: Boolean) {
@@ -144,6 +154,7 @@ open class Texture : Cloneable {
         texture.s = s
         texture.t = t
         texture.u = u
+        texture.alphaBleedRequired = alphaBleedRequired
     }
 
     public open override fun clone(): Texture {
@@ -152,6 +163,7 @@ open class Texture : Cloneable {
         texture.m = m
         texture.p = p
         texture.q = q
+        texture.alphaBleedRequired = alphaBleedRequired
         texture.g()
         val pixels = argbPixelsCopy
         if (pixels != null) {
@@ -167,6 +179,7 @@ open class Texture : Cloneable {
         texture.m = m
         texture.p = width
         texture.q = height
+        texture.alphaBleedRequired = alphaBleedRequired
         texture.g()
         if (copyPixels) {
             texture.j = IntArray(width * height)
