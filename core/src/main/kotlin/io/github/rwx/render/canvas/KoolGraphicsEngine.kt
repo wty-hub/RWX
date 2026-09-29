@@ -75,6 +75,13 @@ class KoolGraphicsEngine private constructor(
     private var textureAtlas: TextureAtlas? = null
     private var generatedTextureSerial = 0
     private var lastCommittedFrameSnapshot: FrameSnapshot? = null
+
+    /**
+     * Pixels of the newest commit of an [RenderTargetMode.IMMEDIATE] target. A commit that
+     * rasterizes the same pixels again does not have to convert and upload the whole target.
+     */
+    private var lastImmediatePixels: IntArray? = null
+
     private val pendingFrameDependencySnapshotIds = linkedSetOf<KoolCanvasTextureId>()
     private val pendingFrameDependencySnapshots = mutableMapOf<KoolCanvasTextureId, ImmediateFrameSnapshot>()
     private val pendingPixelDependencySnapshots = mutableMapOf<KoolCanvasTextureId, ImmediatePixelSnapshot>()
@@ -548,6 +555,15 @@ class KoolGraphicsEngine private constructor(
                 null
             }
             if (pixels != null) {
+                if (lastImmediatePixels?.contentEquals(pixels) == true && textureStore.argbImageView(id) != null) {
+                    // This commit rasterized exactly the pixels that are already on the GPU (a layer
+                    // buffer cell re-commits unchanged content all the time). Re-registering them
+                    // would convert the whole target to RGBA and upload it again for no reason.
+                    releasePendingImmediateFrameSnapshots()
+                    commandBuffer.beginFrame(frame.viewport)
+                    return@let TargetTextureCommit(id, emptyList())
+                }
+                lastImmediatePixels = pixels
                 texture.setCommittedArgbPixels(pixels)
                 texture.setPremultipliedAlpha(false)
                 textureStore.registerArgb(
@@ -2020,7 +2036,11 @@ class KoolGraphicsEngine private constructor(
         TexturePixelRegistration(
             width = width,
             height = height,
-            pixelRevision = (e * 31) + getPixelRevision(),
+            // Only real pixel edits count here. `e` also advances on every commit
+            // (`flushPendingTarget`), so folding it in made an unchanged 512x512 layer buffer cell
+            // look dirty on every frame and re-ran the ARGB -> RGBA conversion and the texture
+            // upload for it, once per cell and frame.
+            pixelRevision = getPixelRevision(),
             premultipliedAlpha = usesPremultipliedAlpha(),
         )
 

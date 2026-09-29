@@ -211,3 +211,55 @@ macOS 的 OpenGL 已废弃，Apple 的实现本身就是 Metal 之上的一层�
 
 回放 checksum 全程 matching（仿真未改）；`lsof` 中只有 `libMoltenVK.dylib` 与 `AGXMetal*`。
 启动/载图瞬间仍有 8fps 级别的掉帧，属于资源准备阶段。
+
+### 11.3 帧率被"提交计数器"挡住：一次误判的脏检查
+
+11.2 的 p50 56.5fps 是在 3800×1782 上测的，但同一台机器、同一个回放、1280×720 窗口下，Kool 路径
+只有 34.8fps，而 Slick 画布是 119fps。用 `RWX_PERF_LOG`（Kool 侧埋点见 `KoolFrameTimeLog`）拆开看：
+每帧游戏 work 只有 4.2ms，帧间隔却是 26.8ms——时间不在仿真/绘制，在 Kool 画布的纹理重上传。
+
+JFR 采样给出了具体位置（steady-state，渲染线程）：
+
+| 占比 | 方法 |
+|---|---|
+| 41.1% | `KoolCanvasTextureRegistry.argbImageData`（ARGB→RGBA 逐像素转换） |
+| 11.2% | `HashMap.putVal`（注册表 map churn） |
+| 7.6% | `de.fabmax.kool.pipeline.backend.vk.TextureLoaderVk.copyTextureData` |
+| 6.1% | `java.nio.Bits.setMemory`（`IntArray` 克隆） |
+
+分配侧 89.65% 的压力来自 `Texture.getArgbPixelsCopy()`，而临时埋点显示每帧重转的是 8 张
+`legacy-texture-*` 512×512（图层缓冲格子），调用链固定为
+`drawTexture → registerTexturePixels → registerArgb → refreshCachedArgbTextures → argbImageData`。
+
+根因不在"图层缓冲每帧都变"，而在这行脏检查：
+
+```kotlin
+pixelRevision = (e * 31) + getPixelRevision()   // e 是提交计数器
+```
+
+`Texture.e` 会被 `flushPendingTarget` **每次提交**加一，于是格子即使一个像素都没改，
+注册签名也每帧都变，触发一次 512×512 的转换 + 整张上传。改法：
+
+- `Texture.pixelRegistration` 只用 `getPixelRevision()`（真正写像素才加：`setCommittedArgbPixels`
+  / `p()` / `a(x,y,color)` / `v()`），提交计数器不再参与
+- `KoolGraphicsEngine.flushTargetTextureFrame`：新光栅化的像素与上一提交逐字节相同时，跳过重注册
+- `argbImageData` 的通用分支改成 `packArgbPixelsToRgba`（BIG_ENDIAN `asIntBuffer` +
+  `Integer.rotateLeft`，一像素写一个 int），替掉每像素 4 次带 `getOrElse` 的逐字节写
+- 上传缓冲对所有 ARGB 纹理按 `(id, filter, slot)` 复用两块 direct buffer
+- `registerTexturePixels` 用新增的 `Texture.argbPixelsRef`（不 clone）
+- Kool 的 Vulkan swapchain 不再用 vsync 当节流（`KoolConfigJvm.isVsync = false`），改由
+  `Lwjgl3Context.maxFrameRate` 按设置的 `maxFrameRate` 节流（`desktopTargetFrameRate`，
+  可用 `RWX_DESKTOP_TARGET_FPS` 覆盖）
+
+实测（M5 MacBook Air，`--replay=双桥`，1280×720 窗口 = 2560×1440 像素，tick 400-2600 同窗口）：
+
+| 版本 | fps 均值 | 帧间隔 p50 | 游戏 work p50 |
+|---|---|---|---|
+| Kool 渲染器（修复前） | 34.8 | 26.8ms | 4.16ms |
+| 关掉 vsync 天花板 + 帧率节流 | 43.0 | 21.2ms | 3.87ms |
+| 打包/复用上传缓冲/不 clone | 50.3 | 18.4ms | 1.36ms |
+| 脏检查修复 | 95.2 | 10.4ms | 0.15ms |
+| 同上，稳定段 | 111-117 | 8.34ms | 0.15ms |
+| Slick 画布基线 | 119.1 | 8.33ms | 0.62ms |
+
+`RWX_TEXTURE_DEBUG=1` 的逐 id 计数、JFR 记录与 `RWX_PERF_LOG` 原始输出留在 `/tmp/rwxperf/`。
