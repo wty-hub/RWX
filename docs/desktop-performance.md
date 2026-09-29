@@ -120,6 +120,9 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 | `RWX_PERF_LOG=1` 或文件路径 | 每约 5 秒一行：fps、单位数、lock/work/update/draw/swap/sync 的 avg/p50/p95 |
 | `RWX_CHECKSUM_LOG=/path/file` | 每 tick 一行：原版 `GameStateChecksum` + 每个可命令单位浮点 bit 的更严 FNV |
 | `--replay=` / `RWX_REPLAY_SPEED` | 窗口版自动播回放，方便对校验和 |
+| `RWX_CANVAS_PERF=1` | 每 2 秒一行：Kool 画布重放（`KoolCanvasFrameRenderer.render`）的 avg/peak，见 11.5 |
+| `RWX_DESKTOP_TARGET_FPS=N` | 覆盖设置的 `maxFrameRate`（兼容旧的 `RWX_SLICK_TARGET_FPS`），设很大等于关掉节流 |
+| `RWX_TEXTURE_DEBUG=1` | Kool 画布每次 ARGB→RGBA 转换按纹理 id 计数，用来找"每帧重传哪张纹理" |
 
 不需要窗口时用 `:desktop:headless`。它走同一条 `gameLoop`，不创建 OpenGL。`--checksum=` 和 `RWX_CHECKSUM_LOG` 写的是同一种文件。
 
@@ -264,7 +267,7 @@ pixelRevision = (e * 31) + getPixelRevision()   // e 是提交计数器
 
 `RWX_TEXTURE_DEBUG=1` 的逐 id 计数、JFR 记录与 `RWX_PERF_LOG` 原始输出留在 `/tmp/rwxperf/`。
 
-### 11.4 为什么没有把 IMMEDIATE 目标改成 frame-backed（实测反而 4.5fps）
+### 11.4 为什么没有把 IMMEDIATE 目标改成 frame-backed（实测反而慢 40 倍）
 
 11.3 之后还剩一个"理论上更干净"的做法：`RenderTargetMode.IMMEDIATE` 在 Kool 桌面后端意味着
 CPU 位图（Android 的语义），图层缓冲/Fog 图集/小地图/瓦片图集这些"画完再采样"的目标于是每帧都走
@@ -274,16 +277,51 @@ CPU 光栅化 + 上传。把它们改成 Kool 的 frame-backed 目标（`DEFAULT
 - `GraphicsBackendCapabilities.usesGpuRenderTargets`（默认 `false`，Android 保持 `IMMEDIATE`）
 - Kool 后端置 `true`，十几处 `b(texture, RenderTargetMode.IMMEDIATE)` 改成按能力取模式
 
-实测（`--replay=双桥`，1280×720 窗口，tick 37-873，units 8-35）：
+结果全量切换后 `--replay=双桥` 掉到 **3.4-5.0fps**（帧间隔 p50 199-293ms），而游戏 work 仍是
+0.2-0.5ms。新加的 `RWX_CANVAS_PERF`（见 11.5）把账算清了：慢的不是 present、也不是遮挡节流，
+而是画布重放本身——`KoolCanvasFrameRenderer.render` 每帧要 **235-317ms**。
 
-| 版本 | fps | 帧间隔 p50 | 游戏 work p50 |
-|---|---|---|---|
-| IMMEDIATE + 脏检查（11.3） | 60（面板 60Hz 时）/ 113-117（120Hz 时） | 8.33-16.67ms | 0.12-0.15ms |
-| frame-backed 目标 | **4.1-5.0** | **199-239ms** | 0.20-0.50ms |
+**逐个单独切换都是好的**，所以这是组合效应：
 
-游戏自己的活没有变（0.2-0.5ms），全部代价在画布重放：`KoolCanvasFrameRenderer` 的 frame 纹理是
-把 frame 里的命令**投影展开**回场景（`addFrameTexture`），而图层缓冲是 6×6 个格子、格子又引用
-`bufferLayerTexture`，于是每帧要把这些嵌套 frame 重新展开一遍，量级是 CPU 光栅化的几十倍。
+| 切换成 frame-backed 的目标 | 画布重放 avg |
+|---|---|
+| 都不切（CPU + 脏检查，现状） | 1.0-1.4ms |
+| 图层缓冲（bufferLayer + cell + fadeOut） | 2.5-2.9ms |
+| 小地图三层 | 2.2-2.4ms |
+| TileMap（fog 图集 + textureB） | 0.8-0.9ms |
+| 瓦片图集（TileAtlasCache） | 0.9ms |
+| 图层缓冲 + 小地图 | 3.5ms |
+| 图层缓冲 + TileMap | 1.9ms |
+| **图层缓冲 + 瓦片图集** | **196-228ms** |
+| 全量 | 235-317ms |
 
-结论：Kool 桌面路径继续用 CPU 目标 + 脏检查（11.3）；只有当 frame 目标改成真正的离屏渲染 pass
-（而不是每帧展开命令树）之后，才值得重新评估这条路线。
+原因是 frame 纹理的消费方式：`KoolCanvasFrameRenderer.addFrameTexture` 把 frame 里的命令
+**投影展开**回场景，**每个引用点展开一次**。瓦片图集的 frame 里每个已分配槽位一条绘制命令
+（`blitWithPadding`，最多 400 条，且只在建图时 clear，所以只增不减），而 6×6 个图层缓冲格子
+每帧都要采样这个图集一次：36 × 数百条命令，每帧重新建 mesh，量级就上来了。
+单独留着图集（0.9ms）或单独留着格子（2.5ms）都不成问题，是因为没有这个乘法。
+
+结论：Kool 桌面路径继续用 CPU 目标 + 11.3 的脏检查。frame 目标只有在两个前提下才值得重估：
+
+1. frame 改成真正的离屏渲染 pass（渲染一次、多处采样），而不是每个引用点展开命令树；
+2. 只给"命令数有界、且采样点少"的目标用 frame（例如 post 图），不要给只增不减的图集用。
+
+### 11.5 量不到的那一段：画布重放
+
+`RWX_PERF_LOG` 的 work 只统计 gameLoop（update + draw），而 `KoolCanvasFrameRenderer.render`
+跑在 Kool 的 scene render 里、在会话从 `updateFrame` 返回之后，两条日志都看不见它。
+`RWX_CANVAS_PERF=1` 按 2 秒窗口打印 `canvas frames=N replay[avg=..ms peak=..ms]`，
+11.4 的定位就是靠它把 200ms 从 present/遮挡的怀疑里摘出来的。
+
+### 11.6 已知风险：游戏循环与 present 耦合
+
+Kool 桌面路径把 gameLoop 内联在渲染回调里（`KoolDesktopGameSession.updateFrame` ← Kool
+`onRender`），并且 Kool 的 swapchain 用无限超时等待（`vkWaitForFences(..., -1)`、
+`vkAcquireNextImageKHR(..., -1, ...)`，见 kool-core 的 `Swapchain.acquireNextImage`）。因此
+任何 present 侧阻塞（显示器休眠、surface 丢失、驱动挂起）都会**停住整个游戏循环**，而不是掉几帧画面；
+`swing` 循环本身只看 `isMinimized`/`isVisible`，不判断遮挡。
+
+实测补充：**遮挡不会**触发这个停。把游戏窗口用别的窗口完全盖住（CoreGraphics 覆盖度 1.000）后，
+当前版本仍然 106-116fps（面板此时切到 120Hz），并没有出现呈现阻塞。要真正消除这个风险需要
+（a）给 acquire 设有界超时并在超时时跳过该帧，或（b）把 gameLoop 从呈现循环里拆出来（像 Slick 那样
+离屏渲染 + 自己节流）。两者都还没做。
