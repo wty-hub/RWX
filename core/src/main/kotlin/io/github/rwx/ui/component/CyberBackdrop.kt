@@ -5,6 +5,26 @@ import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.UiAppearance
 import io.github.rwx.ui.UiTheme
 
+private val CYBER_CAPTION_TOP_INSET: Dp = Dp(15f)
+private val CYBER_CAPTION_BOTTOM_INSET: Dp = Dp(13f)
+
+/**
+ * Vertical band a panel has to keep free above and below its content column, otherwise the captions
+ * below end up underneath buttons and list rows. Hosts add it to their vertical chrome when they
+ * size list viewports.
+ */
+internal val CyberBackdropCaptionBand: Dp = Dp(
+    maxOf(CYBER_CAPTION_TOP_INSET.value, CYBER_CAPTION_BOTTOM_INSET.value) +
+        CYBER_CAPTION_LINE_HEIGHT_DP + CYBER_CAPTION_CLEARANCE_DP
+)
+
+/** Captions only fit on surfaces wide and tall enough to carry a readable frame band. */
+internal fun UiScope.showsCyberBackdropCaptions(): Boolean {
+    val width = Dp.fromPx(surface.viewportWidth.use()).value
+    val height = Dp.fromPx(surface.viewportHeight.use()).value
+    return width >= CYBER_CAPTION_MIN_VIEWPORT_WIDTH_DP && height >= CYBER_CAPTION_MIN_VIEWPORT_HEIGHT_DP
+}
+
 /** Quiet decorative layer behind menu content. Every element is non-interactive. */
 fun UiScope.CyberBackdrop(theme: ColorSchemeDefinition, showLabels: Boolean = true) {
     val width = Dp.fromPx(surface.viewportWidth.use()).value
@@ -62,20 +82,20 @@ fun UiScope.CyberBackdrop(theme: ColorSchemeDefinition, showLabels: Boolean = tr
             .margin(end = Dp(20f), bottom = Dp(20f)).backgroundColor(edgeColor)
     }
 
-    if (showLabels && width >= 650f && height >= 480f) {
+    if (showLabels && showsCyberBackdropCaptions()) {
         Text("RWXX  //  TACTICAL INTERFACE") {
             modifier.align(AlignmentX.Start, AlignmentY.Top)
-                .margin(start = Dp(78f), top = Dp(15f))
+                .margin(start = Dp(78f), top = CYBER_CAPTION_TOP_INSET)
                 .font(UiTheme.Fonts.caption).textColor(ghostText)
         }
         Text("SYSTEM  /  01") {
             modifier.align(AlignmentX.End, AlignmentY.Top)
-                .margin(end = Dp(78f), top = Dp(15f))
+                .margin(end = Dp(78f), top = CYBER_CAPTION_TOP_INSET)
                 .font(UiTheme.Fonts.caption).textColor(ghostText)
         }
         Text("RUSTED WARFARE EXTENSION") {
             modifier.align(AlignmentX.Start, AlignmentY.Bottom)
-                .margin(start = Dp(78f), bottom = Dp(13f))
+                .margin(start = Dp(78f), bottom = CYBER_CAPTION_BOTTOM_INSET)
                 .font(UiTheme.Fonts.caption).textColor(ghostText)
         }
         Row(width = FitContent, height = Dp(4f)) {
@@ -107,3 +127,9 @@ fun UiScope.CyberCardRail(theme: ColorSchemeDefinition, active: Boolean = false)
             .backgroundColor(theme.palette.secondary.withAlpha(if (active) 0.95f else 0.58f))
     }
 }
+
+/** Caption font is 14dp with a 1.48 line-height factor, so a caption line is ~21dp tall. */
+private const val CYBER_CAPTION_LINE_HEIGHT_DP: Float = 21f
+private const val CYBER_CAPTION_CLEARANCE_DP: Float = 4f
+private const val CYBER_CAPTION_MIN_VIEWPORT_WIDTH_DP: Float = 650f
+private const val CYBER_CAPTION_MIN_VIEWPORT_HEIGHT_DP: Float = 480f

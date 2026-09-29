@@ -48,62 +48,67 @@ class ResourceBrowserSceneHost(
             val metrics = resourceBrowserLayoutMetrics()
             val state = browserModel.use()
 
-            ResourceBrowserFilters(
-                state = state,
-                searchText = searchDraft.use(),
-                theme = theme,
-                contentWidth = metrics.contentWidth,
-                onBack = { dispatch(ResourceBrowserAction.Back) },
-                onSearchTextChanged = { searchDraft.value = it },
-                onTypeSelected = { dispatch(ResourceBrowserAction.SelectType(it)) },
-                onSearch = {
-                    browserModel.value = browserModel.value.copy(
-                        keyword = searchDraft.value.trim(),
-                        page = 1,
-                        items = emptyList(),
-                    )
-                    dispatch(ResourceBrowserAction.Search)
-                },
-            )
+            Column(width = FitContent, height = FitContent) {
+                // Keeps the backdrop captions in the panel frame instead of underneath the controls.
+                modifier.padding(top = metrics.captionBand, bottom = metrics.captionBand)
 
-            val rows = state.items.ifEmpty {
-                listOf(
-                    ResourceBrowserItem(
-                        id = "empty",
-                        title = state.statusText.ifBlank {
-                            if (state.isLoading) I18n.resourcebrowser.loading() else I18n.resourcebrowser.empty()
-                        },
-                        type = state.type,
-                        sourceName = state.source.displayName,
+                ResourceBrowserFilters(
+                    state = state,
+                    searchText = searchDraft.use(),
+                    theme = theme,
+                    contentWidth = metrics.contentWidth,
+                    onBack = { dispatch(ResourceBrowserAction.Back) },
+                    onSearchTextChanged = { searchDraft.value = it },
+                    onTypeSelected = { dispatch(ResourceBrowserAction.SelectType(it)) },
+                    onSearch = {
+                        browserModel.value = browserModel.value.copy(
+                            keyword = searchDraft.value.trim(),
+                            page = 1,
+                            items = emptyList(),
+                        )
+                        dispatch(ResourceBrowserAction.Search)
+                    },
+                )
+
+                val rows = state.items.ifEmpty {
+                    listOf(
+                        ResourceBrowserItem(
+                            id = "empty",
+                            title = state.statusText.ifBlank {
+                                if (state.isLoading) I18n.resourcebrowser.loading() else I18n.resourcebrowser.empty()
+                            },
+                            type = state.type,
+                            sourceName = state.source.displayName,
+                        )
                     )
+                }
+                val gridColumns = resourceBrowserColumnCount(GameEngine.isAndroidPlatform())
+                if (gridColumns > 1 && rows.none { it.id == "empty" }) {
+                    ResourceBrowserGrid(
+                        items = rows,
+                        theme = theme,
+                        metrics = metrics,
+                        columns = gridColumns,
+                        onOpen = { dispatch(ResourceBrowserAction.OpenLink(it)) },
+                        onDownload = { dispatch(ResourceBrowserAction.Download(it)) },
+                    )
+                } else {
+                    ResourceBrowserList(
+                        items = rows,
+                        theme = theme,
+                        metrics = metrics,
+                        onOpen = { dispatch(ResourceBrowserAction.OpenLink(it)) },
+                        onDownload = { dispatch(ResourceBrowserAction.Download(it)) },
+                    )
+                }
+
+                ResourceBrowserActionBar(
+                    loading = state.isLoading,
+                    theme = theme,
+                    contentWidth = metrics.contentWidth,
+                    onLoadMore = { dispatch(ResourceBrowserAction.LoadMore) },
                 )
             }
-            val gridColumns = resourceBrowserColumnCount(GameEngine.isAndroidPlatform())
-            if (gridColumns > 1 && rows.none { it.id == "empty" }) {
-                ResourceBrowserGrid(
-                    items = rows,
-                    theme = theme,
-                    metrics = metrics,
-                    columns = gridColumns,
-                    onOpen = { dispatch(ResourceBrowserAction.OpenLink(it)) },
-                    onDownload = { dispatch(ResourceBrowserAction.Download(it)) },
-                )
-            } else {
-                ResourceBrowserList(
-                    items = rows,
-                    theme = theme,
-                    metrics = metrics,
-                    onOpen = { dispatch(ResourceBrowserAction.OpenLink(it)) },
-                    onDownload = { dispatch(ResourceBrowserAction.Download(it)) },
-                )
-            }
-
-            ResourceBrowserActionBar(
-                loading = state.isLoading,
-                theme = theme,
-                contentWidth = metrics.contentWidth,
-                onLoadMore = { dispatch(ResourceBrowserAction.LoadMore) },
-            )
         }
     }
 
@@ -115,28 +120,84 @@ class ResourceBrowserSceneHost(
 private data class ResourceBrowserLayoutMetrics(
     val contentWidth: Dp,
     val viewportHeight: Dp,
+    val captionBand: Dp,
 )
 
 private fun UiScope.resourceBrowserLayoutMetrics(): ResourceBrowserLayoutMetrics {
     val isAndroid = GameEngine.isAndroidPlatform()
+    val layout = resourceBrowserVerticalLayout(
+        viewportHeightDp = Dp.fromPx(surface.viewportHeight.use()).value,
+        isAndroid = isAndroid,
+        showCaptions = showsCyberBackdropCaptions(),
+    )
     return ResourceBrowserLayoutMetrics(
         contentWidth = ResponsiveContentWidth(
             defaultWidth = UiTheme.Layout.modsContentWidth,
             minWidth = UiTheme.Layout.modsMinContentWidth,
             maxWidth = UiTheme.Layout.modsMaxContentWidth,
         ),
-        viewportHeight = ResponsiveViewportHeight(
-            defaultHeight = UiTheme.Layout.modsViewportHeight,
-            minHeight = if (isAndroid) {
-                RESOURCE_BROWSER_ANDROID_MIN_VIEWPORT_HEIGHT
-            } else {
-                UiTheme.Layout.modsMinViewportHeight
-            },
-            maxHeight = UiTheme.Layout.modsMaxViewportHeight,
-            verticalChrome = RESOURCE_BROWSER_VERTICAL_CHROME,
-        ),
+        viewportHeight = layout.listHeight,
+        captionBand = layout.captionBand,
     )
 }
+
+internal data class ResourceBrowserVerticalLayout(
+    val chrome: Dp,
+    val listHeight: Dp,
+    val captionBand: Dp,
+)
+
+/**
+ * Splits the window height into the panel chrome and the scrollable list. The column above and below
+ * the list is fixed, so the list gets whatever is left of the panel frame; clamping to that
+ * remainder keeps the whole column inside the panel even when [UiTheme.Layout.modsMinViewportHeight]
+ * would not fit.
+ */
+internal fun resourceBrowserVerticalLayout(
+    viewportHeightDp: Float,
+    isAndroid: Boolean,
+    showCaptions: Boolean,
+): ResourceBrowserVerticalLayout {
+    val captionBand = if (showCaptions) CyberBackdropCaptionBand else Dp.ZERO
+    val chrome = Dp(
+        menuPanelFrameHeight(viewportHeightDp).value +
+            ResourceBrowserFixedContentHeight.value +
+            captionBand.value * 2f
+    )
+    if (viewportHeightDp <= 0f) {
+        return ResourceBrowserVerticalLayout(
+            chrome = chrome,
+            listHeight = UiTheme.Layout.modsViewportHeight,
+            captionBand = captionBand,
+        )
+    }
+    val minHeight = if (isAndroid) {
+        RESOURCE_BROWSER_ANDROID_MIN_VIEWPORT_HEIGHT
+    } else {
+        UiTheme.Layout.modsMinViewportHeight
+    }
+    val available = (viewportHeightDp - chrome.value).coerceAtLeast(0f)
+    val listHeight = (viewportHeightDp - chrome.value)
+        .coerceIn(minHeight.value, UiTheme.Layout.modsMaxViewportHeight.value)
+        .coerceAtMost(available)
+    return ResourceBrowserVerticalLayout(
+        chrome = chrome,
+        listHeight = Dp(listHeight),
+        captionBand = captionBand,
+    )
+}
+
+/**
+ * Vertical space the resource browser spends on the sections around the list: the back/type bar, the
+ * search row and the load-more bar, each including its outer margin. Keep in sync with
+ * [ResourceBrowserFilters] and [ResourceBrowserActionBar].
+ */
+internal val ResourceBrowserFixedContentHeight: Dp = Dp(
+    UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.xs.value + // back/type bar
+        UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.sm.value + // search row
+        UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.xs.value * 2f + // load-more button margin
+        UiTheme.Spacing.md.value // load-more row top margin
+)
 
 private fun UiScope.ResourceBrowserList(
     items: List<ResourceBrowserItem>,
@@ -462,4 +523,3 @@ fun invalidateResourceBrowserPreviewTextureCache() {
 
 private val RESOURCE_BROWSER_CARD_HEIGHT: Dp = Dp(112f)
 private val RESOURCE_BROWSER_ANDROID_MIN_VIEWPORT_HEIGHT: Dp = Dp(120f)
-private val RESOURCE_BROWSER_VERTICAL_CHROME: Dp = Dp(216f)

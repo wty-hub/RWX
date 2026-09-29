@@ -94,7 +94,8 @@ class ResourceBrowserRepository(
         val data = root["data"] as? JsonArray ?: return emptyList()
         return data.mapIndexedNotNull { index, element ->
             val info = element.jsonObjectOrNull() ?: return@mapIndexedNotNull null
-            val title = info.string("title")?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
+            val title = info.string("title")?.decodeHtmlEntities()?.takeIf { it.isNotBlank() }
+                ?: return@mapIndexedNotNull null
             ResourceBrowserItem(
                 id = "rtsbox-search-${type.name}-$page-$index-${title.hashCode()}",
                 title = title,
@@ -127,7 +128,8 @@ class ResourceBrowserRepository(
         return data.mapNotNull { element ->
             val info = element.jsonObjectOrNull() ?: return@mapNotNull null
             val postId = info.int("postID") ?: return@mapNotNull null
-            val title = info.string("title")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = info.string("title")?.decodeHtmlEntities()?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
             ResourceBrowserItem(
                 id = "rtsbox-weekly-${type.name}-$postId",
                 title = title,
@@ -172,6 +174,58 @@ private fun JsonObject.firstString(vararg names: String): String? =
 
 private fun JsonObject.firstInt(vararg names: String): Int? =
     names.firstNotNullOfOrNull { int(it) }
+
+/**
+ * RTSBox returns titles with HTML entities ("ZSY工作室&#038;隔离区"), which the list would otherwise
+ * show verbatim. Unknown entities are kept as-is so nothing is silently dropped.
+ */
+internal fun String.decodeHtmlEntities(): String {
+    if ('&' !in this) return this
+    val builder = StringBuilder(length)
+    var index = 0
+    while (index < length) {
+        val char = this[index]
+        val terminator = if (char == '&') indexOf(';', startIndex = index + 1) else -1
+        val decoded = if (terminator > index + 1) {
+            decodeHtmlEntity(substring(index + 1, terminator))
+        } else {
+            null
+        }
+        if (decoded == null) {
+            builder.append(char)
+            index++
+        } else {
+            builder.append(decoded)
+            index = terminator + 1
+        }
+    }
+    return builder.toString()
+}
+
+private fun decodeHtmlEntity(body: String): String? = when {
+    body.startsWith("#x", ignoreCase = true) -> body.substring(2).toIntOrNull(16)?.toCodePointText()
+    body.startsWith("#") -> body.substring(1).toIntOrNull()?.toCodePointText()
+    else -> NAMED_HTML_ENTITIES[body.lowercase(Locale.ROOT)]
+}
+
+private fun Int.toCodePointText(): String? =
+    if (this in 1..MAX_UNICODE_CODE_POINT) String(Character.toChars(this)) else null
+
+private val NAMED_HTML_ENTITIES: Map<String, String> = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to "\u00a0",
+    "hellip" to "\u2026",
+    "mdash" to "\u2014",
+    "ndash" to "\u2013",
+    "middot" to "\u00b7",
+    "times" to "\u00d7",
+)
+
+private const val MAX_UNICODE_CODE_POINT: Int = 0x10FFFF
 
 private fun String.resourcePreviewUrl(): String =
     removeSuffix("!webp")

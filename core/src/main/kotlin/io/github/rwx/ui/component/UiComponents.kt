@@ -76,9 +76,23 @@ private fun UiScope.usesShortViewportLayout(style: PanelStyle): Boolean {
     if (style != PanelStyle.Menu && style != PanelStyle.ModWindow && style != PanelStyle.Pause) {
         return false
     }
-    val viewportHeightDp = Dp.fromPx(surface.viewportHeight.use()).value
-    return viewportHeightDp in 1f..<SHORT_VIEWPORT_HEIGHT_DP
+    return isShortViewport(Dp.fromPx(surface.viewportHeight.use()).value)
 }
+
+/**
+ * Vertical space a [PanelStyle.Menu] panel spends on its own frame: the outer margin plus the inner
+ * padding that surrounds the content column. Hosts subtract it (together with the fixed sections
+ * above and below their list) when they size a list viewport, so the content column never spills
+ * over the frame.
+ */
+internal fun menuPanelFrameHeight(viewportHeightDp: Float): Dp {
+    val style = PanelStyle.Menu
+    val padding = style.innerPadding(isShortViewport(viewportHeightDp))
+    return Dp(style.outerMargin().value * 2f + padding.value * 2f)
+}
+
+internal fun isShortViewport(viewportHeightDp: Float): Boolean =
+    viewportHeightDp in 1f..<SHORT_VIEWPORT_HEIGHT_DP
 
 private fun UiScope.applySelectedColorScheme(
     model: SettingsModel,
