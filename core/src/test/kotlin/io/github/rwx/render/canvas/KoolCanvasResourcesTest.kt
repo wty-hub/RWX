@@ -150,4 +150,28 @@ class KoolCanvasResourcesTest {
             KoolCanvasTextureRegistry.unregister(rawId)
         }
     }
+
+    @Test
+    fun `argb packing writes rgba bytes red first and leaves missing pixels transparent`() {
+        val destination = Uint8Buffer(16)
+        // Two pixels, but the source only carries one: the second must stay transparent instead of
+        // exposing whatever the reused upload buffer held before.
+        packArgbPixelsToRgba(destination, intArrayOf(0xff123456.toInt()), 2)
+
+        assertContentEquals(
+            listOf(0x12, 0x34, 0x56, 0xff, 0x00, 0x00, 0x00, 0x00),
+            List(8) { destination[it].toInt() },
+        )
+    }
+
+    @Test
+    fun `argb packing keeps premultiplied color channels untouched`() {
+        val destination = Uint8Buffer(8)
+        packArgbPixelsToRgba(destination, intArrayOf(0x80102030.toInt(), 0x00ffffff), 2)
+
+        assertContentEquals(
+            listOf(0x10, 0x20, 0x30, 0x80, 0xff, 0xff, 0xff, 0x00),
+            List(8) { destination[it].toInt() },
+        )
+    }
 }

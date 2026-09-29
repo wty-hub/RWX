@@ -112,6 +112,17 @@ open class Texture : Cloneable {
         get() = loadArgbPixelsIfNeeded()?.clone()
 
     /**
+     * The live ARGB pixel array, without the defensive copy [argbPixelsCopy] performs.
+     *
+     * Display backends that only need to read the pixels to upload them use this: cloning a
+     * 512x512 layer buffer cell on every frame is pure garbage. The caller must treat the array as
+     * read-only and must not retain it beyond the current frame, because the owner keeps mutating
+     * or replacing it.
+     */
+    val argbPixelsRef: IntArray?
+        get() = loadArgbPixelsIfNeeded()
+
+    /**
      * Whether the backend should expand the RGB of opaque texels into neighbouring transparent
      * ones before uploading. Only decoded images need it: their transparent texels carry an
      * arbitrary RGB that linear filtering would bleed into sprite edges. Textures whose pixels are

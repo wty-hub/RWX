@@ -1932,7 +1932,9 @@ class KoolGraphicsEngine private constructor(
         if (registeredTexturePixelRevisions[id] == registration) {
             return
         }
-        val pixels = texture.argbPixelsCopy ?: return
+        // The store converts and uploads these pixels itself and the texture keeps owning the array,
+        // so hand over the live array instead of cloning every changed texture on every frame.
+        val pixels = texture.argbPixelsRef ?: return
         if (texture.usesPremultipliedAlpha()) {
             textureStore.registerPremultipliedArgb(id, width, height, pixels)
         } else {

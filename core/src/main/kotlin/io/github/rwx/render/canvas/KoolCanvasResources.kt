@@ -3,7 +3,9 @@ package io.github.rwx.render.canvas
 import de.fabmax.kool.Assets
 import de.fabmax.kool.pipeline.*
 import de.fabmax.kool.util.Uint8Buffer
+import de.fabmax.kool.util.useRaw
 import io.github.rwx.logger
+import java.nio.ByteOrder
 
 private const val COMPLETE_SLICK_FRAME_TEXTURE_ID = "slick-complete-frame"
 private const val CPU_TEXTURE_PROFILE_INTERVAL = 120
@@ -486,15 +488,7 @@ object KoolCanvasTextureRegistry :
         if (packer != null) {
             packer.pack(pixels, argbPixels, pixelCount)
         } else {
-            for (index in 0 until pixelCount) {
-                val argb = argbPixels.getOrElse(index) { 0 }
-                val alpha = (argb ushr 24) and 0xff
-                val offset = index * 4
-                pixels[offset] = ((argb ushr 16) and 0xff).toUByte()
-                pixels[offset + 1] = ((argb ushr 8) and 0xff).toUByte()
-                pixels[offset + 2] = (argb and 0xff).toUByte()
-                pixels[offset + 3] = alpha.toUByte()
-            }
+            packArgbPixelsToRgba(pixels, argbPixels, pixelCount)
         }
         return BufferedImageData2d(
             data = pixels,
@@ -507,13 +501,19 @@ object KoolCanvasTextureRegistry :
         )
     }
 
+    /**
+     * The upload buffer for [key]'s [slot], reused across frames.
+     *
+     * Kool's backend consumes the buffer while uploading, so [refreshCachedArgbTextures] alternates
+     * between two slots; reusing them keeps a few hundred kilobytes per texture out of the garbage
+     * collector on every frame.
+     */
     private fun reusableOpaqueUploadBuffer(
         key: Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>,
         slot: Int,
         width: Int,
         height: Int,
-    ): Uint8Buffer? {
-        if (key.first.value != COMPLETE_SLICK_FRAME_TEXTURE_ID) return null
+    ): Uint8Buffer {
         val byteCount = width * height * 4
         val buffers = opaqueUploadBuffers.getOrPut(key) { arrayOfNulls(2) }
         return buffers[slot]?.takeIf { it.capacity == byteCount }
@@ -575,6 +575,32 @@ object KoolCanvasTextureRegistry :
         return result
     }
 }
+
+/**
+ * Packs ARGB ints into the RGBA bytes Kool uploads.
+ *
+ * Writing one R/B-swapped int per pixel through a big-endian int view is much cheaper than the
+ * four `Uint8Buffer` byte writes (each preceded by a bounds-checked `getOrElse`) this used to do,
+ * and backend-generated render targets like the layer buffer cells re-run this pass every frame.
+ */
+internal fun packArgbPixelsToRgba(destination: Uint8Buffer, sourceArgb: IntArray, pixelCount: Int) {
+    destination.useRaw { bytes ->
+        val rgba = bytes.order(ByteOrder.BIG_ENDIAN).asIntBuffer()
+        val available = minOf(pixelCount, sourceArgb.size)
+        var index = 0
+        while (index < available) {
+            rgba.put(index, Integer.rotateLeft(sourceArgb[index], 8))
+            index++
+        }
+        // Pixels the caller did not provide stay transparent, matching the previous behaviour of
+        // reading a missing source pixel as 0.
+        while (index < pixelCount) {
+            rgba.put(index, 0)
+            index++
+        }
+    }
+}
+
 
 data class KoolCanvasArgbImage(
     val width: Int,
