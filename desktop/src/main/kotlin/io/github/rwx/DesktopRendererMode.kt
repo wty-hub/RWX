@@ -8,5 +8,12 @@ internal enum class DesktopRendererMode(
     Slick(
         "desktop-slick"
     ),
-    //KOOL
+
+    /**
+     * Renders the game world through the Kool canvas (Vulkan, i.e. MoltenVK/Metal on macOS)
+     * instead of the AWT OpenGL canvas. No GL context and no per-frame framebuffer readback.
+     */
+    Kool(
+        "desktop-kool"
+    ),
 }

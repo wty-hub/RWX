@@ -58,7 +58,13 @@ object KoolDesktopMain : KoinComponent {
         initializeLegacyPreferences()
         LocaleSettings.initialize()
 
-        val singleWindowCapture = desktopSingleWindowCapture()
+        val rendererKind = DesktopRendererSelection.resolve()
+        val koolRenderer = rendererKind == DesktopRendererKind.Kool
+        // The Kool renderer draws the game into the Kool canvas itself, so that canvas must fill
+        // the window on every OS (on macOS the Slick host already needs the same single-window
+        // layout because a visible AWT OpenGL canvas cannot be composited there).
+        val singleWindowCapture = desktopSingleWindowCapture() || koolRenderer
+        logger.info("Using desktop renderer: {}", rendererKind.name)
         KoolCanvasTextureRegistry.setCompleteFramePixelPacker(
             if (singleWindowCapture) desktopOpaqueFramePacker else null,
         )
@@ -66,13 +72,14 @@ object KoolDesktopMain : KoinComponent {
         val options = AppOptions.parseArgs(args, isDesktop = true)
         val renderBackend = selectedRenderBackend()
         val fullscreenRequested = SettingsEngine.getInstance().slick2dFullScreen
-        if (fullscreenRequested && isMacOs()) {
+        if (fullscreenRequested && isMacOs() && !koolRenderer) {
             logger.warn("Starting in a window because macOS fullscreen crashes the AWT OpenGL game canvas")
         }
         val swingHost = SwingKoolHost.create(
             fullscreen = desktopStartupFullscreen(fullscreenRequested),
             useOpenGl = renderBackend == RenderBackendGl.Companion,
             singleWindowCapture = singleWindowCapture,
+            useSlickCanvas = !koolRenderer,
         )
         val bridge=get<PlatformBridge>()
         bridge.filePickerHost=swingHost

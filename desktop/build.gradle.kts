@@ -192,6 +192,7 @@ tasks.named<JavaExec>("run") {
     workingDir = project.file("..")
     configureSlickNatives()
     configureKoolRenderBackend()
+    configureDesktopRenderer()
     configureRunArgs()
 }
 
@@ -486,6 +487,14 @@ fun JavaExec.configureKoolRenderBackend() {
         .orElse(providers.systemProperty("rwx.kool.backend"))
     if (backend.isPresent) {
         systemProperty("rwx.kool.backend", backend.get())
+    }
+}
+
+fun JavaExec.configureDesktopRenderer() {
+    val renderer = providers.gradleProperty("rwxDesktopRenderer")
+        .orElse(providers.systemProperty("rwx.desktop.renderer"))
+    if (renderer.isPresent) {
+        systemProperty("rwx.desktop.renderer", renderer.get())
     }
 }
 

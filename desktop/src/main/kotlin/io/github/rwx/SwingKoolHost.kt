@@ -26,7 +26,8 @@ import kotlin.system.exitProcess
 
 class SwingKoolHost private constructor(
     val koolCanvas: Canvas,
-    val gameCanvas: Canvas,
+    /** The AWT OpenGL canvas, or null when the Kool renderer draws the game into [koolCanvas]. */
+    val gameCanvas: Canvas?,
     val windowSubsystem: PacedSwingWindowSubsystem,
     private val startupFullscreen: Boolean,
     private val singleWindowCapture: Boolean,
@@ -79,7 +80,7 @@ class SwingKoolHost private constructor(
             },
             setEditorHasFocus = { hasFocus ->
                 koolCanvas.isFocusable = !hasFocus
-                gameCanvas.isFocusable = !hasFocus && !singleWindowCapture
+                gameCanvas?.isFocusable = !hasFocus && !singleWindowCapture
             },
             restoreFocus = {
                 restoreOverlayKeyboard()
@@ -92,13 +93,14 @@ class SwingKoolHost private constructor(
         )
         PlatformTextInputBridge.install(textInputController)
         EmojiRasterizerBridge.install(emojiRasterizer)
-        gameCanvas.name = GAME_CARD
-        gameCanvas.background = Color.BLACK
-        gameCanvas.isFocusable = !singleWindowCapture
-        gameCanvas.ignoreRepaint = true
-        gameCanvas.isVisible = false
-
-        panel.add(gameCanvas, GAME_CARD)
+        gameCanvas?.let { canvas ->
+            canvas.name = GAME_CARD
+            canvas.background = Color.BLACK
+            canvas.isFocusable = !singleWindowCapture
+            canvas.ignoreRepaint = true
+            canvas.isVisible = false
+            panel.add(canvas, GAME_CARD)
+        }
         if (singleWindowCapture) {
             panel.add(koolCanvas, KOOL_CARD)
             panel.setComponentZOrder(koolCanvas, 0)
@@ -158,9 +160,21 @@ class SwingKoolHost private constructor(
     }
 
     fun showGame(koolOverlay: Boolean = false) {
+        val canvas = gameCanvas
+        if (canvas == null) {
+            // The Kool renderer draws the game into the only canvas this host owns.
+            dispatchCanvasVisibilityChange(false) {
+                resizeCanvases()
+                setKoolOverlayVisible(true)
+                if (!PlatformTextInputBridge.isEditing()) {
+                    koolCanvas.requestFocusInWindow()
+                }
+            }
+            return
+        }
         val action = {
             resizeCanvases()
-            gameCanvas.isVisible = true
+            canvas.isVisible = true
             setKoolOverlayVisible(koolOverlay)
             ensureGameBufferStrategy()
             if (PlatformTextInputBridge.isEditing()) {
@@ -169,20 +183,30 @@ class SwingKoolHost private constructor(
             } else if (singleWindowCapture || koolOverlay) {
                 koolCanvas.requestFocusInWindow()
             } else {
-                gameCanvas.requestFocusInWindow()
+                canvas.requestFocusInWindow()
             }
             Unit
         }
         // The first show must wait for the EDT to create the JAWT peer before Slick starts. Later
         // calls can originate inside AWTGLCanvas.runInContext(), which holds the AWT lock; waiting
         // for the EDT there deadlocks when setVisible() tries to acquire that same lock.
-        dispatchCanvasVisibilityChange(gameCanvas.isShowing, action)
+        dispatchCanvasVisibilityChange(canvas.isShowing, action)
     }
 
     fun showKool() {
-        dispatchCanvasVisibilityChange(gameCanvas.isShowing) {
+        val canvas = gameCanvas
+        if (canvas == null) {
+            dispatchCanvasVisibilityChange(false) {
+                resizeCanvases()
+                if (singleWindowCapture) setInGamePointerCursorActive(false)
+                setKoolOverlayVisible(true)
+                koolCanvas.requestFocusInWindow()
+            }
+            return
+        }
+        dispatchCanvasVisibilityChange(canvas.isShowing) {
             resizeCanvases()
-            gameCanvas.isVisible = false
+            canvas.isVisible = false
             if (singleWindowCapture) setInGamePointerCursorActive(false)
             setKoolOverlayVisible(true)
             koolCanvas.requestFocusInWindow()
@@ -262,21 +286,26 @@ class SwingKoolHost private constructor(
         val height = panel.height.coerceAtLeast(1)
         panel.revalidate()
         panel.doLayout()
-        gameCanvas.setBounds(0, 0, width, height)
-        gameCanvas.setSize(width, height)
+        val canvas = gameCanvas
+        if (canvas != null) {
+            canvas.setBounds(0, 0, width, height)
+            canvas.setSize(width, height)
+        }
         if (singleWindowCapture) {
             koolCanvas.setBounds(0, 0, width, height)
         } else {
             koolCanvas.setSize(width, height)
             syncOverlayBounds()
         }
-        SlickCanvasHost.notifyGameCanvasResized(width, height)
+        if (canvas != null) {
+            SlickCanvasHost.notifyGameCanvasResized(width, height)
+        }
     }
 
     private fun restoreOverlayKeyboard() {
         overlayWindow?.focusableWindowState = true
         koolCanvas.isFocusable = true
-        gameCanvas.isFocusable = !singleWindowCapture
+        gameCanvas?.isFocusable = !singleWindowCapture
     }
 
     private fun focusVisibleCanvas() {
@@ -289,7 +318,7 @@ class SwingKoolHost private constructor(
         } else if (overlayWindow?.isVisible == true) {
             raiseOverlayIfActive()
             koolCanvas.requestFocusInWindow()
-        } else if (gameCanvas.isShowing) {
+        } else if (gameCanvas?.isShowing == true) {
             gameCanvas.requestFocusInWindow()
         }
     }
@@ -378,9 +407,10 @@ class SwingKoolHost private constructor(
 
     private fun ensureGameBufferStrategy() {
         if (singleWindowCapture) return
-        if (gameBufferStrategyCreated || !gameCanvas.isDisplayable) return
+        val canvas = gameCanvas ?: return
+        if (gameBufferStrategyCreated || !canvas.isDisplayable) return
         runCatching {
-            gameCanvas.createBufferStrategy(2)
+            canvas.createBufferStrategy(2)
             gameBufferStrategyCreated = true
         }
     }
@@ -429,6 +459,7 @@ class SwingKoolHost private constructor(
             fullscreen: Boolean,
             useOpenGl: Boolean,
             singleWindowCapture: Boolean = false,
+            useSlickCanvas: Boolean = true,
         ): SwingKoolHost {
             System.setProperty("org.lwjgl.opengl.contextAPI", "native")
             val koolCanvas = if (useOpenGl) {
@@ -446,15 +477,19 @@ class SwingKoolHost private constructor(
             } else {
                 PointerCursorCanvas()
             }
-            val gameCanvas = SlickAwtGLCanvas(
-                data = GLData().apply {
-                    alphaSize = 8
-                    depthSize = 24
-                    stencilSize = 8
-                },
-                requestedSwapInterval = 0,
-                offscreenOnMac = singleWindowCapture,
-            )
+            val gameCanvas = if (useSlickCanvas) {
+                SlickAwtGLCanvas(
+                    data = GLData().apply {
+                        alphaSize = 8
+                        depthSize = 24
+                        stencilSize = 8
+                    },
+                    requestedSwapInterval = 0,
+                    offscreenOnMac = singleWindowCapture,
+                )
+            } else {
+                null
+            }
             lateinit var host: SwingKoolHost
             val subsystem = PacedSwingWindowSubsystem(
                 SwingWindowSubsystem(
@@ -469,14 +504,16 @@ class SwingKoolHost private constructor(
                 startupFullscreen = fullscreen,
                 singleWindowCapture = singleWindowCapture,
             )
-            SlickCanvasHost.install(
-                canvasProvider = { host.gameCanvas },
-                visibilityController = { visible, koolOverlay ->
-                    if (visible) host.showGame(koolOverlay) else host.showKool()
-                },
-                preferKoolCanvasFocus = singleWindowCapture,
-                pointerCursorController = if (singleWindowCapture) host::setInGamePointerCursorActive else null,
-            )
+            if (gameCanvas != null) {
+                SlickCanvasHost.install(
+                    canvasProvider = { host.gameCanvas },
+                    visibilityController = { visible, koolOverlay ->
+                        if (visible) host.showGame(koolOverlay) else host.showKool()
+                    },
+                    preferKoolCanvasFocus = singleWindowCapture,
+                    pointerCursorController = if (singleWindowCapture) host::setInGamePointerCursorActive else null,
+                )
+            }
             return host
         }
 
