@@ -13,6 +13,7 @@ import com.corrodinggames.rts.gameFramework.network.GameModeType
 import com.corrodinggames.rts.gameFramework.network.PasswordHandler
 import com.corrodinggames.rts.gameFramework.utility.SlickToAndroidKeycodes
 import io.github.rwx.DesktopInputHandler
+import io.github.rwx.desktopTargetFrameRateOverride
 import io.github.rwx.ensureDesktopOpenAlMusicFactory
 import io.github.rwx.geometry.Point
 import io.github.rwx.input.MultiTouchPointerState
@@ -80,8 +81,6 @@ object SlickGraphicsBinding {
 }
 
 private const val SLICK_LAYER_REDRAW_BUDGET_MS = 2
-private val SLICK_TARGET_FPS_OVERRIDE: Int? =
-    System.getenv("RWX_SLICK_TARGET_FPS")?.toIntOrNull()?.takeIf { it > 0 }
 
 private val BENCHMARK_REPLAY_SPEED: Int? =
     System.getenv("RWX_REPLAY_SPEED")?.toIntOrNull()?.takeIf { it > 1 }
@@ -474,7 +473,7 @@ class SlickGame(
         return resolveSlickTargetFrameRate(
             maxFrameRate = settings.maxFrameRate,
             highRefreshRate = settings.highRefreshRate,
-            environmentOverride = SLICK_TARGET_FPS_OVERRIDE,
+            environmentOverride = desktopTargetFrameRateOverride,
         )
     }
 
