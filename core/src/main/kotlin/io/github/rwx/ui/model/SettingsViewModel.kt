@@ -385,9 +385,17 @@ sealed interface SettingsOutcome {
 }
 
 object SettingsNavigation {
-    fun outcomeFor(action: SettingsAction): SettingsOutcome = when (action) {
+    /**
+     * @param backScreen where the settings page was opened from: the main menu normally, or the
+     *   running match when it was reached from the in-game pause menu. Leaving the page must not
+     *   drop the player out to the main menu in that case.
+     */
+    fun outcomeFor(
+        action: SettingsAction,
+        backScreen: AppScreen = AppScreen.MainMenu,
+    ): SettingsOutcome = when (action) {
         SettingsAction.PreviewChanges -> SettingsOutcome.PreviewChanges
         SettingsAction.ApplyChanges -> SettingsOutcome.ApplyChanges
-        SettingsAction.Back -> SettingsOutcome.Navigate(AppScreen.MainMenu)
+        SettingsAction.Back -> SettingsOutcome.Navigate(backScreen)
     }
 }

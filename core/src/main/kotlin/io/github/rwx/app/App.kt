@@ -409,6 +409,8 @@ fun installApp(
         showAboutDialog = dialogController::showAboutDialog,
         clearPendingStartState = pendingStartController::clear,
         openInGameSettings = sessionActions::openInGameSettings,
+        openMainMenuSettings = sessionActions::openMainMenuSettings,
+        settingsBackTarget = { sessionActions.settingsBackTarget },
         showSaveGameDialog = inGameDialogController::showSaveGameDialog,
         showExitGameDialog = inGameDialogController::showExitGameDialog,
         showInGameChatDialog = inGameDialogController::showInGameChatDialog,

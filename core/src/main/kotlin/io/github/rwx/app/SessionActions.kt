@@ -35,6 +35,22 @@ internal class SessionActions(
     }
 
     fun openInGameSettings() {
+        openSettings(AppScreen.InGame)
+    }
+
+    fun openMainMenuSettings() {
+        openSettings(AppScreen.MainMenu)
+    }
+
+    /**
+     * Screen the settings page returns to. Reset on every open so a page that was entered from the
+     * pause menu never sends a later main-menu visit back into the match.
+     */
+    var settingsBackTarget: AppScreen = AppScreen.MainMenu
+        private set
+
+    private fun openSettings(backTarget: AppScreen) {
+        settingsBackTarget = backTarget
         settingsSceneHost.showPage(SettingsPage.Display)
         navigateTo(AppScreen.Settings)
     }

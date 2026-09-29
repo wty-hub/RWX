@@ -34,6 +34,8 @@ internal class ActionRouter(
     private val showAboutDialog: () -> Unit,
     private val clearPendingStartState: () -> Unit,
     private val openInGameSettings: () -> Unit,
+    private val openMainMenuSettings: () -> Unit,
+    private val settingsBackTarget: () -> AppScreen,
     private val showSaveGameDialog: () -> Unit,
     private val showExitGameDialog: (() -> Unit) -> Unit,
     private val showInGameChatDialog: (Boolean) -> Unit,
@@ -65,6 +67,10 @@ internal class ActionRouter(
                     }
                 } else if (outcome.screen == AppScreen.InGame) {
                     enterRwGame(true, null)
+                } else if (outcome.screen == AppScreen.Settings) {
+                    // Remember the main menu as the return target: the page is also reachable from
+                    // the in-game pause menu, which must not leave the running match.
+                    openMainMenuSettings()
                 } else {
                     navigator.navigateTo(outcome.screen)
                 }
@@ -130,7 +136,7 @@ internal class ActionRouter(
     }
 
     private fun handleSettingsAction(action: SettingsAction) {
-        when (val outcome = SettingsNavigation.outcomeFor(action)) {
+        when (val outcome = SettingsNavigation.outcomeFor(action, settingsBackTarget())) {
             SettingsOutcome.PreviewChanges -> settingsRepository.applyLive(settingsModel)
             SettingsOutcome.ApplyChanges -> settingsRepository.saveFrom(settingsModel)
             is SettingsOutcome.Navigate -> {
