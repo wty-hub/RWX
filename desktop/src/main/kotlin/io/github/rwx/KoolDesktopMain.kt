@@ -10,6 +10,7 @@ import de.fabmax.kool.createContext
 import de.fabmax.kool.pipeline.backend.BackendProvider
 import de.fabmax.kool.pipeline.backend.gl.RenderBackendGl
 import de.fabmax.kool.pipeline.backend.vk.RenderBackendVk
+import de.fabmax.kool.platform.Lwjgl3Context
 import de.fabmax.kool.util.FrontendScope
 import io.github.rwx.app.AppOptions
 import io.github.rwx.app.installApp
@@ -84,6 +85,9 @@ object KoolDesktopMain : KoinComponent {
         val bridge=get<PlatformBridge>()
         bridge.filePickerHost=swingHost
         val context = createContext(createKoolConfig(swingHost, renderBackend))
+        // Kool only reads its frame-rate limits once, from the config, so keep them in step with the
+        // settings screen the same way the Slick canvas does: it re-resolves its target every frame.
+        context.onRender += { syncDesktopFrameRateLimit(context) }
         val app = KoolApplication(context)
         val loadingScene = LoadingSceneHost.createScene()
         app.ctx.addScene(loadingScene)
@@ -117,7 +121,26 @@ object KoolDesktopMain : KoinComponent {
         // The host provides a different AWT canvas type for Vulkan and OpenGL. Falling back to
         // OpenGL after creating a regular Vulkan canvas cannot produce a working window.
         useOpenGlFallback = false,
+        // A vsync swapchain is the only throttle Kool's unmanaged (Vulkan) loop has, and on macOS it
+        // is MoltenVK's FIFO mode: it pins the game to the display refresh rate and ignores the
+        // settings' maximum frame rate. Present without vsync and let the frame-rate limiter below
+        // pace the loop instead, exactly like the Slick canvas does.
+        isVsync = false,
+        maxFrameRate = desktopTargetFrameRate(),
+        // Same limit whether or not the window has focus: a stale focus flag must not silently
+        // throttle a focused game, and the Slick path has no unfocused variant either.
+        windowNotFocusedFrameRate = 0,
     )
+
+    /** Applies the settings' target frame rate to Kool's frame-rate limiter. */
+    internal fun syncDesktopFrameRateLimit(
+        context: Lwjgl3Context,
+        targetFrameRate: Int = desktopTargetFrameRate(),
+    ) {
+        if (context.maxFrameRate != targetFrameRate) {
+            context.maxFrameRate = targetFrameRate
+        }
+    }
 
     private fun selectedRenderBackend(): BackendProvider = resolveDesktopRenderBackend(
         System.getProperty(RENDER_BACKEND_PROPERTY) ?: System.getenv(RENDER_BACKEND_ENV),
