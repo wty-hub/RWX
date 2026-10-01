@@ -96,6 +96,15 @@ internal class KoolDesktopGameSession(
         owner.submit { super.runEngineCommand(label, command); publishUiState(force = true) }
     }
 
+    override fun updateMenuMusic(deltaSeconds: Float) {
+        // Audio ticks do not change UI state or the custom map catalogue.
+        owner.submit {
+            super.runEngineCommand("menu music") { engine ->
+                engine.musicManager?.update(deltaSeconds.toGameSpeedDelta())
+            }
+        }
+    }
+
     override fun canResume(): Boolean = if (owner.isOwner) super.canResume() else
         uiState.get().canResume && !loadState.asyncMapLoadInProgress
     override fun isMapLoaded(mapPath: String?): Boolean = if (owner.isOwner) super.isMapLoaded(mapPath) else

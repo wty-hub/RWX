@@ -149,10 +149,12 @@ object PlatformTextInputBridge {
 fun UiScope.RwxTextField(
     text: String = "",
     scopeName: String? = null,
+    autoFocusKey: Any? = null,
     block: TextFieldScope.() -> Unit,
 ): TextFieldScope {
     val owner = remember(Any())
     val wasFocused = remember(false)
+    val lastAutoFocusKey = remember(null as Any?)
     // Kool stores remembered values in per-type slots that are consumed in call order and rewound
     // every frame (WeakMemory), so this composable must call remember() the same number of times,
     // in the same order, on every frame -- independent of whether the platform owns the caret.
@@ -164,6 +166,12 @@ fun UiScope.RwxTextField(
     val reported = remember(PlatformSelection())
 
     val textField = TextField(text, scopeName, block)
+    if (autoFocusKey != null && lastAutoFocusKey.value != autoFocusKey) {
+        lastAutoFocusKey.value = autoFocusKey
+        // Focus before checking the field state so native editing starts in this composition.
+        // The key changes for every dialog opening, even when Kool reuses the field node.
+        surface.requestFocus(textField)
+    }
     val isFocused = textField.isFocused.use()
     val modifier = textField.modifier
     val caretOwned = PlatformTextInputBridge.ownsCaret()

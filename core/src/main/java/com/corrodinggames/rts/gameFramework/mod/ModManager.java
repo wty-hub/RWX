@@ -582,7 +582,6 @@ public class ModManager {
     /* JADX INFO: renamed from: a */
     public String[] addExtraMapsForPath(String[] strArr, String str) {
         String[] strArrListFilesRecursive;
-        GameEngine.log("addExtraMapsForPath: " + str);
         ArrayList arrayList = new ArrayList();
         if (strArr != null) {
             for (String str2 : strArr) {

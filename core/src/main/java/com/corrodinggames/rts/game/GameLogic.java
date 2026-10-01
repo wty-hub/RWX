@@ -2262,7 +2262,9 @@ public class GameLogic extends GameEngine {
             if (!isNonAndroidVersion) {
                 gameView.pause();
             }
-            this.isStopped = z;
+            // Attaching an externally driven view also happens during menu preloading.
+            // Keep servicing outer-loop tasks, but do not start a match before a level exists.
+            this.isStopped = z || (externalGameLoopDriver && !this.hasLoadedLevel);
             this.isPaused = this.isStopped;
             if (z && !this.hasLoadedLevel && !this.fullReload && !GameEngine.isMenuBackgroundDisabled && !this.networkEngine.networkGameActive) {
                 loadMenuBackground();

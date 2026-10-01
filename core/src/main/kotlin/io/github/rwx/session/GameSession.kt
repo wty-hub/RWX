@@ -1537,8 +1537,9 @@ abstract class GameSession {
                 pendingMapPath = null,
             )
         }
-        engine.isStopped = false
-        engine.isPaused = false
+        // Opening a lobby does not start a level; keep no-level frames in the stopped state.
+        engine.isStopped = !engine.hasLoadedLevel
+        engine.isPaused = !engine.hasLoadedLevel
         installCoreNetworkCallbacksIfMissing(engine)
     }
 
@@ -1787,8 +1788,6 @@ abstract class GameSession {
             )
         }
         engine.currentMapPath = config.room.mapPath
-        engine.isStopped = false
-        engine.isPaused = false
         engine.minimap?.release()
         val networkEngine = engine.configureLocalBattleRoom(config, sessionLogName) ?: run {
             if (config.room.isSavedGame) {
@@ -1799,6 +1798,9 @@ abstract class GameSession {
             return
         }
 
+        // Configuring the room can disconnect the previous session and stop the engine.
+        engine.isStopped = false
+        engine.isPaused = false
         check(networkEngine.startBattleRoomGame()) { "Unable to start $sessionLogName battle room game" }
         BattleRoomUiBridge.setupGame()
         val resolvedMapPath = activeRunningMapPath(engine) ?: config.room.mapPath

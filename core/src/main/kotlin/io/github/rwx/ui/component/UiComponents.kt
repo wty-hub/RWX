@@ -243,12 +243,13 @@ fun UiScope.TextFieldWithTrailingIcon(
     onTrailingIconPress: (() -> Unit)? = null,
     onEnter: ((String) -> Unit)? = null,
     focusOnShow: Boolean = false,
+    inputSession: Int = 0,
     onChange: (String) -> Unit,
 ) {
     val inputHeight = if (compact) UiTheme.Layout.CompactMenuButtonHeight else UiTheme.Layout.menuButtonHeight
     Box(width = contentWidth, height = inputHeight) {
         modifier.margin(bottom = if (compact) Dp.ZERO else UiTheme.Spacing.lg)
-        val field = RwxTextField(value) {
+        RwxTextField(value, autoFocusKey = if (focusOnShow) inputSession else null) {
             modifier
                 .width(Grow.Std)
                 .height(Grow.Std)
@@ -268,13 +269,6 @@ fun UiScope.TextFieldWithTrailingIcon(
                 )
                 .onChange(onChange)
                 .onEnterPressed(onEnter)
-        }
-        if (focusOnShow) {
-            val focusRequested = remember(false)
-            if (!focusRequested.value) {
-                focusRequested.value = true
-                surface.requestFocus(field)
-            }
         }
         trailingIcon?.let { icon ->
             val iconSize = if (compact) Dp(18f) else UiTheme.Layout.textButtonGlyphSize

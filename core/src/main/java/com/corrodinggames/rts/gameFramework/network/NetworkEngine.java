@@ -1848,6 +1848,10 @@ public final class NetworkEngine {
             this.gameHasBeenStarted = false;
             gameEngine.replayEngine.e();
             gameEngine.stopAndReset();
+            // External loop drivers keep servicing lobby packets after the level is unloaded.
+            // The match must already be stopped when that next frame runs.
+            gameEngine.isStopped = true;
+            gameEngine.isPaused = true;
             updateMultiplayerNotifications();
             this.queuedDisconnectRequested = false;
             this.queuedDisconnectLock.notifyAll();
