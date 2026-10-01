@@ -160,6 +160,7 @@ class LevelSelectViewModel(
         GameSaver.getSaveFile("", "saves/", false)
     },
     private val customMapPathsProvider: (() -> List<String>)? = null,
+    private val modMapEntriesProvider: (() -> List<MapEntry>)? = null,
 
     ) {
     @Volatile
@@ -264,6 +265,7 @@ class LevelSelectViewModel(
      * `FileLoader.applyModPath`, so `.rwmod` archives work without unpacking them here.
      */
     private fun modMapItems(): List<MapEntry> {
+        modMapEntriesProvider?.let { return it() }
         val manager = GameEngine.getInstance()?.modManager ?: return emptyList()
         val entries = manager.addExtraMapsForPath(null, CUSTOM_LEVELS_DIR) ?: return emptyList()
         // On Android the engine also folds the legacy "maps2" folder into this list; our own file

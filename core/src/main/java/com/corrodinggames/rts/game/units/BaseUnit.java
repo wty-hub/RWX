@@ -29,6 +29,7 @@ import com.corrodinggames.rts.gameFramework.SizedObject;
 import com.corrodinggames.rts.gameFramework.Utility;
 import com.corrodinggames.rts.gameFramework.effects.*;
 import com.corrodinggames.rts.gameFramework.graphics.GamePaint;
+import com.corrodinggames.rts.gameFramework.graphics.GraphicsEngine;
 import com.corrodinggames.rts.gameFramework.graphics.Texture;
 import com.corrodinggames.rts.gameFramework.network.GameInputStream;
 import com.corrodinggames.rts.gameFramework.network.GameOutputStream;
@@ -1209,9 +1210,19 @@ public abstract class BaseUnit extends SizedObject {
             if (this.team == gameEngine.playerTeam || gameEngine.gameUI.canControlUnit(this)) {
                 if (gameEngine.settingsEngine.showUnitWaypoints && gameEngine.selectedWaypointDrawCount <= 40) {
                     gameEngine.selectedWaypointDrawCount++;
-                    O();
+                    gameEngine.renderGraphicsEngine.beginDrawRole(GraphicsEngine.DRAW_ROLE_WAYPOINT, this.objectId);
+                    try {
+                        O();
+                    } finally {
+                        gameEngine.renderGraphicsEngine.endDrawRole();
+                    }
                 }
-                drawRallyPoint();
+                gameEngine.renderGraphicsEngine.beginDrawRole(GraphicsEngine.DRAW_ROLE_WAYPOINT, this.objectId);
+                try {
+                    drawRallyPoint();
+                } finally {
+                    gameEngine.renderGraphicsEngine.endDrawRole();
+                }
             }
             if (GameViewUtils.a(this)) {
                 cb();
@@ -1354,7 +1365,12 @@ public abstract class BaseUnit extends SizedObject {
                 }
                 float unitSelectionFadeEffect = this.displayRadius + gameEngine.gameUI.getUnitSelectionFadeEffect(this);
                 if (gameEngine.isCircleVisibleInCamera(f2, f3, unitSelectionFadeEffect)) {
-                    gameEngine.renderGraphicsEngine.a(f2, f3, unitSelectionFadeEffect, paint);
+                    gameEngine.renderGraphicsEngine.beginDrawRole(GraphicsEngine.DRAW_ROLE_SELECTION_RING, this.objectId);
+                    try {
+                        gameEngine.renderGraphicsEngine.a(f2, f3, unitSelectionFadeEffect, paint);
+                    } finally {
+                        gameEngine.renderGraphicsEngine.endDrawRole();
+                    }
                 }
             }
         }

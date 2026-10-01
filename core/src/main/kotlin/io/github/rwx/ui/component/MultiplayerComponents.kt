@@ -202,6 +202,9 @@ fun UiScope.MultiplayerRoomList(
             TextIconButton("Host", Icon.Start, buttonWidth, theme) {
                 actions.onHostGame()
             }
+            TextIconButton(I18n.multiplayer.rejoinLastGame(), Icon.Back, buttonWidth, theme) {
+                actions.onRejoinLastGame()
+            }
         }
     } else {
         Row {
@@ -214,6 +217,12 @@ fun UiScope.MultiplayerRoomList(
             }
             TextIconButton("Host", Icon.Start, buttonWidth, theme) {
                 actions.onHostGame()
+            }
+        }
+        Row {
+            modifier.alignX(AlignmentX.Center)
+            TextIconButton(I18n.multiplayer.rejoinLastGame(), Icon.Back, UiTheme.Layout.menuButtonWidth, theme) {
+                actions.onRejoinLastGame()
             }
         }
     }
@@ -473,5 +482,6 @@ data class MultiplayerRoomListActions(
     val onSwitchLobby: (MultiplayerLobbyKind) -> Unit,
     val onHostGame: () -> Unit,
     val onJoinDirect: () -> Unit,
+    val onRejoinLastGame: () -> Unit,
     val onConfigure: () -> Unit,
 )

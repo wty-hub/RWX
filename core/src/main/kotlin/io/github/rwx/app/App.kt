@@ -1,12 +1,16 @@
 package io.github.rwx.app
 
+import io.github.rwx.mod.registry.UiRegistry
+
 import de.fabmax.kool.KoolContext
 import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.util.ApplicationScope
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import io.github.rwx.input.KoolKeyCodeMapping
 import io.github.rwx.logger
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
+import io.github.rwx.session.GameSession
 import io.github.rwx.ui.*
 import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.ui.model.BattleRoomAction
@@ -60,18 +64,39 @@ fun installApp(
     context: KoolContext,
     options: AppOptions = AppOptions(),
     onQuit: () -> Unit = { context.window.close() },
+    configureCanvasHost: (io.github.rwx.render.canvas.KoolCanvasSceneHost) -> Unit = {},
+    configureGameSession: (GameSession) -> Unit = {},
 ): AppSession {
     val bootstrap = createAppBootstrap(context, options)
     val platformBridge = bootstrap.platformBridge
     val appMetadata = bootstrap.appMetadata
     val gameSession = bootstrap.gameSession
+    configureGameSession(gameSession)
     val menuBackgroundSession = bootstrap.menuBackgroundSession
     val modRepository = bootstrap.modRepository
     val resourceBrowserRepository = bootstrap.resourceBrowserRepository
     val settingsRepository = bootstrap.settingsRepository
+    if (gameSession.usesIndependentEngineLoop) {
+        settingsRepository.engineExecutor = { action -> gameSession.submitSessionTask(action); Unit }
+    }
+    val previousModUiExecutor = UiRegistry.engineExecutor
+    val modUiExecutor: (() -> Unit) -> Unit = { action -> gameSession.submitSessionTask(action); Unit }
+    UiRegistry.engineExecutor = modUiExecutor
     val actions = bootstrap.actions
     val settingsModel = bootstrap.settingsModel
     val koolCanvasSceneHost = bootstrap.koolCanvasSceneHost
+    configureCanvasHost(koolCanvasSceneHost)
+    context.onShutdown += {
+        try { gameSession.close() }
+        finally {
+            if (UiRegistry.engineExecutor === modUiExecutor) {
+                // A bounded owner join can leave accepted work finishing; never reopen inline access.
+                UiRegistry.engineExecutor = if (gameSession.usesIndependentEngineLoop) {
+                    { _ -> error("Game session is closed") }
+                } else previousModUiExecutor
+            }
+        }
+    }
     val koolCanvasScene = bootstrap.koolCanvasScene
     val loadingSceneHost = bootstrap.loadingSceneHost
     val mainMenuSceneHost = bootstrap.mainMenuSceneHost
@@ -80,6 +105,7 @@ fun installApp(
     val levelSelectViewModelFactory = bootstrap.levelSelectViewModelFactory
     val replaySelectSceneHost = bootstrap.replaySelectSceneHost
     val settingsSceneHost = bootstrap.settingsSceneHost
+    settingsSceneHost.configureEngineOwnership(gameSession)
     val multiplayerSceneHost = bootstrap.multiplayerSceneHost
     val modsSceneHost = bootstrap.modsSceneHost
     val resourceBrowserSceneHost = bootstrap.resourceBrowserSceneHost
@@ -161,6 +187,7 @@ fun installApp(
     )
 
     val multiplayerLobbyController = MultiplayerLobbyController(
+        gameSession = gameSession,
         sceneHost = multiplayerSceneHost,
     )
     val inGameDialogController = InGameDialogController(
@@ -194,6 +221,16 @@ fun installApp(
         onConnected = { snapshot ->
             battleRoomController.updateConnectedRoom(snapshot)
             navigator.navigateTo(AppScreen.BattleRoom)
+        },
+        onConnectedAddress = { address ->
+            gameSession.requestSessionTask({
+                SettingsEngine.getInstance()?.apply {
+                    lastNetworkIP = address
+                    save()
+                }
+            }) { result ->
+                result.onFailure { error -> logger.warn(error) { "Unable to remember multiplayer address" } }
+            }
         },
         onFailed = dialogController::showUnavailable,
     )
@@ -397,6 +434,7 @@ fun installApp(
         platformBridge = platformBridge,
         settingsRepository = settingsRepository,
         settingsModel = settingsModel,
+        applyDisplaySettings = gameSession::applyDisplaySettings,
         levelSelectSceneHost = levelSelectSceneHost,
         battleRoomController = battleRoomController,
         multiplayerLobbyController = multiplayerLobbyController,
@@ -460,6 +498,7 @@ fun installApp(
         navigateBack = session::navigateBack,
         dismissDialog = dismissDialog,
         isModalOverlayOpen = { dialogSceneHost.isShowing || loadingDialogSceneHost.isShowing },
+        pointerViewport = ::rwGameViewport,
     ).also { it.install() }
     screenPresenter.apply(navigator.current, lastExternalGameFrame)
 
@@ -487,12 +526,13 @@ fun installApp(
         gameReadyController = gameReadyController,
         refreshModWindow = modWindowSceneHost::refresh,
         onBattleRoomClosed = { reason, message ->
+            battleRoomLaunchController.cancelPendingStart()
             battleRoomJoinController.handleBattleRoomClosed()
             BattleRoomUiBridge.startGamePending = false
             if (navigator.current == AppScreen.BattleRoom) {
                 navigator.navigateTo(battleRoomController.closeRoom())
             } else {
-                gameSession.leaveBattleRoom()
+                gameSession.submitSessionTask { gameSession.leaveBattleRoom() }
             }
             val text = listOfNotNull(reason, message).joinToString("\n").ifBlank { null }
             text?.let { dialogController.showUnavailable(it) }

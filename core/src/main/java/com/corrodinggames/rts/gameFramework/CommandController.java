@@ -103,6 +103,7 @@ public class CommandController {
         int i2 = 0;
         for (Command command : this.pendingCommands) {
             gameEngine.replayEngine.a(command, i);
+            io.github.rwx.diagnostics.SimulationCompatibilityTrace.onCommandExecuted(gameEngine, command);
             command.executeCommand();
             i2++;
         }
@@ -122,6 +123,7 @@ public class CommandController {
             Command command = (Command) it.next();
             if (command.scheduledTick == i) {
                 gameEngine.replayEngine.a(command, i);
+                io.github.rwx.diagnostics.SimulationCompatibilityTrace.onCommandExecuted(gameEngine, command);
                 command.executeCommand();
                 it.remove();
                 i2++;

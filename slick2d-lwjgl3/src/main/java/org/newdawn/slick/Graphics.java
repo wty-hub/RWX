@@ -1,6 +1,7 @@
 package org.newdawn.slick;
 
 import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
 import org.newdawn.slick.geom.Rectangle;
 import org.newdawn.slick.geom.Shape;
 import org.newdawn.slick.geom.ShapeRenderer;
@@ -94,11 +95,24 @@ public class Graphics {
      *
      * @param current The graphics context that should be considered current
      */
+    private static String lastSwitchLog = "";
+
     public static void setCurrent(Graphics current) {
         if (currentGraphics != current) {
             QuadBatch.flush();
             if (currentGraphics != null) {
+                String key = currentGraphics.getClass().getSimpleName() + "->" + (current == null ? "null" : current.getClass().getSimpleName());
+                boolean logSwitch = !key.equals(lastSwitchLog);
+                if (logSwitch) {
+                    lastSwitchLog = key;
+                    StackTraceElement[] trace = new Throwable().getStackTrace();
+                    System.out.println("[SWITCHDBG] " + key + " caller=" + (trace.length > 1 ? trace[1] : "?")
+                            + " beforeDisableProjM00=" + GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX));
+                }
                 currentGraphics.disable();
+                if (logSwitch) {
+                    System.out.println("[SWITCHDBG] afterDisableProjM00=" + GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX));
+                }
             }
             currentGraphics = current;
             currentGraphics.enable();

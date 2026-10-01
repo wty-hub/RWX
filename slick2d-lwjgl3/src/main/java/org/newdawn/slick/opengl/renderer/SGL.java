@@ -257,6 +257,18 @@ public interface SGL {
     public void initDisplay(int width, int height);
 
     /**
+     * Resize the orthographic display used by {@link #enterOrtho(int, int)} without touching any GL
+     * state. Slick's own container re-runs {@link #initDisplay(int, int)} whenever the display is
+     * resized, but a container that only resizes its AWT canvas (as the embedded RWX container does)
+     * must refresh the ortho size as well: otherwise every later {@link #enterOrtho(int, int)} keeps
+     * projecting the game into the frame size it was created with.
+     *
+     * @param width  The new width of the display
+     * @param height The new height of the display
+     */
+    public void setDisplaySize(int width, int height);
+
+    /**
      * Enter orthographic mode
      *
      * @param xsize The size of the ortho display

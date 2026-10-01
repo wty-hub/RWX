@@ -18,6 +18,7 @@ internal class ActionRouter(
     private val platformBridge: PlatformBridge?,
     private val settingsRepository: GameSettingsRepository,
     private val settingsModel: SettingsModel,
+    private val applyDisplaySettings: () -> Unit,
     private val levelSelectSceneHost: LevelSelectSceneHost,
     private val battleRoomController: BattleRoomController,
     private val multiplayerLobbyController: MultiplayerLobbyController,
@@ -137,10 +138,17 @@ internal class ActionRouter(
 
     private fun handleSettingsAction(action: SettingsAction) {
         when (val outcome = SettingsNavigation.outcomeFor(action, settingsBackTarget())) {
-            SettingsOutcome.PreviewChanges -> settingsRepository.applyLive(settingsModel)
-            SettingsOutcome.ApplyChanges -> settingsRepository.saveFrom(settingsModel)
+            SettingsOutcome.PreviewChanges -> {
+                settingsRepository.applyLive(settingsModel)
+                applyDisplaySettings()
+            }
+            SettingsOutcome.ApplyChanges -> {
+                settingsRepository.saveFrom(settingsModel)
+                applyDisplaySettings()
+            }
             is SettingsOutcome.Navigate -> {
                 settingsRepository.saveFrom(settingsModel)
+                applyDisplaySettings()
                 navigator.navigateTo(outcome.screen)
             }
         }
@@ -152,6 +160,7 @@ internal class ActionRouter(
         }
         when (val outcome = BattleRoomNavigation.outcomeFor(action)) {
             BattleRoomOutcome.Close -> {
+                battleRoomLaunchController.cancelPendingStart()
                 clearPendingStartState()
                 navigator.navigateTo(battleRoomController.closeRoom())
             }
@@ -197,6 +206,7 @@ internal class ActionRouter(
             is MultiplayerOutcome.SwitchLobby -> multiplayerLobbyController.switchLobby(outcome.lobbyKind)
             MultiplayerOutcome.HostGameRequested -> multiplayerConnectionController.hostMultiplayerGame()
             MultiplayerOutcome.JoinDirectRequested -> multiplayerConnectionController.showJoinDirectDialog()
+            MultiplayerOutcome.RejoinLastGameRequested -> multiplayerConnectionController.rejoinLastGame()
             MultiplayerOutcome.ConfigurePlayerNameRequested -> multiplayerConnectionController.showPlayerNameDialog()
             is MultiplayerOutcome.JoinRoom -> multiplayerConnectionController.showJoinRoomDialog(outcome.roomId)
         }

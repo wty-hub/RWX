@@ -129,30 +129,34 @@ internal class InGameDialogController(
                     DialogButton(
                         label = event.confirmButtonLabel,
                         onInputPress = { input ->
-                            runCatching {
+                            gameSession.requestSessionTask(action = {
                                 event.handler.submitPassword(input)
-                            }.onFailure { error ->
-                                logger.warn(error) { "Legacy password dialog submit failed" }
-                                showUnavailableDialog("Unable to submit input: ${error.message ?: error.javaClass.simpleName}")
-                            }.also {
-                                if (loadingDialogSuspended) {
-                                    loadingDialogSceneHost.restoreFromTemporaryHide()
+                            }, onComplete = { result ->
+                                result.onFailure { error ->
+                                    logger.warn(error) { "Legacy password dialog submit failed" }
+                                    showUnavailableDialog("Unable to submit input: ${error.message ?: error.javaClass.simpleName}")
+                                }.also {
+                                    if (loadingDialogSuspended) {
+                                        loadingDialogSceneHost.restoreFromTemporaryHide()
+                                    }
                                 }
-                            }
+                            })
                         },
                     ),
                     DialogButton(
                         label = event.cancelButtonLabel,
                         onPress = {
-                            runCatching {
+                            gameSession.requestSessionTask(action = {
                                 event.handler.cancelPasswordEntry()
-                            }.onFailure { error ->
-                                logger.warn(error) { "Legacy password dialog cancel failed" }
-                            }.also {
-                                if (loadingDialogSuspended) {
-                                    loadingDialogSceneHost.restoreFromTemporaryHide()
+                            }, onComplete = { result ->
+                                result.onFailure { error ->
+                                    logger.warn(error) { "Legacy password dialog cancel failed" }
+                                }.also {
+                                    if (loadingDialogSuspended) {
+                                        loadingDialogSceneHost.restoreFromTemporaryHide()
+                                    }
                                 }
-                            }
+                            })
                         },
                     ),
                 ),
@@ -179,12 +183,12 @@ internal class InGameDialogController(
                     DialogButton(
                         label = event.confirmButtonLabel,
                         onFormPress = { values ->
-                            runCatching {
+                            gameSession.requestSessionTask(action = {
                                 event.handler.submit(values)
-                            }.onFailure { error ->
+                            }, onComplete = { result -> result.onFailure { error ->
                                 logger.warn(error) { "Legacy form dialog submit failed" }
                                 showUnavailableDialog("Unable to submit input: ${error.message ?: error.javaClass.simpleName}")
-                            }
+                            } })
                         },
                     ),
                     DialogButton(event.cancelButtonLabel),
@@ -317,16 +321,20 @@ internal class InGameDialogController(
             add(
                 DialogButton(exitLabel) {
                     if (multiplayer != null) {
-                        gameSession.disconnectRunningMultiplayer()
-                    }
-                    onExit()
+                        gameSession.requestSessionTask({ gameSession.disconnectRunningMultiplayer() }) { result ->
+                            result.onSuccess { onExit() }.onFailure { error ->
+                                logger.warn(error) { "Disconnect multiplayer failed" }
+                                showUnavailableDialog("Unable to disconnect: ${error.message ?: error.javaClass.simpleName}")
+                            }
+                        }
+                    } else onExit()
                 }
             )
             if (multiplayer?.isHost == true) {
                 add(
                     DialogButton(Locale.get("menus.ingame.multiplayerClose.returnToBattleroom")) {
-                        if (!gameSession.scheduleReturnToBattleRoom()) {
-                            showUnavailableDialog("Unable to schedule return to battle room")
+                        gameSession.requestSessionTask({ gameSession.scheduleReturnToBattleRoom() }) { result ->
+                            if (result.getOrNull() != true) showUnavailableDialog("Unable to schedule return to battle room")
                         }
                     }
                 )

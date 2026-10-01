@@ -8,6 +8,7 @@ import io.github.rwx.render.RendererMode
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.session.GameSession
+import io.github.rwx.session.MapSnapshot
 import io.github.rwx.ui.InGameMenuController
 
 /**
@@ -33,6 +34,8 @@ class HeadlessGameSession : GameSession() {
         loadMap(engine, path)
         check(engine.hasLoadedLevel) { "Unable to load map: $path" }
     }
+
+    fun restoreSnapshot(snapshot: MapSnapshot): GameEngine = requireEngine().also { loadMapSnapshot(it, snapshot) }
 
     override fun loadPendingMapNow(): KoolCanvasFrame = currentFrame()
 

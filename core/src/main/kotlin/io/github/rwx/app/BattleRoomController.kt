@@ -28,6 +28,7 @@ internal class BattleRoomController(
     var isSelectingMapForBattleRoom: Boolean = false
     private var returnScreen: AppScreen = AppScreen.LevelSelect
     private val chatLines = mutableListOf<BattleRoomChatLine>()
+    private var roomRequestSequence = 0L
 
     fun selectedOrDefaultMap(): MapEntry? =
         selectedMap ?: selectDefaultMap()
@@ -63,7 +64,6 @@ internal class BattleRoomController(
             ),
         )
         newConfig.room.options.apply {
-            aiDifficulty = GameEngine.getInstance()?.settingsEngine?.aiDifficulty ?: 1
             if (map.isSavedGame) gameModeType = GameModeType.savedGame
             if (sandbox) {
                 fogMode = 0
@@ -71,10 +71,7 @@ internal class BattleRoomController(
             }
         }
         chatLines.clear()
-        if (prepareLocalSinglePlayerRoom(newConfig)) {
-            return
-        }
-        showUnavailableDialog("Unable to prepare battle room")
+        prepareLocalSinglePlayerRoom(newConfig)
     }
 
     fun prepareSandboxGame(): Boolean {
@@ -93,8 +90,11 @@ internal class BattleRoomController(
     }
 
     fun closeRoom(): AppScreen {
+        roomRequestSequence++
         isSelectingMapForBattleRoom = false
-        gameSession.leaveBattleRoom()
+        gameSession.requestSessionTask({ gameSession.leaveBattleRoom() }) { result ->
+            result.onFailure { error -> logger.warn(error) { "Unable to leave battle room" } }
+        }
         return returnScreen
     }
 
@@ -109,7 +109,7 @@ internal class BattleRoomController(
             } else {
                 currentAiCount
             }
-        runCatching {
+        gameSession.requestSessionTask(action = {
             check(gameSession.setBattleRoomMap(map.mapAssetPath, map.isSavedGame)) {
                 "Game session rejected map change"
             }
@@ -119,11 +119,12 @@ internal class BattleRoomController(
                 diff < 0 -> snapshot?.players?.filter { it.isAI }?.sortedBy { it.spawnColorIndex }?.takeLast(-diff)
                     ?.forEach { gameSession.kickBattleRoomPlayer(it.id) }
             }
-        }.onFailure { error ->
-            logger.warn(error) { "Unable to set battle room map" }
-            showUnavailableDialog("Unable to set map: ${error.message ?: error.javaClass.simpleName}")
-        }
-        updateFromNetwork()
+        }, onComplete = { result ->
+            result.onSuccess { updateFromNetwork() }.onFailure { error ->
+                logger.warn(error) { "Unable to set battle room map" }
+                showUnavailableDialog("Unable to set map: ${error.message ?: error.javaClass.simpleName}")
+            }
+        })
         isSelectingMapForBattleRoom = false
     }
 
@@ -164,16 +165,21 @@ internal class BattleRoomController(
         sceneHost.appendChat(line)
     }
 
-    private fun prepareLocalSinglePlayerRoom(config: BattleRoomLaunchConfig): Boolean {
-        if (!gameSession.enterLocalBattleRoomLive(config)) {
-            return false
-        }
-        gameSession.currentBattleRoom()?.let { snapshot ->
-            sceneHost.updateRoom(
-                snapshot.toBattleRoomModel(previewFor(snapshot), chatLines),
-            )
-        }
-        return true
+    private fun prepareLocalSinglePlayerRoom(config: BattleRoomLaunchConfig) {
+        val requestSequence = ++roomRequestSequence
+        gameSession.requestSessionTask(action = {
+            config.room.options.aiDifficulty = GameEngine.getInstance()?.settingsEngine?.aiDifficulty ?: 1
+            check(gameSession.enterLocalBattleRoomLive(config)) { "Game session rejected local room preparation" }
+            gameSession.currentBattleRoom()
+        }, onComplete = { result ->
+            if (requestSequence != roomRequestSequence) return@requestSessionTask
+            result.onSuccess { snapshot ->
+                snapshot?.let { sceneHost.updateRoom(it.toBattleRoomModel(previewFor(it), chatLines)) }
+            }.onFailure { error ->
+                logger.warn(error) { "Unable to prepare battle room" }
+                showUnavailableDialog("Unable to prepare battle room: ${error.message ?: error.javaClass.simpleName}")
+            }
+        })
     }
 
     private fun selectSandboxMap(): MapEntry? =

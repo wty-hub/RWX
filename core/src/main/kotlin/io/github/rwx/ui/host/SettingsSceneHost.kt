@@ -12,6 +12,7 @@ import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.scene.Scene
 import io.github.rwx.PlatformBridge
 import io.github.rwx.input.KoolKeyCodeMapping
+import io.github.rwx.session.GameSession
 import io.github.rwx.ui.ResponsiveContentWidth
 import io.github.rwx.ui.ResponsiveViewportHeight
 import io.github.rwx.ui.UiTheme
@@ -29,6 +30,7 @@ class SettingsSceneHost(
     private val currentPage: MutableStateValue<Int> = mutableStateOf(0)
     private val keyBindingRevision: MutableStateValue<Int> = mutableStateOf(0)
     private val activeKeyCapture: MutableStateValue<KeyBindingCaptureTarget?> = mutableStateOf(null)
+    private var engineSession: GameSession? = null
     private val fallbackInputController: LegacyInputController = LegacyInputController().also { controller ->
         controller.a()
         SettingsEngine.getInstance().loadKeyBindingsInto(controller)
@@ -39,6 +41,15 @@ class SettingsSceneHost(
     }
 
     fun dispatch(action: SettingsAction) = onAction(action)
+
+    fun configureEngineOwnership(session: GameSession) {
+        engineSession = session
+    }
+
+    private fun <T> requestEngineTask(action: () -> T, onComplete: (Result<T>) -> Unit = {}) {
+        val session = engineSession
+        if (session == null) onComplete(runCatching(action)) else session.requestSessionTask(action, onComplete)
+    }
 
     fun showPage(page: SettingsPage) {
         currentPage.value = page.ordinal
@@ -212,13 +223,15 @@ class SettingsSceneHost(
             val host=getKoin().get<PlatformBridge>().filePickerHost?:return
             host.requestExternalStorage { selection ->
                 if (selection == null) return@requestExternalStorage
-                val engine = GameEngine.getInstance() ?: return@requestExternalStorage
-                val settings = engine.settingsEngine ?: return@requestExternalStorage
-                settings.externalSAFLink = selection.uri
-                settings.externalSAFPathShown = selection.displayPath
-                settings.externalSAFPathExtra = ""
-                if (!settings.loadMainExternalFolder(false)) return@requestExternalStorage
-                applyStoragePreference(preference, force = true)
+                requestEngineTask({
+                    val settings = GameEngine.getInstance()?.settingsEngine ?: return@requestEngineTask false
+                    settings.externalSAFLink = selection.uri
+                    settings.externalSAFPathShown = selection.displayPath
+                    settings.externalSAFPathExtra = ""
+                    settings.loadMainExternalFolder(false)
+                }) { result ->
+                    if (result.getOrDefault(false)) applyStoragePreference(preference, force = true)
+                }
             }
             return
         }
@@ -232,15 +245,15 @@ class SettingsSceneHost(
         if (!force && model.storageType.value == preference.storageType) return
         model.storageType.value = preference.storageType
         dispatch(SettingsAction.ApplyChanges)
-        if (GameEngine.getInstance() != null) {
-            FileHelper.initialize()
-            GameEngine.getInstance()?.modManager?.let { manager ->
-                runCatching {
+        requestEngineTask({
+            if (GameEngine.getInstance() != null) {
+                FileHelper.initialize()
+                GameEngine.getInstance()?.modManager?.let { manager ->
                     manager.loadAllMods()
                     manager.loadModSelection()
                 }
             }
-        }
+        })
     }
 
     private fun handleKeyBindingCapture(keyEvents: List<KeyEvent>, @Suppress("UNUSED_PARAMETER") ctx: KoolContext) {
@@ -282,12 +295,23 @@ class SettingsSceneHost(
     }
 
     private fun saveKeyBindings(controller: LegacyInputController) {
-        SettingsEngine.getInstance().saveKeyBindingsFromInputController(controller)
+        if (engineSession?.usesIndependentEngineLoop == true) {
+            val bindings = controller.al.filter { it.isDefault && !it.d() }.map { it.e() to controller.a(it) }
+            requestEngineTask({
+                val settings = SettingsEngine.getInstance()
+                val target = GameEngine.getInstance()?.inputController ?: LegacyInputController().also { it.a() }
+                bindings.forEach { (name, value) -> target.a(name, value) }
+                settings.saveKeyBindingsFromInputController(target)
+            })
+        } else {
+            SettingsEngine.getInstance().saveKeyBindingsFromInputController(controller)
+        }
         dispatch(SettingsAction.ApplyChanges)
     }
 
     private fun keyBindingController(): LegacyInputController =
-        GameEngine.getInstance()?.inputController ?: fallbackInputController
+        if (engineSession?.usesIndependentEngineLoop == true) fallbackInputController
+        else GameEngine.getInstance()?.inputController ?: fallbackInputController
 
     private fun keyBindingRows(
         controller: LegacyInputController,

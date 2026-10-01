@@ -19,7 +19,9 @@ object GameStateTrace {
     private var output: File? = System.getenv("RWX_CHECKSUM_LOG")?.takeIf { it.isNotBlank() }?.let(::File)
 
     @JvmField
-    var enabled: Boolean = output != null
+    var enabled: Boolean = output != null || SimulationCompatibilityTrace.enabled
+
+    internal fun refreshEnabled() { enabled = output != null || SimulationCompatibilityTrace.enabled }
 
     private val checksum = GameStateChecksum()
     private var writer: BufferedWriter? = null
@@ -43,6 +45,7 @@ object GameStateTrace {
 
     @JvmStatic
     fun onTickEnd(engine: GameEngine) {
+        SimulationCompatibilityTrace.onTickEnd(engine)
         val file = output ?: return
         val out = writer ?: file.bufferedWriter().also { writer = it }
         checksum.computeChecksums()

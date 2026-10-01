@@ -47,6 +47,8 @@ import java.util.Iterator;
 public class GameInterfaceRenderer extends Serializable {
     private static final boolean DEBUG_SLICK_MENU = "1".equals(System.getenv("RWX_DEBUG_SLICK_MENU"));
 
+    private static int debugHudCount = 0;
+
     /* JADX INFO: renamed from: a */
     GameUI gameUI;
 
@@ -404,6 +406,11 @@ public class GameInterfaceRenderer extends Serializable {
                 staticPaint.a(255, 255, 255, 255);
             }
             this.gameEngine.renderGraphicsEngine.a(this.zoomButtonTexture, this.zoomButtonRect.a, this.zoomButtonRect.b, staticPaint, 0.0f, f3);
+            if (GameInterfaceRenderer.debugHudCount % 180 == 3) {
+                GameEngine.log("HUDDBG", "zoomButton rect=" + this.zoomButtonRect + " scale=" + f3
+                        + " screen=" + this.gameEngine.screenWidth + "x" + this.gameEngine.screenHeight
+                        + " screenScale=" + this.gameEngine.screenScale);
+            }
             boolean z = this.isZoomButtonPressed;
             if (!this.isZoomButtonPressed && this.gameUI.b(this.zoomButtonRect.a, this.zoomButtonRect.b, this.zoomButtonRect.b(), this.zoomButtonRect.c(), IconGroup.zoomButton)) {
                 this.isZoomButtonPressed = true;
@@ -2385,6 +2392,13 @@ public class GameInterfaceRenderer extends Serializable {
             n3 = (int) (this.gameEngine.currentScreenWidthPixels / 2.0f);
             n4 = 7 + (int) this.gameUI.unitRangePaint.k();
             this.gameEngine.renderGraphicsEngine.a(Utility.formatDuration(this.gameEngine.gameTimeMillis / 1000), (float) n3, (float) n4, this.gameUI.unitRangePaint);
+            if (GameInterfaceRenderer.debugHudCount++ % 180 == 0) {
+                GameEngine.log("HUDDBG", "timer n3=" + n3 + " n4=" + n4
+                        + " currentScreenWidthPixels=" + this.gameEngine.currentScreenWidthPixels
+                        + " screen=" + this.gameEngine.screenWidth + "x" + this.gameEngine.screenHeight
+                        + " sidebar=" + this.gameEngine.sidebarWidth
+                        + " zoomButton=" + this.zoomButtonRect);
+            }
             n4 += n2 / 2 + 10;
             n3 += n2 / 2 + 5;
             this.unitRect2.a(n3, n4, n3 + n2, n4 + n2);

@@ -1,5 +1,6 @@
 package io.github.rwx.app
 
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import io.github.rwx.i18n.I18n
 import io.github.rwx.logger
 import io.github.rwx.p2p.P2PLobbyService
@@ -18,36 +19,54 @@ internal class MultiplayerConnectionController(
     private val navigateToBattleRoom: () -> Unit,
     private val showUnavailableDialog: (String) -> Unit,
 ) {
-    fun joinOriginalServer(connectDescriptor: String, roomLabel: String = "server", serverId: String? = null) {
+    fun joinOriginalServer(
+        connectDescriptor: String,
+        roomLabel: String = "server",
+        serverId: String? = null,
+        rejoinAddress: String? = connectDescriptor.takeIf(::isDirectNetworkAddress),
+    ) {
         if (connectDescriptor.isBlank()) return
         battleRoomJoinController.start(
             address = connectDescriptor,
             roomLabel = roomLabel,
             failurePrefix = I18n.multiplayer.unableToJoinServer(),
+            rememberAddress = rejoinAddress?.takeIf(::isDirectNetworkAddress),
         ) {
-            check(gameSession.joinBattleRoom(connectDescriptor, serverId, p2pSession = false)) {
-                "Game session rejected join request"
-            }
+            gameSession.submitSessionTask {
+                check(gameSession.joinBattleRoom(connectDescriptor, serverId, p2pSession = false)) {
+                    "Game session rejected join request"
+                }
+            }.join()
+        }
+    }
+
+    fun rejoinLastGame() {
+        gameSession.requestSessionTask({ SettingsEngine.getInstance()?.lastNetworkIP?.takeIf(::isDirectNetworkAddress) }) { result ->
+            val address = result.getOrNull()
+            if (address == null) showUnavailableDialog(I18n.multiplayer.noPreviousGame())
+            else joinOriginalServer(address, roomLabel = address)
         }
     }
 
     fun joinP2PRoom(roomId: String, roomLabel: String = "P2P room") {
         if (roomId.isBlank()) return
-        runCatching {
-            P2PLobbyService.getInstance().prepareJoin(roomId)
-        }.onSuccess { address ->
-            battleRoomJoinController.start(
-                address = address,
-                roomLabel = roomLabel,
-                failurePrefix = I18n.multiplayer.unableToJoinP2pRoom(),
-            ) {
-                check(gameSession.joinBattleRoom(address, serverId = null, p2pSession = true)) {
-                    "Game session rejected P2P join request"
+        gameSession.requestSessionTask({ P2PLobbyService.getInstance().prepareJoin(roomId) }) { result ->
+            result.onSuccess { address ->
+                battleRoomJoinController.start(
+                    address = address,
+                    roomLabel = roomLabel,
+                    failurePrefix = I18n.multiplayer.unableToJoinP2pRoom(),
+                ) {
+                    gameSession.submitSessionTask {
+                        check(gameSession.joinBattleRoom(address, serverId = null, p2pSession = true)) {
+                            "Game session rejected P2P join request"
+                        }
+                    }.join()
                 }
+            }.onFailure { error ->
+                logger.warn(error) { "P2P join failed" }
+                showUnavailableDialog("${I18n.multiplayer.unableToJoinP2pRoom()}: ${error.message ?: error.javaClass.simpleName}")
             }
-        }.onFailure { error ->
-            logger.warn(error) { "P2P join failed" }
-            showUnavailableDialog("${I18n.multiplayer.unableToJoinP2pRoom()}: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -74,6 +93,7 @@ internal class MultiplayerConnectionController(
                                 room.joinAddress,
                                 room.joinDisplayLabel(),
                                 room.originalServerId,
+                                room.rejoinAddress,
                             )
                         }
                     },
@@ -134,8 +154,8 @@ internal class MultiplayerConnectionController(
                     DialogButton(
                         I18n.common.save(),
                         onInputPress = { value ->
-                            if (!gameSession.updateMultiplayerPlayerName(value)) {
-                                showUnavailableDialog(I18n.multiplayer.missingPlayerName())
+                            gameSession.requestSessionTask({ gameSession.updateMultiplayerPlayerName(value) }) { result ->
+                                if (result.getOrNull() != true) showUnavailableDialog(I18n.multiplayer.missingPlayerName())
                             }
                         },
                     ),
@@ -170,8 +190,8 @@ internal class MultiplayerConnectionController(
         lobbyKind: MultiplayerLobbyKind,
         options: MultiplayerHostOptions,
     ) {
-        runCatching {
-            onHostPreparing(map)
+        onHostPreparing(map)
+        gameSession.requestSessionTask(action = {
             check(
                 gameSession.hostBattleRoom(
                     mapPath = map.mapAssetPath,
@@ -185,12 +205,15 @@ internal class MultiplayerConnectionController(
             if (lobbyKind == MultiplayerLobbyKind.P2P) {
                 P2PLobbyService.getInstance().hostCurrentServer()
             }
-            updateBattleRoomFromNetwork()
-            navigateToBattleRoom()
-        }.onFailure { error ->
-            logger.warn(error) { "Host game failed" }
-            showUnavailableDialog("Unable to host game: ${error.message ?: error.javaClass.simpleName}")
-        }
+        }, onComplete = { result ->
+            result.onSuccess {
+                updateBattleRoomFromNetwork()
+                navigateToBattleRoom()
+            }.onFailure { error ->
+                logger.warn(error) { "Host game failed" }
+                showUnavailableDialog("Unable to host game: ${error.message ?: error.javaClass.simpleName}")
+            }
+        })
     }
 
     private fun multiplayerHostGameButtons(
@@ -270,6 +293,15 @@ internal class MultiplayerConnectionController(
             )
         )
     }
+}
+
+internal fun isDirectNetworkAddress(address: String): Boolean {
+    val normalized = address.trim()
+    val separator = normalized.lastIndexOf(':')
+    if (separator <= 0 || separator == normalized.lastIndex || '|' in normalized) return false
+    val host = normalized.substring(0, separator)
+    if (host.isBlank() || (':' in host && !(host.startsWith('[') && host.endsWith(']')))) return false
+    return normalized.substring(separator + 1).toIntOrNull()?.let { it in 1..65535 } == true
 }
 
 internal data class MultiplayerHostOptions(

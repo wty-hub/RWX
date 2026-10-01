@@ -1,0 +1,276 @@
+{
+  "date": "2026-10-01",
+  "passedGenuineOriginalCoreInterop": true,
+  "nativeOriginalUi": false,
+  "scope": "Unchanged Steam original1.15 core, headless bootstrap/control adapter, both loopback host directions;136 units/13 vanilla land-air-sea/base types, normal move commands, at least600 seconds each, actual canvas hide for10 seconds each.",
+  "limitations": [
+    "Original Steam native UI cannot launch here because installed x86_64 JVM/LibRocket have no available translation environment.",
+    "This network fixture does not prove all177 forms GPU visuals, continuous combat performance, all actions or all network conditions.",
+    "The later accepted-present camera acknowledgement change was not exercised by these frozenv4 protocol runs; it requires separate render/input tests."
+  ],
+  "originalVersion": "1.15",
+  "protocolVersion": 176,
+  "originalGameJarSha256": "8a550a37e2d8a5430866090d4e7d5892f9010b47f52a5a09350fc66c620deec9",
+  "rwxFrozenV4JarSha256": "41ea70f7234f14dc2b502601da474731909ecd34758d24b4dc32c0b125839d50",
+  "originalAdapterSourceSha256": "0b91b91df0c6958f4ca4b28a03dfdfbb8aa2f60deb157012cfebd6f52716a774",
+  "rwxMsaaSamplesExplicitlyRequested": 4,
+  "fixture": {
+    "map": "/SD/mods/maps/[p2]RWX Original 1.15 Interop.tmx",
+    "sha256": "46379d572998e57c2b62354c4615ed07b91b371cf3ce7a590fd25ebee382e91f",
+    "units": {
+      "tank": 12,
+      "hoverTank": 12,
+      "artillery": 12,
+      "heavyTank": 12,
+      "helicopter": 12,
+      "airShip": 12,
+      "amphibiousJet": 12,
+      "gunBoat": 12,
+      "missileShip": 12,
+      "attackSubmarine": 12,
+      "builderShip": 12,
+      "commandCenter": 2,
+      "builder": 2
+    },
+    "unitCount": 136,
+    "types": 13,
+    "width": 2200,
+    "height": 2200
+  },
+  "directions": {
+    "rwx-host": {
+      "passed": true,
+      "durationSeconds": 600.402703084008,
+      "samples": 520,
+      "initialTick": 149,
+      "finalTick": 36167,
+      "submittedCommands": 58,
+      "rwxExecutedCommands": 58,
+      "initialClientChecksumPasses": 1,
+      "finalClientChecksumPasses": 120,
+      "minimumHumanPlayers": 2,
+      "minimumOriginalConnections": 1,
+      "minimumUnitCount": 136,
+      "rwxDesyncErrors": 0,
+      "originalDesyncErrors": 0,
+      "rwxResyncs": 0,
+      "originalResyncs": 0,
+      "negotiatedStepRates": [
+        1.0
+      ],
+      "commandFrameIntervals": [
+        10
+      ],
+      "checksumIntervalTicks": [
+        300
+      ],
+      "hiddenWindow": {
+        "configuredSeconds": 10,
+        "actualSeconds": 10.010186875,
+        "samples": 8,
+        "first": {
+          "ownerMonotonicNs": 86627243658708,
+          "tick": 3541,
+          "stepRate": 1.0,
+          "checksumIntervalFrames": 300,
+          "lastSyncedTick": 3311,
+          "executionSequence": 6,
+          "clientChecksumPasses": 12
+        },
+        "last": {
+          "ownerMonotonicNs": 86635384380583,
+          "tick": 4029,
+          "stepRate": 1.0,
+          "checksumIntervalFrames": 300,
+          "lastSyncedTick": 3913,
+          "executionSequence": 8,
+          "clientChecksumPasses": 13
+        },
+        "hiddenAtOwnerNanos": 86626344747458,
+        "restoredAtOwnerNanos": 86636354934333,
+        "hiddenVisibility": {
+          "window": "de.fabmax.kool.platform.swing.CanvasWrapper",
+          "subsystem": "io.github.rwx.PacedSwingWindowSubsystem",
+          "canvasVisible": "false",
+          "canvasShowing": "false",
+          "frameVisible": "false"
+        },
+        "restoredVisibility": {
+          "window": "de.fabmax.kool.platform.swing.CanvasWrapper",
+          "subsystem": "io.github.rwx.PacedSwingWindowSubsystem",
+          "canvasVisible": "true",
+          "canvasShowing": "true",
+          "frameVisible": "true"
+        },
+        "insideChecksumAdvance": 1,
+        "insideChecksumObserved": true,
+        "checksumBracket": {
+          "before": {
+            "ownerMonotonicNs": 86626102797708,
+            "tick": 3473,
+            "stepRate": 1.0,
+            "checksumIntervalFrames": 300,
+            "lastSyncedTick": 3311,
+            "executionSequence": 6,
+            "clientChecksumPasses": 12
+          },
+          "after": {
+            "ownerMonotonicNs": 86636547509875,
+            "tick": 4099,
+            "stepRate": 1.0,
+            "checksumIntervalFrames": 300,
+            "lastSyncedTick": 3913,
+            "executionSequence": 8,
+            "clientChecksumPasses": 14
+          },
+          "negotiatedStepRate": 1.0,
+          "checksumIntervalTicks": 300,
+          "observedTicksPerSecond": 59.9035754448295,
+          "observedChecksumIntervalSeconds": 5.008048313848921,
+          "networkMarginSeconds": 3.0,
+          "beforeHideSeconds": 0.24194975,
+          "afterRestoreSeconds": 0.192575542
+        }
+      },
+      "hiddenCommandExecutions": 2,
+      "finalUnitTypes": {
+        "c_tank": 12,
+        "hoverTank": 12,
+        "c_artillery": 12,
+        "heavyTank": 12,
+        "c_helicopter": 12,
+        "c_interceptor": 12,
+        "amphibiousJet": 12,
+        "gunBoat": 12,
+        "missileShip": 12,
+        "attackSubmarine": 12,
+        "builderShip": 12,
+        "commandCenter": 2,
+        "builder": 2
+      },
+      "compressedSamples": "docs/verification/original-core-rwx-host-2026-10-01.ndjson.gz",
+      "compressedBytes": 44662,
+      "samplesSha256": "c75ba9d4676919b13cb998aa85378fdf106ea26c4f2c09c296319fa778d7b043",
+      "compressedSha256": "1a35b0b8726d7fdf5374309d998cddb97600ad23e5574d2dba82f9c9d1e14769",
+      "rawRunDirectory": "desktop/build/original-interop/core-acceptance-v4/rwx-host",
+      "originalCoreProvenance": "OriginalHeadlessPeer core=file:/Users/wty/code/RWX/desktop/build/original-interop/core-acceptance-v4/rwx-host/original/game-lib.jar version=1.15 protocol=176 nativeOriginalUi=false"
+    },
+    "original-host": {
+      "passed": true,
+      "durationSeconds": 600.7225671249907,
+      "samples": 522,
+      "initialTick": 178,
+      "finalTick": 18199,
+      "submittedCommands": 58,
+      "rwxExecutedCommands": 58,
+      "initialClientChecksumPasses": 1,
+      "finalClientChecksumPasses": 60,
+      "minimumHumanPlayers": 2,
+      "minimumOriginalConnections": 1,
+      "minimumUnitCount": 136,
+      "rwxDesyncErrors": 0,
+      "originalDesyncErrors": 0,
+      "rwxResyncs": 0,
+      "originalResyncs": 0,
+      "negotiatedStepRates": [
+        2.0
+      ],
+      "commandFrameIntervals": [
+        10
+      ],
+      "checksumIntervalTicks": [
+        300
+      ],
+      "hiddenWindow": {
+        "configuredSeconds": 10,
+        "actualSeconds": 10.006361334,
+        "samples": 8,
+        "first": {
+          "ownerMonotonicNs": 87233997917416,
+          "tick": 1838,
+          "stepRate": 2.0,
+          "checksumIntervalFrames": 300,
+          "lastSyncedTick": 1806,
+          "executionSequence": 7,
+          "clientChecksumPasses": 6
+        },
+        "last": {
+          "ownerMonotonicNs": 87242110595333,
+          "tick": 2081,
+          "stepRate": 2.0,
+          "checksumIntervalFrames": 300,
+          "lastSyncedTick": 1806,
+          "executionSequence": 9,
+          "clientChecksumPasses": 7
+        },
+        "hiddenAtOwnerNanos": 87233167043916,
+        "restoredAtOwnerNanos": 87243173405250,
+        "hiddenVisibility": {
+          "window": "de.fabmax.kool.platform.swing.CanvasWrapper",
+          "subsystem": "io.github.rwx.PacedSwingWindowSubsystem",
+          "canvasVisible": "false",
+          "canvasShowing": "false",
+          "frameVisible": "false"
+        },
+        "restoredVisibility": {
+          "window": "de.fabmax.kool.platform.swing.CanvasWrapper",
+          "subsystem": "io.github.rwx.PacedSwingWindowSubsystem",
+          "canvasVisible": "true",
+          "canvasShowing": "true",
+          "frameVisible": "true"
+        },
+        "insideChecksumAdvance": 1,
+        "insideChecksumObserved": true,
+        "checksumBracket": {
+          "before": {
+            "ownerMonotonicNs": 87232872801458,
+            "tick": 1804,
+            "stepRate": 2.0,
+            "checksumIntervalFrames": 300,
+            "lastSyncedTick": 1505,
+            "executionSequence": 7,
+            "clientChecksumPasses": 6
+          },
+          "after": {
+            "ownerMonotonicNs": 87243250276583,
+            "tick": 2115,
+            "stepRate": 2.0,
+            "checksumIntervalFrames": 300,
+            "lastSyncedTick": 2107,
+            "executionSequence": 9,
+            "clientChecksumPasses": 7
+          },
+          "negotiatedStepRate": 2.0,
+          "checksumIntervalTicks": 300,
+          "observedTicksPerSecond": 29.98551426327425,
+          "observedChecksumIntervalSeconds": 10.004830911552347,
+          "networkMarginSeconds": 3.0,
+          "beforeHideSeconds": 0.294242458,
+          "afterRestoreSeconds": 0.076871333
+        }
+      },
+      "hiddenCommandExecutions": 2,
+      "finalUnitTypes": {
+        "c_tank": 12,
+        "hoverTank": 12,
+        "c_artillery": 12,
+        "heavyTank": 12,
+        "c_helicopter": 12,
+        "c_interceptor": 12,
+        "amphibiousJet": 12,
+        "gunBoat": 12,
+        "missileShip": 12,
+        "attackSubmarine": 12,
+        "builderShip": 12,
+        "commandCenter": 2,
+        "builder": 2
+      },
+      "compressedSamples": "docs/verification/original-core-original-host-2026-10-01.ndjson.gz",
+      "compressedBytes": 43781,
+      "samplesSha256": "8631f27fd157844c4491735b869e0df82886fed0e2b8e06549b8647a55d59e82",
+      "compressedSha256": "6d508bbf1039def2973d11d057bf5cfb01f56fd4bd1937bf7e96878d6c9c35b6",
+      "rawRunDirectory": "desktop/build/original-interop/core-acceptance-v4/original-host",
+      "originalCoreProvenance": "OriginalHeadlessPeer core=file:/Users/wty/code/RWX/desktop/build/original-interop/core-acceptance-v4/original-host/original/game-lib.jar version=1.15 protocol=176 nativeOriginalUi=false"
+    }
+  }
+}

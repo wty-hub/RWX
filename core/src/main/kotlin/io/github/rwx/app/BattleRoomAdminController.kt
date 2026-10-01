@@ -21,12 +21,8 @@ internal class BattleRoomAdminController(
             showUnavailableDialog("Add AI requires a hosted RW room")
             return
         }
-        runCatching {
+        requestMutation("Add AI failed", "Unable to add AI") {
             check(gameSession.addBattleRoomAi(1)) { "Game session rejected add AI request" }
-            updateBattleRoomFromNetwork()
-        }.onFailure { error ->
-            logger.warn(error) { "Add AI failed" }
-            showUnavailableDialog("Unable to add AI: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -68,7 +64,7 @@ internal class BattleRoomAdminController(
                 DialogButton(
                     "Apply",
                     onFormPress = { values ->
-                        runCatching {
+                        requestMutation("Apply player config failed", "Unable to apply player config") {
                             val spawn = values["spawn"]?.toIntOrNull()
                             val team = values["team"]?.toIntOrNull()
                             // Host-only override fields are absent from a non-host form.
@@ -81,12 +77,6 @@ internal class BattleRoomAdminController(
                             ) {
                                 "Game session rejected player config request"
                             }
-                            updateBattleRoomFromNetwork()
-                        }.onFailure { error ->
-                            logger.warn(error) { "Apply player config failed" }
-                            showUnavailableDialog(
-                                "Unable to apply player config: ${error.message ?: error.javaClass.simpleName}",
-                            )
                         }
                     },
                 ),
@@ -108,12 +98,8 @@ internal class BattleRoomAdminController(
     }
 
     private fun kickBattleRoomPlayer(playerId: String) {
-        runCatching {
+        requestMutation("Kick player failed", "Unable to kick player") {
             check(gameSession.kickBattleRoomPlayer(playerId)) { "Game session rejected kick request" }
-            updateBattleRoomFromNetwork()
-        }.onFailure { error ->
-            logger.warn(error) { "Kick player failed" }
-            showUnavailableDialog("Unable to kick player: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -124,11 +110,8 @@ internal class BattleRoomAdminController(
             showUnavailableDialog("Chat requires a hosted RW room")
             return
         }
-        runCatching {
+        requestMutation("Send battle room chat failed", "Unable to send chat", refreshRoom = false) {
             check(gameSession.sendBattleRoomMessage(text)) { "Game session rejected chat request" }
-        }.onFailure { error ->
-            logger.warn(error) { "Send battle room chat failed" }
-            showUnavailableDialog("Unable to send chat: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -137,14 +120,10 @@ internal class BattleRoomAdminController(
             showUnavailableDialog("Set Teams requires a hosted RW room")
             return
         }
-        runCatching {
+        requestMutation("Set team layout failed", "Unable to set teams") {
             check(gameSession.applyBattleRoomTeamLayout(layout)) {
                 "Game session rejected team layout request"
             }
-            updateBattleRoomFromNetwork()
-        }.onFailure { error ->
-            logger.warn(error) { "Set team layout failed" }
-            showUnavailableDialog("Unable to set teams: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -156,7 +135,7 @@ internal class BattleRoomAdminController(
             showUnavailableDialog("Game options require a hosted RW room")
             return
         }
-        runCatching {
+        requestMutation("Apply battle room options failed", "Unable to apply options") {
             check(gameSession.applyBattleRoomOptions(options)) {
                 "Game session rejected battle room options"
             }
@@ -168,10 +147,20 @@ internal class BattleRoomAdminController(
                     "Game session rejected team layout request"
                 }
             }
-            updateBattleRoomFromNetwork()
-        }.onFailure { error ->
-            logger.warn(error) { "Apply battle room options failed" }
-            showUnavailableDialog("Unable to apply options: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
+
+    private fun requestMutation(
+        logMessage: String,
+        failurePrefix: String,
+        refreshRoom: Boolean = true,
+        action: () -> Unit,
+    ) {
+        gameSession.requestSessionTask(action) { result ->
+            result.onSuccess { if (refreshRoom) updateBattleRoomFromNetwork() }.onFailure { error ->
+                logger.warn(error) { logMessage }
+                showUnavailableDialog("$failurePrefix: ${error.message ?: error.javaClass.simpleName}")
+            }
         }
     }
 }

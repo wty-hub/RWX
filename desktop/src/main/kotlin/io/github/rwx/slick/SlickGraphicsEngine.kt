@@ -71,6 +71,7 @@ class SlickGraphicsEngine private constructor(
     private var lastClipWidth = Int.MIN_VALUE
     private var lastClipHeight = Int.MIN_VALUE
     private var lastClipEnabled = false
+    private var debugDrawCount = 0
     private val emojiRasterizer = DesktopEmojiRasterizer()
     private val emojiImageCache = mutableMapOf<String, Image>()
     private val fontMetricsCache = IdentityHashMap<AwtFont, java.awt.FontMetrics>()
@@ -658,6 +659,13 @@ class SlickGraphicsEngine private constructor(
             top = swap
         }
         val rotationDegrees = transform.rotationDegrees + 90f + extraRotationDegrees
+        if (dstLeft > 1000f && dstTop < 60f && debugDrawCount++ % 240 == 0) {
+            System.out.println(
+                "[DRAWDBG] dst=($dstLeft,$dstTop)-($dstRight,$dstBottom) transformed=($left,$top)-($right,$bottom) " +
+                    "scale=(${transform.scaleX},${transform.scaleY}) translate=(${transform.translateX},${transform.translateY}) " +
+                    "engine=${m()}x${n()} projM00=${GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX)}",
+            )
+        }
         val pivotXTransformed = transform.x(pivotX)
         val pivotYTransformed = transform.y(pivotY)
         if (isOutsideTarget(left, top, right, bottom, rotationDegrees, pivotXTransformed, pivotYTransformed)) {

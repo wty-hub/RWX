@@ -1,6 +1,5 @@
 package io.github.rwx.app
 
-import com.corrodinggames.rts.gameFramework.GameEngine
 import io.github.rwx.PlatformStorage
 import io.github.rwx.i18n.I18n
 import io.github.rwx.logger
@@ -9,12 +8,12 @@ import io.github.rwx.map.MapLinkResolver
 import io.github.rwx.p2p.FeatureIds
 import io.github.rwx.p2p.MapFeatureDetector
 import io.github.rwx.p2p.MultiMapCoordinator
+import io.github.rwx.p2p.MultiMapAssignments
 import io.github.rwx.p2p.P2PLobbyService
 import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.session.BattleRoomLaunchConfig
 import io.github.rwx.session.BattleRoomSnapshot
 import io.github.rwx.session.GameSession
-import io.github.rwx.session.hasActiveStartedGameConnection
 import io.github.rwx.ui.AppScreen
 import io.github.rwx.ui.BattleRoomUiBridge
 
@@ -31,7 +30,22 @@ internal class BattleRoomLaunchController(
     private val navigateToInGame: () -> Unit,
     private val showUnavailableDialog: (String) -> Unit,
 ) {
+    private var startPending = false
+    private var adoptionPending = false
+    private var preparedMultiMapAssignments: MultiMapAssignments? = null
+    private var startRequestSequence = 0L
+
+    /** Engine work remains ordered; leaving the room invalidates only its later UI completion. */
+    fun cancelPendingStart() {
+        startRequestSequence++
+        startPending = false
+        adoptionPending = false
+        preparedMultiMapAssignments = null
+        BattleRoomUiBridge.startGamePending = false
+    }
+
     fun startBattleRoomGame() {
+        val requestSequence = startRequestSequence
         val launchConfig = gameSession.loadState.pendingRendererBattleRoomConfig
         currentOriginalMultiplayerRwxMapBlockMessage()?.let { message ->
             showUnavailableDialog(message)
@@ -41,16 +55,23 @@ internal class BattleRoomLaunchController(
             showUnavailableDialog(message)
             return
         }
-        P2PLobbyService.getInstance().currentMissingRequiredFeatureSummary()?.let { message ->
-            showUnavailableDialog(message)
-            return
+        if (gameSession.currentBattleRoom()?.isNetworkMultiplayer == true) {
+            P2PLobbyService.getInstance().currentMissingRequiredFeatureSummary()?.let { message ->
+                showUnavailableDialog(message)
+                return
+            }
         }
         if (gameSession.canResume()) {
             showStartNewGameDialog {
-                enterRwGame(true, launchConfig)
+                if (requestSequence == startRequestSequence) startPreparedBattleRoom(launchConfig)
             }
             return
         }
+        startPreparedBattleRoom(launchConfig)
+    }
+
+    private fun startPreparedBattleRoom(launchConfig: BattleRoomLaunchConfig?) {
+        if (startPending || adoptionPending) return
         val snapshot = gameSession.currentBattleRoom()
         // A live host room (network multiplayer OR a live local skirmish/sandbox room started at
         // entry) starts the game in place via startBattleRoomGame on the already-live server, so the
@@ -66,24 +87,31 @@ internal class BattleRoomLaunchController(
             if (!prepareP2PMultiMapAssignmentsForStart(snapshot)) {
                 return
             }
-            runCatching {
-                check(gameSession.startBattleRoom()) { "Game session rejected start request" }
-                if (gameSession.rendersIntoKoolCanvas) {
-                    BattleRoomUiBridge.setupGame()
-                }
-                enterStartedBattleRoomGame()
-            }.onFailure { error ->
-                logger.warn(error) { "Unable to start RW battle room game" }
-                showUnavailableDialog("Unable to start game: ${error.message ?: error.javaClass.simpleName}")
-            }
+            val assignments = preparedMultiMapAssignments
+            preparedMultiMapAssignments = null
+            val requestSequence = startRequestSequence
+            startPending = true
+            gameSession.requestSessionTask(
+                action = {
+                    assignments?.let { P2PLobbyService.getInstance().broadcastMultiMapAssignments(it) }
+                    check(gameSession.startBattleRoom()) { "Game session rejected start request" }
+                },
+                onComplete = { result ->
+                    if (requestSequence != startRequestSequence) return@requestSessionTask
+                    startPending = false
+                    result.onSuccess { enterStartedBattleRoomGame() }.onFailure { error ->
+                        logger.warn(error) { "Unable to start RW battle room game" }
+                        showUnavailableDialog("Unable to start game: ${error.message ?: error.javaClass.simpleName}")
+                    }
+                },
+            )
             return
         }
         enterRwGame(true, launchConfig)
     }
 
     fun handleBattleRoomGameStarted() {
-        val networkGameStarted =
-            GameEngine.getInstance()?.networkEngine?.hasActiveStartedGameConnection() == true
+        val networkGameStarted = gameSession.hasActiveStartedGameConnection()
         when (battleRoomGameStartedAction(
             currentScreen = currentScreen(),
             rendersIntoKoolCanvas = gameSession.rendersIntoKoolCanvas,
@@ -116,7 +144,6 @@ internal class BattleRoomLaunchController(
             BattleRoomGameStartedAction.LoadKoolGame -> {
                 BattleRoomUiBridge.startGamePending = false
                 runCatching {
-                    BattleRoomUiBridge.setupGame()
                     enterStartedBattleRoomGame()
                 }.onFailure { error ->
                     logger.warn(error) { "Unable to load started RW battle room game" }
@@ -139,6 +166,7 @@ internal class BattleRoomLaunchController(
     }
 
     private fun enterStartedBattleRoomGame() {
+        if (adoptionPending) return
         val mapPath = gameSession.currentBattleRoom()?.room?.mapPath?.takeIf { it.isNotBlank() }
         if (mapPath == null) {
             logger.warn { "Unable to enter started battle room without an active map" }
@@ -147,20 +175,29 @@ internal class BattleRoomLaunchController(
             )
             return
         }
-        if (!gameSession.adoptStartedGameFromEngine(viewport())) {
-            logger.warn { "Game session rejected the started battle room game" }
-            showUnavailableDialog(
-                I18n.battleroom.unableToStartGame("Renderer could not adopt the started game")
-            )
-            return
-        }
-        clearPendingRwStartState()
-        if (gameSession.isMapLoaded(mapPath)) {
-            clearPendingStartState()
-        } else {
-            setPendingStartState(mapPath, mapStartFailureReturnScreen(currentScreen()))
-        }
-        navigateToInGame()
+        val requestedViewport = viewport()
+        val requestSequence = startRequestSequence
+        adoptionPending = true
+        gameSession.requestSessionTask(
+            action = {
+                check(gameSession.adoptStartedGameFromEngine(requestedViewport)) {
+                    "Renderer could not adopt the started game"
+                }
+            },
+            onComplete = { result ->
+                if (requestSequence != startRequestSequence) return@requestSessionTask
+                adoptionPending = false
+                result.onSuccess {
+                    clearPendingRwStartState()
+                    if (gameSession.isMapLoaded(mapPath)) clearPendingStartState()
+                    else setPendingStartState(mapPath, mapStartFailureReturnScreen(currentScreen()))
+                    navigateToInGame()
+                }.onFailure { error ->
+                    logger.warn(error) { "Game session rejected the started battle room game" }
+                    showUnavailableDialog(I18n.battleroom.unableToStartGame(error.message ?: error.javaClass.simpleName))
+                }
+            },
+        )
     }
 
     private fun currentOriginalMultiplayerRwxMapBlockMessage(): String? {
@@ -196,6 +233,7 @@ internal class BattleRoomLaunchController(
     }
 
     private fun prepareP2PMultiMapAssignmentsForStart(snapshot: BattleRoomSnapshot): Boolean {
+        preparedMultiMapAssignments = null
         if (snapshot.room.isSavedGame) return true
         if (!snapshot.isHost || !snapshot.isNetworkMultiplayer || !snapshot.rwxP2PSession) {
             return true
@@ -231,7 +269,7 @@ internal class BattleRoomLaunchController(
             showUnavailableDialog("Unable to prepare RWX multi-map assignments.")
             return false
         }
-        P2PLobbyService.getInstance().broadcastMultiMapAssignments(assignments)
+        preparedMultiMapAssignments = assignments
         return true
     }
 }

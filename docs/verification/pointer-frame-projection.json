@@ -1,0 +1,66 @@
+{
+  "verification": "captured-pointer-frame-hud-anchors-and-owner-mod-map-catalog",
+  "generatedAtUtc": "2026-10-01T01:16:24.700128+00:00",
+  "passed": true,
+  "tests": 16,
+  "covered": [
+    "Single capture of immutable camera and actual event surface, including platform coordinate scale and focus release",
+    "Independent X/Y normalization while an older packet is stretched across a changed framebuffer aspect ratio",
+    "Seen world coordinate reconstruction after queued owner camera and viewport changes",
+    "Right-anchored sidebar membership despite a non-proportional sidebar-width change and invalid current zoom",
+    "Minimap world fraction and unselect-button y270 preserved at1280x720 and1920x900 in both resize directions",
+    "UI scale changes preserve minimap fraction, unselect fraction and bottom unit-group button identity",
+    "Alternate left-bottom minimap is classified as HUD before world-camera projection",
+    "Packet minimap uses actual post-Minimap.draw geometry while button anchors retain the original pre-processTouchInput geometry",
+    "Detached mod identifiers survive manager array reuse and reject consumer mutation",
+    "Custom-map browser uses published owner MapEntry metadata without rebuilding from live MOD paths"
+  ],
+  "limits": [
+    "Focused tests did not launch a GPU window.",
+    "World target assertions verify projection coordinates rather than every original UI command path.",
+    "Minimap, unselect and bottom-group controls have explicit original geometry anchors; ordinary action panels use original top/row-pitch anchors. Alternate/full-width action panels, scrolling, selection changes and action-list reflow are not exhaustively validated."
+  ],
+  "command": "./gradlew :core:test --tests io.github.rwx.ui.model.OwnerModMapCatalogTest --tests io.github.rwx.app.KoolPointerFrameCaptureTest :desktop:test --tests io.github.rwx.kool.KoolPointerProjectionTest",
+  "suites": [
+    {
+      "suite": "io.github.rwx.ui.model.OwnerModMapCatalogTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "published map identifiers survive manager array reuse and cannot be mutated by consumers()",
+        "custom map browsing consumes detached owner entries without revisiting live metadata()"
+      ]
+    },
+    {
+      "suite": "io.github.rwx.app.KoolPointerFrameCaptureTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "pointer and focus release retain one captured camera and resized surface()",
+        "logical pointer conversion scales the captured surface in the same units()"
+      ]
+    },
+    {
+      "suite": "io.github.rwx.kool.KoolPointerProjectionTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "old picture stretched with a changed aspect ratio still selects the seen world point()",
+        "packet minimap can change after HUD button geometry was recorded()",
+        "unselect button y270 remains on the same control after resize and back()",
+        "invalid zoom or absent initial snapshot cannot produce infinite coordinates()",
+        "queued viewport and camera changes use the event context rather than later publication()",
+        "minimap map fraction survives stretched old picture resize in both directions()",
+        "seen sidebar click scales its HUD position instead of becoming a world command()",
+        "UI scale changes preserve minimap fraction unselect fraction and bottom group identity()",
+        "invalid current zoom cannot move a seen HUD click into the current world()",
+        "alternate left bottom minimap is classified before world camera projection()",
+        "stretched sidebar left edge remains in HUD when sidebar widths scale differently()",
+        "click keeps its seen world target across a camera and resolution change()"
+      ]
+    }
+  ]
+}

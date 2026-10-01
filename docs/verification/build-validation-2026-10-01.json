@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-01",
+  "gradle": {
+    "tasks": [
+      ":core:test",
+      ":desktop:test",
+      ":android:assembleDebug",
+      ":desktop:platformFatJar"
+    ],
+    "exitCode": 0,
+    "buildSuccessful": true,
+    "log": "/tmp/rwx-full-validation-final.log",
+    "testCounts": {
+      "core": {
+        "tests": 109,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "desktop": {
+        "tests": 100,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "pythonTools": {
+    "vulkanAnalyzer": {
+      "tests": 3,
+      "failures": 0
+    },
+    "originalCompatibilityHarness": {
+      "tests": 7,
+      "failures": 0
+    }
+  },
+  "scope": "Final source build and regression evidence, including accepted-present camera, HUD resize anchors, owner-published map catalog and mod-window engine mutation. Original 600-second protocol evidence uses earlier frozen v4; full native visual correctness and 144 FPS are not established. Final shutdown dispatcher rejects new independent-owner writes after closing rather than restoring inline access. Android APK builds; no on-device runtime acceptance.",
+  "runtimeSha256": "b07d1e6fd3133d447bf8f088ff1b8ae8c62eb8382d74df7094c2ec8012e51d46",
+  "originalInteropRuntimeSha256": "41ea70f7234f14dc2b502601da474731909ecd34758d24b4dc32c0b125839d50",
+  "androidDebugApk": {
+    "path": "/Users/wty/code/RWX/android/build/outputs/apk/debug/android-debug.apk",
+    "bytes": 106547767,
+    "sha256": "c93d8c8c74a6f47a92f728e218d0a613f086c0fbd53936053a9be2e608589d7a",
+    "runtimeTested": false
+  }
+}

@@ -9,6 +9,7 @@ import org.newdawn.slick.*
 import org.newdawn.slick.Image
 import org.newdawn.slick.opengl.ImageData
 import org.newdawn.slick.opengl.renderer.QuadBatch
+import org.newdawn.slick.opengl.renderer.Renderer
 import org.newdawn.slick.util.Log
 import java.awt.*
 import java.awt.event.*
@@ -48,6 +49,8 @@ internal class EmbeddedSlickGameContainer(
     @Volatile
     private var framebufferGeometryLogged = false
 
+    private var debugFramesAfterResize = 0
+
     init {
         this.width = width.coerceAtLeast(320)
         this.height = height.coerceAtLeast(240)
@@ -69,6 +72,11 @@ internal class EmbeddedSlickGameContainer(
             Log.warn("Fullscreen is ignored by the RWX AWT Slick container")
         }
         if (initialized) {
+            // Slick's own container re-runs initDisplay() on every display change; this AWT backend
+            // must at least refresh the ortho size, otherwise enterOrtho() keeps projecting into the
+            // frame size the game started with and every HUD element anchored to the right/bottom
+            // edge lands outside the window after a resize.
+            Renderer.get().setDisplaySize(this.width, this.height)
             enterOrtho()
             getGraphics()?.setDimensions(this.width, this.height)
         }
@@ -96,8 +104,10 @@ internal class EmbeddedSlickGameContainer(
         val canvasWidth = awtCanvas.width.takeIf { it > 0 } ?: width
         val canvasHeight = awtCanvas.height.takeIf { it > 0 } ?: height
         if (canvasWidth != width || canvasHeight != height) {
+            io.github.rwx.DebugResizeProbe.log("--- canvas size change detected: $canvasWidth x $canvasHeight")
             onParentCanvasResize(canvasWidth, canvasHeight)
             setDisplayMode(canvasWidth, canvasHeight, false)
+            debugFramesAfterResize = 3
         }
 
         frameTimeLog?.beginFrame()
@@ -130,6 +140,16 @@ internal class EmbeddedSlickGameContainer(
                     frameTimeLog?.beginWork()
                     updateAndRender(getDelta())
                     frameTimeLog?.endWork()
+                    if (debugFramesAfterResize > 0) {
+                        debugFramesAfterResize--
+                        val debugFramebuffer = currentFramebufferSize()
+                        io.github.rwx.DebugResizeProbe.logFrameState(
+                            container = this,
+                            canvas = awtCanvas,
+                            framebufferWidth = debugFramebuffer.width,
+                            framebufferHeight = debugFramebuffer.height,
+                        )
+                    }
                     updateFPS()
                     if (singleWindowCapture) {
                         // Slick can temporarily render its layer buffers into another FBO.
@@ -658,7 +678,7 @@ private fun MouseEvent.toSlickButton(): Int = when (button) {
     else -> -1
 }
 
-private fun KeyEvent.toSlickKey(): Int = when (keyCode) {
+internal fun KeyEvent.toSlickKey(): Int = when (keyCode) {
     KeyEvent.VK_ESCAPE -> Input.KEY_ESCAPE
     KeyEvent.VK_1 -> Input.KEY_1
     KeyEvent.VK_2 -> Input.KEY_2

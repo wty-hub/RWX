@@ -1721,7 +1721,12 @@ public class GameLogic extends GameEngine {
                 this.performanceProfiler.b(ProfilerSection.draw_gui);
             }
             if (includeUi && this.settingsEngine.showFps && this.pauseTransition == 0.0f && !this.isMenuOpen && !this.isPaused) {
-                this.renderGraphicsEngine.a(this.fpsString, 100.0f, 35.0f, this.fpsPaint);
+                this.renderGraphicsEngine.beginDrawRole(GraphicsEngine.DRAW_ROLE_PERFORMANCE_HUD, -1L);
+                try {
+                    this.renderGraphicsEngine.a(this.fpsString, 100.0f, 35.0f, this.fpsPaint);
+                } finally {
+                    this.renderGraphicsEngine.endDrawRole();
+                }
             }
             if (includeUi && safeModeReasonText != null) {
                 this.renderGraphicsEngine.a(safeModeReasonText, 100.0f, 85.0f, this.fpsPaint);
@@ -2001,6 +2006,7 @@ public class GameLogic extends GameEngine {
 
     /* JADX INFO: renamed from: d */
     public void drawUI(float f) {
+        this.renderGraphicsEngine.captureHudLayout(this);
         this.gameUI.processTouchInput(f);
         if (this.missionEngine != null) {
             this.missionEngine.b(f);
@@ -2046,6 +2052,7 @@ public class GameLogic extends GameEngine {
     /* JADX INFO: renamed from: k */
     public void updateCameraSystem() {
         this.screenScale = getScreenScale();
+        this.appliedUiRenderScale = this.settingsEngine.uiRenderScale;
         updateDensity();
         this.halfScreenWidth = this.screenWidth / 2.0f;
         this.halfScreenHeight = this.screenHeight / 2.0f;

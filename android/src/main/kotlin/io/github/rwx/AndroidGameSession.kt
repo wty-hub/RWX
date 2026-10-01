@@ -320,7 +320,9 @@ internal class AndroidGameSession(
             // InGameActivity. Android has no renderer callback equivalent to SlickGame's, so
             // complete that load here before exposing the GameView.
             BattleRoomUiBridge.setupGame()
-            val activeMapPath = activeRunningMapPath(engine) ?: return@synchronized false
+            val activeMapPath = engine.networkEngine.selectedMapPath?.takeIf { it.isNotBlank() }
+                ?: engine.currentMapPath?.takeIf { it.isNotBlank() }
+                ?: return@synchronized false
 
             updateLoadState {
                 it.copy(

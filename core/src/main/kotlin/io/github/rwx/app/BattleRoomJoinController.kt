@@ -14,6 +14,7 @@ internal class BattleRoomJoinController(
     private val loadingDialogSceneHost: LoadingDialogSceneHost,
     private val onStarted: () -> Unit,
     private val onConnected: (BattleRoomSnapshot?) -> Unit,
+    private val onConnectedAddress: (String) -> Unit,
     private val onFailed: (String) -> Unit,
 ) {
     private var pendingJoin: PendingBattleRoomJoin? = null
@@ -28,6 +29,7 @@ internal class BattleRoomJoinController(
         address: String,
         roomLabel: String,
         failurePrefix: String,
+        rememberAddress: String? = null,
         requestJoin: () -> Unit,
     ) {
         val trimmedAddress = address.trim()
@@ -43,6 +45,7 @@ internal class BattleRoomJoinController(
                 address = trimmedAddress,
                 roomLabel = roomLabel,
                 failurePrefix = failurePrefix,
+                rememberAddress = rememberAddress,
                 startedAtNanos = System.nanoTime(),
             )
             val job = launchOnIO("battleroom-join") {
@@ -85,6 +88,7 @@ internal class BattleRoomJoinController(
             BattleRoomJoinPollResult.Connected -> {
                 clearPending()
                 loadingDialogSceneHost.hide()
+                pending.rememberAddress?.let(onConnectedAddress)
                 onConnected(latestProbe?.snapshot)
             }
 
@@ -161,6 +165,7 @@ private data class PendingBattleRoomJoin(
     val address: String,
     val roomLabel: String,
     val failurePrefix: String,
+    val rememberAddress: String?,
     val startedAtNanos: Long,
 )
 

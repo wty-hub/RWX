@@ -1,9 +1,14 @@
 package io.github.rwx.render.canvas
 
+/** Explicit display-only semantics. Unknown and mod drawing stays [Generic]. */
+enum class KoolCanvasDrawRole { Generic, SelectionRing, Waypoint, UnitShadow, PerformanceHud }
+
 data class KoolCanvasState(
     val transform: KoolCanvasTransform = KoolCanvasTransform.Identity,
     val clip: KoolCanvasRect? = null,
     val renderTarget: KoolCanvasRenderTargetId? = null,
+    val drawRole: KoolCanvasDrawRole = KoolCanvasDrawRole.Generic,
+    val semanticUnitId: Long = -1L,
 ) {
     companion object {
         val Default: KoolCanvasState = KoolCanvasState()
@@ -70,6 +75,13 @@ sealed interface KoolCanvasCommand {
 data class KoolCanvasFrame(
     val viewport: KoolCanvasViewport,
     val commands: List<KoolCanvasCommand>,
+    val visualStats: KoolCanvasVisualStats? = null,
+)
+
+data class KoolCanvasVisualStats(
+    val selectedUnits: Int,
+    val visibleUnits: Int,
+    val adaptiveBattleVisuals: Boolean = false,
 )
 
 fun interface KoolCanvasRenderer {

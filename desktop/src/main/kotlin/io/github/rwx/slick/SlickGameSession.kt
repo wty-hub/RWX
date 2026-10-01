@@ -28,6 +28,7 @@ class SlickGameSession(
     override val rendererMode: RendererMode= DesktopRendererMode.Slick
     override val compositesExternalGameFrameInKool: Boolean = singleWindowCapture
     override val usesLogicalPointerCoordinates: Boolean = true
+    override val acceptsKoolKeyboardInput: Boolean = !singleWindowCapture
     private val running = AtomicBoolean(false)
     private val requestState = SlickSessionRequestState()
     private val stopRequested = AtomicBoolean(false)
@@ -72,6 +73,18 @@ class SlickGameSession(
         SlickCanvasHost.setResizeController(::resizeFromCanvasHost)
         SlickCanvasHost.setRendererShutdown(::stopRendererAndWait)
         SlickCanvasHost.setHostFocusLostHandler { activeGame()?.noteFocusLost() }
+        SlickCanvasHost.setKoolCanvasKeyHandler { slickKey, down ->
+            // Keep releases flowing while a chat dialog takes focus. The Enter that opened it
+            // may be released before the Swing editor has claimed the keyboard.
+            if (singleWindowCapture && gameVisible && (!down || !pausedBackground) &&
+                requestState.desired !is SlickSessionRequest.MenuBackground
+            ) {
+                activeGame()?.let { active ->
+                    if (down) active.keyPressed(slickKey, 0.toChar())
+                    else active.keyReleased(slickKey, 0.toChar())
+                }
+            }
+        }
         configureRendererProfile(
             GameSessionRendererProfile(
                 rendersIntoKoolCanvas = false,
@@ -299,7 +312,6 @@ class SlickGameSession(
 
     override fun prepareBattleRoomAsync(config: BattleRoomLaunchConfig, viewport: KoolCanvasViewport) {
         val requestedMapPath = config.room.mapPath.takeIf { it.isNotBlank() } ?: return
-        if (isMapLoaded(requestedMapPath) && activeRendererBattleRoomConfig() == config) return
         beginRendererMapPreparation(
             mapPath = requestedMapPath,
             battleRoomConfig = config,

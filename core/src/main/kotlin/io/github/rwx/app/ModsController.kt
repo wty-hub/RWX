@@ -14,11 +14,17 @@ import io.github.rwx.ui.host.ModsSceneHost
 import io.github.rwx.ui.model.Dialog
 import io.github.rwx.ui.model.DialogButton
 import io.github.rwx.ui.model.DialogTextInput
+import io.github.rwx.ui.model.ModEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.koin.mp.KoinPlatform.getKoin
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CompletableFuture
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration.Companion.milliseconds
 
 internal class ModsController(
@@ -33,35 +39,49 @@ internal class ModsController(
     private var reloadDialogVisible = false
     private var reloadJob: Job? = null
     private val reloadResult = AtomicReference<ModsReloadResult?>(null)
+    private var publishedMods = emptyList<ModEntry>()
 
     fun refresh(statusText: String = "") {
-        sceneHost.updateMods(modRepository.listMods(), statusText)
+        updateModsOnOwner { statusText }
     }
 
     fun applyChangesAndRefresh() {
-        modRepository.applyChanges()
-        refresh()
+        updateModsOnOwner { modRepository.applyChanges(); "" }
     }
 
     fun reloadAvailableAndRefresh() {
-        modRepository.reloadAvailableMods()
-        invalidateModThumbnailTextureCache()
-        refresh()
+        updateModsOnOwner(invalidateThumbnails = true) { modRepository.reloadAvailableMods(); "" }
     }
 
     fun disableAllAndRefresh() {
-        modRepository.disableAll()
-        refresh()
+        updateModsOnOwner { modRepository.disableAll(); "" }
     }
 
     fun toggleEnabledAndRefresh(modId: String) {
-        modRepository.toggleEnabled(modId)
-        refresh()
+        updateModsOnOwner { modRepository.toggleEnabled(modId); "" }
     }
 
     fun deleteAndRefresh(modId: String) {
-        val deleted = modRepository.delete(modId)
-        refresh(if (deleted) "" else "Unable to delete mod")
+        updateModsOnOwner { if (modRepository.delete(modId)) "" else "Unable to delete mod" }
+    }
+
+    private fun updateModsOnOwner(invalidateThumbnails: Boolean = false,
+        afterComplete: () -> Unit = {}, change: () -> String) {
+        gameSession.requestSessionTask({
+            val status = change()
+            ModsDisplaySnapshot(modRepository.listMods(), status)
+        }) { result ->
+            try {
+                result.onSuccess { snapshot ->
+                    if (invalidateThumbnails) invalidateModThumbnailTextureCache()
+                    publishedMods = snapshot.mods
+                    sceneHost.updateMods(snapshot.mods, snapshot.status)
+                }.onFailure { error ->
+                    logger.warn(error) { "Unable to update mods" }
+                    sceneHost.updateMods(publishedMods, "Unable to update mods: ${error.message ?: error.javaClass.simpleName}")
+                }
+            } finally { afterComplete() }
+        }
     }
 
     fun showImportDialog() {
@@ -99,12 +119,10 @@ internal class ModsController(
                                 ?.takeIf { inputPath == it.displayPath }
                                 ?.path
                                 ?: inputPath
-                            try {
-                                val result = modRepository.importMod(path)
-                                refresh(result.message)
-                            } finally {
-                                selectedFile?.release()
-                                selectedFile = null
+                            val importSelection = selectedFile
+                            selectedFile = null
+                            updateModsOnOwner(afterComplete = { importSelection?.release() }) {
+                                modRepository.importMod(path).message
                             }
                         },
                     ),
@@ -127,16 +145,28 @@ internal class ModsController(
         reloadLoading = true
         reloadResult.set(null)
 
+        // Queue the complete operation at the click boundary. An IO launch must not reorder
+        // this operation behind a later toggle/import click in the independent-engine backend.
+        val ownerReload = if (gameSession.usesIndependentEngineLoop) gameSession.submitSessionTask {
+            runBlocking {
+                modRepository.applyChanges()
+                if (!gameSession.requestReloadMods()) modRepository.reloadAppliedMods()
+            }
+            modRepository.listMods()
+        } else null
+
         val job = launchOnIO("mods-reload") {
             val result = try {
-                modRepository.applyChanges()
-                val handledByBackend = gameSession.requestReloadMods()
-                if (handledByBackend) {
-                    waitForLoadingText("Mods reloaded", timeoutMillis = 60_000L)
-                } else {
-                    modRepository.reloadAppliedMods()
+                val mods = if (ownerReload != null) ownerReload.awaitModOperation()
+                else {
+                    // Legacy backends keep their existing inline/application reload behavior.
+                    modRepository.applyChanges()
+                    val handledByBackend = gameSession.requestReloadMods()
+                    if (handledByBackend) waitForLoadingText("Mods reloaded", timeoutMillis = 60_000L)
+                    else modRepository.reloadAppliedMods()
+                    modRepository.listMods()
                 }
-                ModsReloadResult.Success
+                ModsReloadResult.Success(mods)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
@@ -205,9 +235,11 @@ internal class ModsController(
             loadingDialogSceneHost.hide()
         }
         when (result) {
-            ModsReloadResult.Success -> {
+            is ModsReloadResult.Success -> {
                 onModsReloaded()
-                refresh("Mods reloaded")
+                invalidateModThumbnailTextureCache()
+                publishedMods = result.mods
+                sceneHost.updateMods(result.mods, "Mods reloaded")
             }
 
             ModsReloadResult.Cancelled -> Unit
@@ -221,7 +253,19 @@ internal class ModsController(
 }
 
 private sealed interface ModsReloadResult {
-    data object Success : ModsReloadResult
+    data class Success(val mods: List<ModEntry>) : ModsReloadResult
     data object Cancelled : ModsReloadResult
     data class Failed(val error: Throwable) : ModsReloadResult
+}
+
+private data class ModsDisplaySnapshot(val mods: List<ModEntry>, val status: String)
+
+private suspend fun <T> CompletableFuture<T>.awaitModOperation(): T = suspendCancellableCoroutine { continuation ->
+    whenComplete { result, error ->
+        if (continuation.isActive) {
+            if (error == null) continuation.resume(result)
+            else continuation.resumeWithException(error.cause ?: error)
+        }
+    }
+    // Cancelling the dialog does not interrupt a running original engine reload mid-update.
 }

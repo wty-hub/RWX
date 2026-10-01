@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-01",
+  "passed": true,
+  "scope": "Native startup, resize, actualcanvas hide/restore and allocator/device/instance destruction on later UI/input runtime. No new controlled performance or ten-minute network acceptance claim.",
+  "runs": [
+    {
+      "runtimeSha256": "30ee4e18af9111e68e505d344a580c97da315dd302091d5514450530c8de173f",
+      "mode": "final-native-resize-hide-restore-and-cleanup-smoke",
+      "msaaSamples": 4,
+      "plannedSeconds": 40,
+      "scope": "Latest accepted-camera acknowledgement, HUD layout, map snapshot source. Smoke only; no new performance or 600-second interop acceptance claim.",
+      "exitCode": 0,
+      "elapsedSeconds": 40.75102195799991,
+      "checks": {
+        "exitZero": true,
+        "resizeApplied": true,
+        "actualHide": true,
+        "actualRestore": true,
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "noRuntimeException": true
+      },
+      "visibilityEvents": [
+        "2026-10-01 09:15:20.925 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=false window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=false canvasShowing=false frameVisible=false at 88803941021416",
+        "2026-10-01 09:15:25.927 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=true window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=true canvasShowing=true frameVisible=true at 88808944448541"
+      ],
+      "actualHiddenSeconds": 5.003427125,
+      "acceptedPresentsInsideHiddenInterval": 1,
+      "acceptedPresents": 3920,
+      "shutdownRetainedResourceWarnings": {
+        "buffers": 37,
+        "images": 23
+      },
+      "maximumStagingResidentBytes": 53706752,
+      "rawRunDirectory": "/Users/wty/code/RWX/desktop/build/final-v5-native-smoke",
+      "hiddenAcceptedPresentOffsetsMs": [
+        1.873125
+      ],
+      "visibilityObservation": "One accepted-present callback immediately after the hide timestamp, consistent with already-started work; no later accepted presents until restore. Visibility setting and native submission are not an atomic cancellation boundary."
+    },
+    {
+      "runtimeSha256": "227280b26508f471ef7e2180273e3124769c3c1741f2bb3403d758b4d2f69d5e",
+      "msaaSamples": 4,
+      "plannedSeconds": 20,
+      "scope": "Latest accepted-camera, HUD, map catalog and mod-window ownership runtime; startup/resize/hide/restore/cleanup smoke, not new benchmark or ten-minute interop acceptance.",
+      "exitCode": 0,
+      "elapsedSeconds": 20.703038916995865,
+      "checks": {
+        "exitZero": true,
+        "resizeApplied": true,
+        "actualHide": true,
+        "actualRestore": true,
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "noRuntimeException": true
+      },
+      "visibilityEvents": [
+        "2026-10-01 09:22:34.883 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=false window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=false canvasShowing=false frameVisible=false at 89237899137833",
+        "2026-10-01 09:22:37.888 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=true window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=true canvasShowing=true frameVisible=true at 89240904827625"
+      ],
+      "actualHiddenSeconds": 3.005689792,
+      "acceptedPresentsInsideHiddenInterval": 1,
+      "acceptedPresents": 1783,
+      "shutdownRetainedResourceWarnings": {
+        "buffers": 37,
+        "images": 21
+      },
+      "maximumStagingResidentBytes": 16777216,
+      "rawRunDirectory": "/Users/wty/code/RWX/desktop/build/final-v6-native-smoke",
+      "hiddenAcceptedPresentOffsetsMs": [
+        6.967875
+      ],
+      "visibilityObservation": "One accepted-present callback immediately after the hide timestamp, consistent with already-started work; no later accepted presents until restore. Visibility setting and native submission are not an atomic cancellation boundary."
+    },
+    {
+      "runtimeSha256": "b07d1e6fd3133d447bf8f088ff1b8ae8c62eb8382d74df7094c2ec8012e51d46",
+      "msaaSamples": 4,
+      "plannedSeconds": 20,
+      "scope": "Final accepted-camera/HUD/catalog/mod-window-owner/closing-dispatch runtime. Native startup/resize/hide/restore/cleanup smoke; not new controlled performance or ten-minute interop evidence.",
+      "exitCode": 0,
+      "elapsedSeconds": 20.806748834002065,
+      "checks": {
+        "exitZero": true,
+        "resizeApplied": true,
+        "actualHide": true,
+        "actualRestore": true,
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "noRuntimeException": true
+      },
+      "visibilityEvents": [
+        "2026-10-01 09:33:28.084 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=false window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=false canvasShowing=false frameVisible=false at 89891098767625",
+        "2026-10-01 09:33:31.087 [AWT-EventQueue-0] INFO  Desktop - RWX visibility probe: visible=true window=de.fabmax.kool.platform.swing.CanvasWrapper subsystem=io.github.rwx.PacedSwingWindowSubsystem canvasVisible=true canvasShowing=true frameVisible=true at 89894102196583"
+      ],
+      "actualHiddenSeconds": 3.003428958,
+      "acceptedPresentsInsideHiddenInterval": 2,
+      "hiddenAcceptedPresentOffsetsMs": [
+        0.799208,
+        8.547833
+      ],
+      "acceptedPresents": 1784,
+      "shutdownRetainedResourceWarnings": {
+        "buffers": 37,
+        "images": 23
+      },
+      "maximumStagingResidentBytes": 16777216,
+      "rawRunDirectory": "/Users/wty/code/RWX/desktop/build/final-native-smoke"
+    }
+  ],
+  "limitations": [
+    "No actual GUI pointer click automation; click behavior is covered by focused capture/projection/owner tests.",
+    "Allocator still reclaims retained/leaked resources at shutdown; this is not warning-free explicit cache cleanup.",
+    "Minimized/zero-size and all-unit GPU visual acceptance remain incomplete.",
+    "Actualhide is verified; one or two accepted-present tails overlap each hide boundary. The smoke does not require cancellation of already-started GPU work."
+  ]
+}

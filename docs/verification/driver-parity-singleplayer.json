@@ -1,0 +1,1 @@
+{"matched":true,"frames":120,"tickStates":120,"executedCommands":18,"comparison":"complete legacy save bytes, accumulator/step rate, object and selection order, all command queue bytes/timing, actual execution order","limitation":"driver handoff correctness; original-client multiplayer and all unit behavior scenarios require separate tests","mode":"single-player"}

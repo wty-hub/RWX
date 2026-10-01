@@ -12,32 +12,159 @@ import io.github.rwx.platform.CoreGameView
 import io.github.rwx.render.RendererMode
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
-import io.github.rwx.render.canvas.KoolGraphicsEngine
+import io.github.rwx.render.canvas.*
+import io.github.rwx.session.*
+import io.github.rwx.ui.model.BattleRoomPlayer
+import io.github.rwx.ui.model.MapEntry
+import com.corrodinggames.rts.game.units.BaseUnit
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicReference
 import io.github.rwx.session.GameSession
 import io.github.rwx.session.GameSessionRendererProfile
 import io.github.rwx.ui.BattleRoomUiBridge
 import io.github.rwx.ui.InGameMenuController
 import kotlin.math.roundToInt
 
-/**
- * Desktop session that draws the game world through the Kool canvas command stream instead of the
- * AWT OpenGL canvas.
- *
- * Frames are produced on the Kool render loop ([updateFrame] runs the legacy game loop inline and
- * hands the Kool command buffer to the scene host), so no GL context exists and nothing is read
- * back with `glReadPixels`. On macOS the same Kool canvas is presented by the Vulkan backend, i.e.
- * MoltenVK on Metal; on Linux and Windows it is the regular Kool backend.
- *
- * Modelled on [io.github.rwx.AndroidGameSession]: the base class performs the asynchronous map /
- * save / replay preparation, this class only drives the loop and publishes frames.
- */
+/** The complete legacy loop records immutable CPU frames on its unique owner thread. */
 internal class KoolDesktopGameSession(
     private val storage: PlatformStorage,
 ) : GameSession() {
     override val rendererMode: RendererMode = DesktopRendererMode.Kool
     override val usesLogicalPointerCoordinates: Boolean = false
 
-    private val graphicsEngine = KoolGraphicsEngine()
+    override val usesIndependentEngineLoop: Boolean = true
+    private val cpuTextures = KoolCanvasCpuTextureStore()
+    private val graphicsEngine = KoolGraphicsEngine(textureStore = cpuTextures)
+    private val mailbox = LatestFrameMailbox()
+    override val canvasPresentationTracker = CanvasFramePresentationTracker()
+    @Volatile private var selectedEnvelope: FrameEnvelope? = null
+    private var sequence = 0L
+    private var viewportRevision = 0L
+    private var nextUiPublication = 0L
+    private var drainLayerBuffers = false
+    @Volatile private var loopFailure: Throwable? = null
+    private val requestedViewport = AtomicReference<KoolCanvasViewport?>()
+    private val uiState = AtomicReference(UiState())
+    private val owner by lazy {
+        EngineOwnerLoop(
+            periodNanos = {
+                val settings = gameEngine?.settingsEngine
+                when { settings?.batterySaving == true -> 32_258_064L
+                    settings?.highRefreshRate == true -> 3_333_333L
+                    else -> 16_393_442L }
+            },
+            tick = ::engineFrame,
+            onFailure = { error ->
+                loopFailure = error
+                logger.error(error) { "RWX engine owner stopped after a failed loop" }
+            },
+        )
+    }
+
+    private data class UiState(
+        val canResume: Boolean = false,
+        val mapLoaded: Boolean = false,
+        val ready: Boolean = false,
+        val mapPath: String? = null,
+        val mapName: String? = null,
+        val liveRoom: Boolean = false,
+        val room: BattleRoomSnapshot? = null,
+        val networkActive: Boolean = false,
+        val players: List<BattleRoomPlayer> = emptyList(),
+        val chat: List<MultiplayerChatSnapshot> = emptyList(),
+        val exitInfo: RunningMultiplayerExitInfo? = null,
+        val playerName: String = "Player",
+        val startedConnection: Boolean = false,
+        val portals: List<String> = emptyList(),
+        val localPlayer: String? = null,
+        val p2pGame: Boolean = false,
+        val extraMapEntries: List<MapEntry> = emptyList(),
+    )
+
+    override fun <T> submitSessionTask(action: () -> T): CompletableFuture<T> = owner.submit {
+        action().also { publishUiState(force = true) }
+    }
+
+    protected override fun <T> executeEngineTask(label: String, action: () -> T): T = owner.call {
+        try { action() } finally { owner.resetClock(); publishUiState(force = true) }
+    }
+
+    protected override fun <T> runEngineCommand(label: String, command: (GameEngine) -> T?): T? =
+        owner.call { super.runEngineCommand(label, command).also { publishUiState(force = true) } }
+
+    protected override fun postEngineCommand(label: String, command: (GameEngine) -> Unit) {
+        owner.submit { super.runEngineCommand(label, command); publishUiState(force = true) }
+    }
+
+    override fun canResume(): Boolean = if (owner.isOwner) super.canResume() else
+        uiState.get().canResume && !loadState.asyncMapLoadInProgress
+    override fun isMapLoaded(mapPath: String?): Boolean = if (owner.isOwner) super.isMapLoaded(mapPath) else
+        uiState.get().let { it.mapLoaded && (mapPath == null || mapPath == it.mapPath) } && !loadState.asyncMapLoadInProgress
+    override fun isReadyForDisplay(mapPath: String?): Boolean = if (owner.isOwner) super.isReadyForDisplay(mapPath) else
+        uiState.get().ready && isMapLoaded(mapPath)
+    override fun currentMapDisplayName(): String? = if (owner.isOwner) super.currentMapDisplayName() else uiState.get().mapName
+    override fun isBattleRoomLive(): Boolean = if (owner.isOwner) super.isBattleRoomLive() else uiState.get().liveRoom
+    override fun currentBattleRoom(refreshNetworkStatus: Boolean): BattleRoomSnapshot? =
+        if (owner.isOwner) super.currentBattleRoom(refreshNetworkStatus) else uiState.get().room
+    override fun isNetworkMultiplayerActive(): Boolean = if (owner.isOwner) super.isNetworkMultiplayerActive() else uiState.get().networkActive
+    override fun multiplayerPlayerList(): List<BattleRoomPlayer> = if (owner.isOwner) super.multiplayerPlayerList() else uiState.get().players
+    override fun multiplayerChatHistory(): List<MultiplayerChatSnapshot> = if (owner.isOwner) super.multiplayerChatHistory() else uiState.get().chat
+    override fun runningMultiplayerExitInfo(): RunningMultiplayerExitInfo? = if (owner.isOwner) super.runningMultiplayerExitInfo() else uiState.get().exitInfo
+    override fun currentMultiplayerPlayerName(): String = if (owner.isOwner) super.currentMultiplayerPlayerName() else uiState.get().playerName
+    override fun hasActiveStartedGameConnection(): Boolean = if (owner.isOwner) super.hasActiveStartedGameConnection() else uiState.get().startedConnection
+    override fun portalTargetMapIds(): List<String> = if (owner.isOwner) super.portalTargetMapIds() else uiState.get().portals
+    override fun localPlayerId(): String? = if (owner.isOwner) super.localPlayerId() else uiState.get().localPlayer
+    override fun isP2pNetworkGame(): Boolean = if (owner.isOwner) super.isP2pNetworkGame() else uiState.get().p2pGame
+    override fun extraCustomMapEntries(): List<MapEntry> = if (owner.isOwner) super.extraCustomMapEntries() else uiState.get().extraMapEntries
+    override fun mapLoadError(mapPath: String?): Throwable? = super.mapLoadError(mapPath) ?: loopFailure?.takeIf {
+        mapPath == null || mapPath == loadState.runningMapPath
+    }
+
+    private fun publishUiState(force: Boolean = false) {
+        check(owner.isOwner)
+        val now = System.nanoTime()
+        if (!force && now < nextUiPublication) return
+        nextUiPublication = now + 100_000_000L
+        uiState.set(UiState(
+            super.canResume(), super.isMapLoaded(runningMapPath()), super.isReadyForDisplay(runningMapPath()),
+            runningMapPath(), super.currentMapDisplayName(), super.isBattleRoomLive(),
+            super.currentBattleRoom(false), super.isNetworkMultiplayerActive(),
+            super.multiplayerPlayerList(), super.multiplayerChatHistory(),
+            super.runningMultiplayerExitInfo(), super.currentMultiplayerPlayerName(), super.hasActiveStartedGameConnection(),
+            super.portalTargetMapIds(), super.localPlayerId(), super.isP2pNetworkGame(),
+            if (force) super.extraCustomMapEntries() else uiState.get().extraMapEntries,
+        ))
+    }
+
+    override fun discardRunningGame() { owner.submit {
+        loopFailure = null
+        super.discardRunningGame()
+        mailbox.publish(cpuTextures.freezeFrame(KoolCanvasFrame(appliedViewport, emptyList()),
+            ++sequence, loadState.mapLoadGeneration, gameEngine?.currentTick ?: 0, viewportRevision))
+        owner.resetClock(); publishUiState(true)
+    } }
+    override fun preload(viewport: KoolCanvasViewport): GameEngine = executeEngineTask("preload") { super.preload(viewport) }
+    override fun prepareMapAsync(mapPath: String?, viewport: KoolCanvasViewport) { owner.submit { super.prepareMapAsync(mapPath, viewport) } }
+    override fun prepareSavedGameAsync(saveName: String, viewport: KoolCanvasViewport) { owner.submit { super.prepareSavedGameAsync(saveName, viewport) } }
+    override fun prepareReplayAsync(replayName: String, viewport: KoolCanvasViewport) { owner.submit { super.prepareReplayAsync(replayName, viewport) } }
+    override fun prepareMapSnapshotAsync(snapshot: MapSnapshot, viewport: KoolCanvasViewport) { owner.submit { super.prepareMapSnapshotAsync(snapshot, viewport) } }
+    override fun prepareBattleRoomAsync(config: BattleRoomLaunchConfig, viewport: KoolCanvasViewport) { owner.submit { super.prepareBattleRoomAsync(config, viewport) } }
+    override fun prepareEngineAsync(viewport: KoolCanvasViewport) { owner.submit { super.prepareEngineAsync(viewport) } }
+    override fun requestMap(mapPath: String?) { owner.submit { super.requestMap(mapPath) } }
+    override fun requestMapSnapshot(snapshot: MapSnapshot) { owner.submit { super.requestMapSnapshot(snapshot) } }
+    override fun cancelBattleRoomJoin() { owner.submit { super.cancelBattleRoomJoin() } }
+    override fun leaveBattleRoom() { owner.submit { super.leaveBattleRoom(); publishUiState(true) } }
+
+    override fun cameraSnapshot(): GameCameraSnapshot? = canvasPresentationTracker.cameraSnapshot()
+        ?.takeIf { it.generation == loadState.mapLoadGeneration }
+    override fun currentFrameEnvelope(): FrameEnvelope? = selectedEnvelope
+    override fun close() {
+        canvasPresentationTracker.close()
+        owner.close()
+        mailbox.close()
+        selectedEnvelope?.close()
+        selectedEnvelope = null
+    }
     private val view = KoolDesktopCoreGameView(inGameMenuController)
     private val frameTimeLog = KoolFrameTimeLog.fromEnvironment()
 
@@ -66,93 +193,144 @@ internal class KoolDesktopGameSession(
         deltaSeconds: Float,
         drainVisibleLayerBuffers: Boolean,
     ): KoolCanvasFrame {
-        // A background load or a mod reload owns the engine: keep presenting the last frame instead
-        // of touching the command buffer the loader may be using.
-        if (loadState.asyncMapLoadInProgress || modReloadInProgress) {
-            return lastFrame
-        }
-        synchronized(gameLock) {
-            frameTimeLog?.beginFrame()
+        requestViewport(viewport)
+        if (drainVisibleLayerBuffers) owner.submit { drainLayerBuffers = true }
+        return currentFrame()
+    }
+
+    private fun requestViewport(viewport: KoolCanvasViewport) {
+        if (viewport.width <= 0 || viewport.height <= 0) return
+        if (requestedViewport.getAndSet(viewport) != viewport) owner.submit {
             lastViewport = viewport
-            val engine = ensureStarted(viewport)
-            applyViewport(engine, viewport)
-            loadPendingMap(engine)
-
-            if (pausedForResumeBackground) {
-                // The menu shows a frozen world behind it; the regular loop stays stopped.
-                if (!resumeBackgroundFrameReady) {
-                    renderPausedBackgroundFrame(engine, viewport)
-                }
-                return lastFrame
-            }
-
-            graphicsEngine.beginFrame(viewport.width.coerceAtLeast(1), viewport.height.coerceAtLeast(1))
-            engine.renderGraphicsEngine = graphicsEngine
-            runGameLoop(engine, deltaSeconds)
-            frameTimeLog?.endGameWork()
-            if (drainVisibleLayerBuffers && engine.hasLoadedLevel) {
-                TileMap.layerBufferManager.renderVisiblePendingRedrawsNow()
-            }
-            frameTimeLog?.endLayerRedraw()
-            lastFrame = graphicsEngine.snapshot()
-            frameTimeLog?.endSnapshot()
-            return lastFrame
+            activeEngineLocked()?.let { applyViewport(it, viewport) }
         }
     }
 
-    override fun currentFrame(): KoolCanvasFrame = lastFrame
-
-    override fun loadPendingMapNow(): KoolCanvasFrame = updateFrame(lastViewport, 0f)
-
-    override fun setGameVisible(
-        visible: Boolean,
-        viewport: KoolCanvasViewport,
-        koolOverlay: Boolean,
-        pausedBackground: Boolean,
-    ) {
-        if (viewport.width > 0 && viewport.height > 0) {
-            lastViewport = viewport
+    override fun currentFrame(): KoolCanvasFrame {
+        mailbox.poll()?.let { completed ->
+            selectedEnvelope?.close()
+            selectedEnvelope = completed
         }
-        val shouldPauseForBackground = synchronized(gameLock) {
-            val engine = activeEngineLocked()
-            pausedBackground &&
-                engine?.hasLoadedLevel == true &&
-                !engine.isMenuBackgroundMap &&
-                !engine.isNetworkGameActive()
-        }
-        if (pausedForResumeBackground == shouldPauseForBackground) {
+        return selectedEnvelope?.frame ?: KoolCanvasFrame(lastViewport, emptyList())
+    }
+
+    override fun loadPendingMapNow(): KoolCanvasFrame {
+        owner.submit { val engine = ensureStarted(lastViewport); loadPendingMap(engine); owner.resetClock() }
+        return currentFrame()
+    }
+
+    private fun engineFrame(deltaSeconds: Float) {
+        if (loopFailure != null) return
+        val engine = gameEngine ?: return
+        if (loadState.asyncMapLoadInProgress || modReloadInProgress) return
+        if (pausedForResumeBackground) {
+            if (!resumeBackgroundFrameReady) renderPausedBackgroundFrame(engine, lastViewport)
             return
         }
-        pausedForResumeBackground = shouldPauseForBackground
-        resumeBackgroundFrameReady = false
-        if (shouldPauseForBackground) {
-            // The resume background is presented through [currentFrame] while the menu is up, so
-            // the frozen world has to be drawn here rather than on the next visible-game frame.
-            synchronized(gameLock) {
-                val engine = activeEngineLocked() ?: return
-                renderPausedBackgroundFrame(engine, lastViewport)
+        // The legacy outer loop also services lobby packets and deferred tasks before a map exists.
+        if (engine.hasLoadedLevel) io.github.rwx.benchmark.VanillaBattleBenchmark.onFrame(engine)
+        val viewport = appliedViewport
+        if (viewport.width <= 0 || viewport.height <= 0) return
+        frameTimeLog?.beginFrame()
+        graphicsEngine.beginFrame(viewport.width, viewport.height)
+        engine.renderGraphicsEngine = graphicsEngine
+        runGameLoop(engine, deltaSeconds)
+        frameTimeLog?.endGameWork()
+        if (drainLayerBuffers) TileMap.layerBufferManager.renderVisiblePendingRedrawsNow()
+        frameTimeLog?.endLayerRedraw()
+        publishFrame(engine, viewport)
+        frameTimeLog?.endSnapshot()
+        publishUiState()
+    }
+
+    private fun publishFrame(engine: GameEngine, viewport: KoolCanvasViewport) {
+        var selected = 0
+        var visible = 0
+        val units = BaseUnit.bE.a()
+        for (index in 0 until BaseUnit.bE.b) {
+            val unit = units[index]
+            if (unit.isSelected) selected++
+            if (unit.shouldDraw) visible++
+        }
+        val frame = graphicsEngine.snapshot().copy(
+            visualStats = KoolCanvasVisualStats(selected, visible, engine.settingsEngine.adaptiveBattleVisuals),
+        )
+        val serial = ++sequence
+        val camera = GameCameraSnapshot(serial, viewportRevision, viewport,
+            engine.viewpointXSnapped, engine.viewpointYSnapped, engine.zoom,
+            loadState.mapLoadGeneration, engine.sidebarWidth,
+            graphicsEngine.hudLayout?.copy(minimap = captureGameMinimapRect(engine)))
+        val envelope = cpuTextures.freezeFrame(frame, serial, loadState.mapLoadGeneration,
+            engine.currentTick, viewportRevision, camera)
+        lastFrame = envelope.frame
+        CanvasFrameMetrics.produced(envelope)
+        mailbox.publish(envelope)
+    }
+
+    override fun setGameVisible(visible: Boolean, viewport: KoolCanvasViewport, koolOverlay: Boolean, pausedBackground: Boolean) {
+        requestViewport(viewport)
+        owner.submit {
+            val engine = activeEngineLocked()
+            val pause = pausedBackground && engine?.hasLoadedLevel == true &&
+                !engine.isMenuBackgroundMap && !engine.isNetworkGameActive()
+            if (pause != pausedForResumeBackground) {
+                pausedForResumeBackground = pause
+                resumeBackgroundFrameReady = false
+                owner.resetClock()
             }
+            if (pause && !resumeBackgroundFrameReady && engine != null) renderPausedBackgroundFrame(engine, lastViewport)
         }
     }
 
     override fun submitPointer(screenX: Float, screenY: Float, isDown: Boolean, pointerId: Int) {
-        view.submitPointer(screenX, screenY, isDown, pointerId)
+        submitPointer(screenX, screenY, isDown, pointerId, GamePointerFrameContext(cameraSnapshot()))
+    }
+
+    override fun submitPointer(
+        screenX: Float, screenY: Float, isDown: Boolean, pointerId: Int, frameContext: GamePointerFrameContext,
+    ) {
+        val camera = frameContext.camera
+        owner.submitInput("pointer", isDown) {
+            if (isDown && camera != null && camera.generation != loadState.mapLoadGeneration) return@submitInput
+            val engine = gameEngine
+            val (x, y) = mapPointer(engine, frameContext, screenX, screenY)
+            view.submitPointer(x, y, isDown, pointerId)
+        }
     }
 
     override fun movePointer(screenX: Float, screenY: Float) {
-        view.movePointer(screenX, screenY)
+        movePointer(screenX, screenY, GamePointerFrameContext(cameraSnapshot()))
     }
 
-    override fun clearInputState() {
-        view.submitPointer(0f, 0f, false, -1)
+    override fun movePointer(screenX: Float, screenY: Float, frameContext: GamePointerFrameContext) {
+        owner.submit {
+            val (x, y) = mapPointer(gameEngine, frameContext, screenX, screenY)
+            view.movePointer(x, y)
+        }
+    }
+
+    private fun mapPointer(engine: GameEngine?, frameContext: GamePointerFrameContext, x: Float, y: Float): Pair<Float, Float> {
+        val current = engine?.let { GameCameraSnapshot(0, viewportRevision, appliedViewport,
+            it.viewpointXSnapped, it.viewpointYSnapped, it.zoom, loadState.mapLoadGeneration, it.sidebarWidth,
+            captureGameHudLayout(it)) }
+        return projectSeenPointer(frameContext.camera, current, appliedViewport, x, y, frameContext.surfaceViewport)
+    }
+
+    override fun clearInputState() { owner.submitInput("pointer", false) { view.submitPointer(0f, 0f, false, -1) } }
+    override fun submitKey(androidKeyCode: Int, isDown: Boolean) {
+        owner.submitInput("key/$androidKeyCode", isDown) { gameEngine?.setKeyState(androidKeyCode, isDown) }
     }
 
     override fun prepareMenuBackgroundAsync(viewport: KoolCanvasViewport) {
+        owner.submit { prepareMenuBackgroundOnOwner(viewport) }
+    }
+
+    private fun prepareMenuBackgroundOnOwner(viewport: KoolCanvasViewport) {
         val state = loadState
         if (state.menuBackgroundActive) {
             return
         }
-        if (state.runningMapPath != null && gameEngine?.hasLoadedLevel == true) {
+        if (state.runningMapPath != null && uiState.get().mapLoaded) {
             return
         }
         var generation: Long? = null
@@ -184,7 +362,7 @@ internal class KoolDesktopGameSession(
     }
 
     override fun adoptStartedGameFromEngine(viewport: KoolCanvasViewport): Boolean =
-        synchronized(gameLock) {
+        executeEngineTask("adopt started game") { synchronized(gameLock) {
             val engine = gameEngine ?: GameEngine.getInstance() ?: return@synchronized false
             if (engine.networkEngine?.gameHasBeenStarted != true) return@synchronized false
 
@@ -197,7 +375,9 @@ internal class KoolDesktopGameSession(
             // The original battleroom runs startGameCommon() before opening the game surface, and
             // there is no renderer callback equivalent to Slick's to finish that load here.
             BattleRoomUiBridge.setupGame()
-            val activeMapPath = activeRunningMapPath(engine) ?: return@synchronized false
+            val activeMapPath = engine.networkEngine.selectedMapPath?.takeIf { it.isNotBlank() }
+                ?: engine.currentMapPath?.takeIf { it.isNotBlank() }
+                ?: return@synchronized false
 
             updateLoadState {
                 it.copy(
@@ -211,11 +391,13 @@ internal class KoolDesktopGameSession(
             }
             engine.isStopped = false
             engine.isPaused = false
+            loopFailure = null
+            owner.resetClock()
             true
-        }
+        } }
 
     protected override fun ensureStarted(viewport: KoolCanvasViewport): GameEngine =
-        synchronized(gameLock) {
+        executeEngineTask("start engine") { synchronized(gameLock) {
             activeEngineLocked() ?: ensureRendererEngine(viewport, graphicsEngine, view).also {
                 if (!directoriesCreated) {
                     directoriesCreated = true
@@ -223,6 +405,8 @@ internal class KoolDesktopGameSession(
                 }
             }
         }
+
+    }
 
     protected override fun applyViewport(engine: GameEngine, viewport: KoolCanvasViewport) {
         val width = viewport.width.coerceAtLeast(1)
@@ -234,22 +418,19 @@ internal class KoolDesktopGameSession(
         graphicsEngine.a(width, height)
         view.onSizeChanged()
         appliedViewport = KoolCanvasViewport(width, height)
+        viewportRevision++
     }
 
     private fun runGameLoop(engine: GameEngine, deltaSeconds: Float) {
-        runCatching {
-            engine.gameLoop(
-                deltaSeconds.toGameSpeedDelta(),
-                (deltaSeconds * 1000f).roundToInt().coerceAtLeast(0),
-            )
-        }.onFailure { error ->
-            logger.error(error) { "$sessionLogName game loop failed" }
-        }
+        engine.gameLoop(
+            deltaSeconds.toGameSpeedDelta(),
+            (deltaSeconds * 1000f).roundToInt().coerceAtLeast(0),
+        )
     }
 
     /**
      * Draws the world without the in-game HUD and publishes it as the frame behind the menu.
-     * Must run under [gameLock]: it replaces the command buffer contents and [lastFrame].
+     * Runs on the engine owner, since legacy drawing can itself change engine state.
      */
     private fun renderPausedBackgroundFrame(engine: GameEngine, viewport: KoolCanvasViewport) {
         if (!engine.hasLoadedLevel || viewport.width <= 0 || viewport.height <= 0) {
@@ -263,14 +444,25 @@ internal class KoolDesktopGameSession(
             logger.error(error) { "$sessionLogName paused background render failed" }
         }
         resumeBackgroundFrameReady = true
-        lastFrame = graphicsEngine.snapshot()
+        publishFrame(engine, viewport)
+    }
+
+    protected override fun prepareFrameAfterBackgroundLoad(engine: GameEngine, viewport: KoolCanvasViewport): KoolCanvasFrame {
+        loopFailure = null
+        owner.resetClock()
+        resumeBackgroundFrameReady = false
+        graphicsEngine.beginFrame(viewport.width.coerceAtLeast(1), viewport.height.coerceAtLeast(1))
+        engine.renderGraphicsEngine = graphicsEngine
+        runGameLoop(engine, 0f)
+        publishFrame(engine, viewport)
+        return lastFrame
     }
 
     private fun loadMenuBackgroundInBackground(requestedViewport: KoolCanvasViewport, generation: Long) {
         val startedAt = System.nanoTime()
         var loadedCurrentRequest = false
         runCatching {
-            synchronized(gameLock) {
+            executeEngineTask("menu background") { synchronized(gameLock) {
                 if (generation != loadState.mapLoadGeneration) {
                     return@synchronized
                 }
@@ -301,6 +493,7 @@ internal class KoolDesktopGameSession(
                         current
                     }
                 }
+            }
             }
             if (loadedCurrentRequest) {
                 logger.info {

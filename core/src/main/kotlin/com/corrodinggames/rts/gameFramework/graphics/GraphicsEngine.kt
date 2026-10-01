@@ -2,6 +2,7 @@ package com.corrodinggames.rts.gameFramework.graphics
 
 import io.github.rwx.geometry.Rect
 import io.github.rwx.geometry.RectF
+import com.corrodinggames.rts.gameFramework.GameEngine
 import io.github.rwx.render.canvas.KoolCanvasBlendMode
 import io.github.rwx.render.canvas.KoolPaint
 import java.io.File
@@ -29,6 +30,20 @@ fun interface DrawTimeOperation {
 }
 
 interface GraphicsEngine {
+    /** Recording backends may copy display geometry here; legacy backends keep their original path. */
+    fun captureHudLayout(engine: GameEngine) {}
+    companion object {
+        const val DRAW_ROLE_GENERIC: Int = 0
+        const val DRAW_ROLE_SELECTION_RING: Int = 1
+        const val DRAW_ROLE_WAYPOINT: Int = 2
+        const val DRAW_ROLE_UNIT_SHADOW: Int = 3
+        const val DRAW_ROLE_PERFORMANCE_HUD: Int = 4
+    }
+
+    /** Optional display-only semantic scopes; legacy backends keep their original drawing. */
+    fun beginDrawRole(role: Int, unitId: Long) {}
+    fun endDrawRole() {}
+
     fun backendCapabilities(): GraphicsBackendCapabilities = GraphicsBackendCapabilities()
 
     fun supportsShaderEffects(): Boolean = false

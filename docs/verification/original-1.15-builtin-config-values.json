@@ -1,0 +1,46 @@
+{
+  "verification": "original-1.15-built-in-ini-values",
+  "generatedAtUtc": "2026-10-01T00:21:29.957790+00:00",
+  "originalDirectory": "/Users/wty/Library/Application Support/Steam/steamapps/common/Rusted Warfare/assets/units",
+  "rwxDirectory": "/Users/wty/code/RWX/assets/units",
+  "scope": "All relative *.ini paths under assets/units; ordered section/key/value records, not engine bytecode or every possible unit action.",
+  "normalization": {
+    "ignored": [
+      "UTF-8 BOM",
+      "line-ending style",
+      "blank lines",
+      "full-line # and ; comments",
+      "leading/trailing line, section, key and value whitespace",
+      "colon/equal property separator style"
+    ],
+    "preserved": [
+      "relative file paths",
+      "section and property order",
+      "duplicate properties",
+      "key/value case",
+      "numeric literals",
+      "interior value whitespace",
+      "inline comments and color literals",
+      "unsupported non-empty lines"
+    ]
+  },
+  "originalFileCount": 131,
+  "rwxFileCount": 131,
+  "comparedFileCount": 131,
+  "sameRelativePaths": true,
+  "onlyOriginalPaths": [],
+  "onlyRwxPaths": [],
+  "rawByteDifferenceCount": 131,
+  "normalizedMatchCount": 131,
+  "normalizedMismatchCount": 0,
+  "normalizedMismatchPaths": [],
+  "orderedRecordCount": 11719,
+  "preservedLiteralRecordCount": 4,
+  "relativePathManifestSha256": "5e1da004d17ed58fe97f55420d6f9713402ee1331b41e8da18564564c236689f",
+  "originalRawManifestSha256": "873299b36a2c72fc589a83d732e003246bb8d21db13c6a79d84a0df31ae6007e",
+  "rwxRawManifestSha256": "2a57bf722a1455c7dba85b180cee2e7fb25a00adc6e9b1371ac30c6c614389f6",
+  "originalNormalizedManifestSha256": "78227e4cfb35f6faeefcfc125fbeebef7d129ad7484635603536bdb029ce2e07",
+  "rwxNormalizedManifestSha256": "78227e4cfb35f6faeefcfc125fbeebef7d129ad7484635603536bdb029ce2e07",
+  "passed": true,
+  "reproductionHelper": "desktop/src/test/tools/original_peer/compare_builtin_configs.py"
+}

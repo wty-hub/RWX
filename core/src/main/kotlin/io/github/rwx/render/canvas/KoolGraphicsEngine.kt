@@ -87,11 +87,30 @@ class KoolGraphicsEngine private constructor(
     private val pendingPixelDependencySnapshots = mutableMapOf<KoolCanvasTextureId, ImmediatePixelSnapshot>()
     private val registeredTexturePixelRevisions = mutableMapOf<KoolCanvasTextureId, TexturePixelRegistration>()
     private var directBlitActive = false
+    private val drawRoleStack = ArrayDeque<Pair<KoolCanvasDrawRole, Long>>()
+    var hudLayout: io.github.rwx.session.GameHudLayoutSnapshot? = null
+        private set
+
+    override fun captureHudLayout(engine: com.corrodinggames.rts.gameFramework.GameEngine) {
+        hudLayout = io.github.rwx.session.captureGameHudLayout(engine)
+    }
+
+    override fun beginDrawRole(role: Int, unitId: Long) {
+        drawRoleStack.addLast(commandBuffer.state.drawRole to commandBuffer.state.semanticUnitId)
+        commandBuffer.setDrawRole(KoolCanvasDrawRole.entries.getOrElse(role) { KoolCanvasDrawRole.Generic }, unitId)
+    }
+
+    override fun endDrawRole() {
+        val previous = drawRoleStack.pollLast() ?: (KoolCanvasDrawRole.Generic to -1L)
+        commandBuffer.setDrawRole(previous.first, previous.second)
+    }
 
     fun beginFrame(width: Int, height: Int) {
         releasePendingImmediateFrameSnapshots()
         viewport = KoolCanvasViewport(width.coerceAtLeast(0), height.coerceAtLeast(0))
         commandBuffer.beginFrame(viewport)
+        drawRoleStack.clear()
+        hudLayout = null
     }
 
     fun snapshot(): KoolCanvasFrame = commandBuffer.snapshot()
@@ -167,6 +186,7 @@ class KoolGraphicsEngine private constructor(
             sourceKey = drawableName?.let { "drawable/$it" } ?: "drawable-id/$i",
             assetPath = assetPath,
             argbPixels = decodedImage?.argbPixels,
+            encodedBytes = imageBytes,
         )
     }
 
@@ -184,6 +204,7 @@ class KoolGraphicsEngine private constructor(
             sourceKey = path ?: "stream/${generatedTextureSerial++}",
             assetPath = assetPath,
             argbPixels = decodedImage?.argbPixels,
+            encodedBytes = imageBytes,
         )
     }
 
@@ -512,6 +533,7 @@ class KoolGraphicsEngine private constructor(
         assetPath: String?,
         argbPixels: IntArray? = null,
         hasAlpha: Boolean = false,
+        encodedBytes: ByteArray? = null,
     ): Texture {
         val texture = KoolBackendTexture(::releaseKoolTexture).apply {
             p = width.coerceAtLeast(1)
@@ -528,7 +550,7 @@ class KoolGraphicsEngine private constructor(
             texture.j = pixels
             textureStore.registerArgb(texture.toCanvasTextureId(), texture.width(), texture.height(), pixels)
         } else if (assetPath != null) {
-            textureStore.registerAsset(texture.toCanvasTextureId(), assetPath)
+            textureStore.registerAssetSnapshot(texture.toCanvasTextureId(), assetPath, encodedBytes)
         }
         return texture
     }
@@ -1687,7 +1709,9 @@ class KoolGraphicsEngine private constructor(
 
     private fun releaseKoolTexture(texture: Texture) {
         targetStates.remove(texture)?.releaseAuxiliaryTextures(textureStore)
-        textureStore.unregister(texture.toCanvasTextureId())
+        val id = texture.toCanvasTextureId()
+        registeredTexturePixelRevisions.remove(id)
+        textureStore.unregister(id)
     }
 
     private fun drawTexture(
@@ -2234,7 +2258,7 @@ class KoolGraphicsEngine private constructor(
         }
     }
 
-    private companion object {
+    internal companion object {
         val BACKEND_CAPABILITIES = GraphicsBackendCapabilities(
             fixedLayerBufferPixelSize = 512,
             clearLayerBuffersBeforeCopy = true,

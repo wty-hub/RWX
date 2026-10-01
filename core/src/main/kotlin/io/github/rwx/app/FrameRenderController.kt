@@ -12,6 +12,9 @@ internal class FrameRenderController(
     private val lastExternalFrame: () -> KoolCanvasFrame?,
     private val setLastExternalFrame: (KoolCanvasFrame) -> Unit,
 ) {
+    init { koolCanvasSceneHost.setPresentationTracker(gameSession.canvasPresentationTracker) }
+    private var submittedSequence = Long.MIN_VALUE
+    private var submittedGeneration = Long.MIN_VALUE
     fun render(
         screen: AppScreen,
         isExternalBattleRoomJoinPending: Boolean,
@@ -77,6 +80,18 @@ internal class FrameRenderController(
             rendersIntoKoolCanvas = gameSession.rendersIntoKoolCanvas,
             compositesExternalGameFrameInKool = gameSession.compositesExternalGameFrameInKool,
         )
+        val envelope = gameSession.currentFrameEnvelope()
+        if (shouldUseRwCanvasFrame && gameSession.usesIndependentEngineLoop && envelope != null &&
+            rwCanvasFrame === envelope.frame && externalFrameBackground == null) {
+            if (submittedSequence != envelope.sequence || submittedGeneration != envelope.generation) {
+                koolCanvasSceneHost.submit(envelope.retain())
+                submittedSequence = envelope.sequence
+                submittedGeneration = envelope.generation
+            }
+            return
+        }
+        submittedSequence = Long.MIN_VALUE
+        submittedGeneration = Long.MIN_VALUE
         koolCanvasSceneHost.render(
             if (shouldUseRwCanvasFrame) {
                 val frame = externalFrameBackground ?: rwCanvasFrame

@@ -39,8 +39,11 @@ public class SettingsEngine {
 
     public boolean batterySaving;
 
-    public boolean highRefreshRate;
-    public int maxFrameRate;
+    public volatile boolean highRefreshRate;
+
+    /** Local display-only simplification; never affects simulation or networking. */
+    public volatile boolean adaptiveBattleVisuals = true;
+    public volatile int maxFrameRate;
     public boolean slick2dFullScreen;
 
     public boolean renderBackground;
@@ -52,7 +55,7 @@ public class SettingsEngine {
     public boolean unlockedScreenRotation;
 
     public boolean renderDoubleScale;
-    public float uiRenderScale;
+    public volatile float uiRenderScale;
     public boolean renderClouds;
 
     public boolean renderWithLineWidth;
@@ -314,6 +317,7 @@ public class SettingsEngine {
         this.onscreenControls = getBooleanPref("onscreenControls", true);
         this.trackpad = getBooleanPref("trackpad", true);
         this.dpad = getBooleanPref("dpad", true);
+        this.adaptiveBattleVisuals = getBooleanPref("adaptiveBattleVisuals", true);
         this.batterySaving = getBooleanPref("batterySaving", false);
         this.highRefreshRate = getBooleanPref("highRefreshRate", GameEngine.isPC());
         this.maxFrameRate = normalizeMaxFrameRate(getIntPref("maxFrameRate", 0));
@@ -495,6 +499,7 @@ public class SettingsEngine {
         editorEdit.putBoolean("onscreenControls", this.onscreenControls);
         editorEdit.putBoolean("trackpad", this.trackpad);
         editorEdit.putBoolean("dpad", this.dpad);
+        editorEdit.putBoolean("adaptiveBattleVisuals", this.adaptiveBattleVisuals);
         editorEdit.putBoolean("batterySaving", this.batterySaving);
         editorEdit.putBoolean("highRefreshRate", this.highRefreshRate);
         editorEdit.putInt("maxFrameRate", normalizeMaxFrameRate(this.maxFrameRate));

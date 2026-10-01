@@ -27,6 +27,10 @@ class KoolCanvasCommandBuffer(
         state = state.copy(renderTarget = renderTargetId)
     }
 
+    fun setDrawRole(role: KoolCanvasDrawRole, unitId: Long = -1L) {
+        state = state.copy(drawRole = role, semanticUnitId = unitId)
+    }
+
     fun save() {
         stateStack.addLast(state)
     }

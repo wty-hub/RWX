@@ -196,6 +196,9 @@ public class FBOGraphics extends Graphics {
      * Enter the orthographic mode
      */
     protected void enterOrtho() {
+        StackTraceElement[] trace = new Throwable().getStackTrace();
+        System.out.println("[FBOORTHODBG] fbo=" + screenWidth + "x" + screenHeight
+                + " caller=" + (trace.length > 1 ? trace[1] : "?"));
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
         GL11.glOrtho(0, screenWidth, 0, screenHeight, 1, -1);

@@ -128,6 +128,7 @@ class SettingsModel {
     val slick2dFullScreen: MutableStateValue<Boolean> = mutableStateOf(true)
     val vsync: MutableStateValue<Boolean> = mutableStateOf(false)
     val showUnitHp: MutableStateValue<Boolean> = mutableStateOf(true)
+    val adaptiveBattleVisuals: MutableStateValue<Boolean> = mutableStateOf(true)
     val showWaypoints: MutableStateValue<Boolean> = mutableStateOf(true)
     val showZoomButton: MutableStateValue<Boolean> = mutableStateOf(true)
     val showFps: MutableStateValue<Boolean> = mutableStateOf(false)
@@ -213,6 +214,7 @@ class SettingsViewModel(val model: SettingsModel) {
         }
         add(SettingToggle(I18n.settings.display.showUnitHp, model.showUnitHp))
         add(SettingToggle(I18n.settings.display.showWaypoints, model.showWaypoints))
+        if (GameEngine.isPC()) add(SettingToggle(I18n.settings.display.adaptiveBattleVisuals, model.adaptiveBattleVisuals))
         add(SettingToggle(I18n.settings.display.showUnitIcons, model.showUnitIcons))
         add(SettingToggle(I18n.settings.display.useMinimapAllyColors, model.useMinimapAllyColors))
         if (isAndroidPlatform()) {

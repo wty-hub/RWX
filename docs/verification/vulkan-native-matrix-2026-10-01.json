@@ -1,0 +1,2286 @@
+{
+  "date": "2026-10-01",
+  "runtime": {
+    "kind": "runtime",
+    "jar": "/tmp/rwx-vulkan-matrix-snapshot.jar",
+    "sha256": "f7413c9ba8cd67d838978fe3e2bbc26c16b31d2ef3805d76bd87425d486a8a7f",
+    "argv": [
+      "/opt/homebrew/Cellar/openjdk@25/25.0.4.1/libexec/openjdk.jdk/Contents/Home/bin/java",
+      "-Djava.library.path=/Users/wty/code/RWX/desktop/build/slick-natives",
+      "-Dorg.lwjgl.librarypath=/Users/wty/code/RWX/desktop/build/slick-natives",
+      "-Drwx.slick.nativesDir=/Users/wty/code/RWX/desktop/build/slick-natives",
+      "-Dorg.lwjgl.opengl.contextAPI=native",
+      "-Dorg.lwjgl.system.stackSize=512",
+      "-Drwx.desktop.renderer=kool",
+      "--enable-native-access=ALL-UNNAMED",
+      "--sun-misc-unsafe-memory-access=allow",
+      "--add-opens",
+      "java.desktop/sun.awt=ALL-UNNAMED",
+      "--add-opens",
+      "java.desktop/sun.awt.im=ALL-UNNAMED",
+      "--add-opens",
+      "java.base/java.lang=ALL-UNNAMED",
+      "-cp",
+      "/tmp/rwx-vulkan-matrix-snapshot.jar",
+      "io.github.rwx.KoolDesktopMain",
+      "--screen=battleroom",
+      "--auto-start-battleroom"
+    ],
+    "operatingState": "display-asleep",
+    "hardware": {
+      "gpu": "Apple M5",
+      "gpuCores": 8,
+      "metal": "Metal 4",
+      "display": "P27FBA-RA",
+      "displayWidth": 1920,
+      "displayHeight": 1080,
+      "displayRefreshHz": 60,
+      "displayAsleep": true
+    },
+    "measurement": "Accepted queue-present timestamps; physical scanout is not measured; no awake-display or physical144Hz claim"
+  },
+  "runtimeBoundary": "Immutable fat jar frozen before the final total-selected-unit policy correction and honest HUD metric labels. Idle selection was well above the threshold on-screen, so the policy decision is the same there. Later source edits were not included in these measurements.",
+  "protocol": {
+    "framebuffer": [
+      1920,
+      1080
+    ],
+    "targetFps": 300,
+    "vsync": false,
+    "nativePresentMode": "VK_PRESENT_MODE_IMMEDIATE_KHR (0)",
+    "combat": "661/1000/2000 initial units × land-air/sea-air/all; 30 s initial warmup followed by three consecutive 30 s samples",
+    "idle": "2000 requested original movable unit forms, single allied team, no orders, no invulnerability or replenishment; same sampling protocol",
+    "delayProbes": "40 s each; 50 ms upload delay, 50 ms present delay, and visible=false at 15 s then restore after 10 s",
+    "quantileMethod": "sorted_values[int((sample_count - 1) * fraction)]",
+    "measurement": "Successful/suboptimal accepted vkQueuePresentKHR call timestamps. Physical scanout is not measured. Engine loops and original simulation ticks are separately recorded; this does not impose a fixed simulation step.",
+    "fiveSecondRangesScope": "Native and frame diagnostic ranges omit the first startup window; these are separate diagnostic windows, not the exact 30-second scenario windows."
+  },
+  "findings": {
+    "sustained2000Idle": "Three eligible windows; original unit behavior naturally creates helper/attached units, keeping 2250 living and at least 2135 visible. Accepted present FPS is 119.820–119.958; fresh snapshots 119.620–119.932 Hz; p95 8.967–9.143 ms and p99 9.344–9.490 ms. 144 FPS / 6.94 ms p95 target was not achieved.",
+    "combatQualification": "All nine cases exited normally but combat casualties reduce population during warmup; none qualifies as sustained 2000-unit combat. Initial populations are not reported as living populations during measurement.",
+    "presentationBottleneck": "Under the locked Mac/asleep 60 Hz display conditions, accepted native presentation stays near 120 Hz with immediate present mode, vsync false, target 300. A native thread sample in an earlier diagnostic run showed most render-thread waiting in CAMetalLayer nextDrawable during MoltenVK queue submission. Asynchronous MoltenVK submission moved the wait to the frame fence without removing the measured ceiling. This does not establish an awake-display hardware limit or physical 144 Hz capability.",
+    "renderEngineIndependence": "50 ms upload/present delay reduces acceptance to about 16 Hz while original engine progression remains about 252–266 Hz. Resource residency remains bounded; every case exits 0 with allocator/device/instance destroyed.",
+    "hiddenWindowLimitation": "The frozen probe toggled the Swing JFrame only. The actual Vulkan surface uses the provided AWT canvas (CanvasWrapper/AWTVK), whose isVisible flag remained true without a canvas ComponentHidden event. Native submissions continued. This is not proof of stopped acquisition, minimized rendering, or a complete native hidden-window acceptance. The subsequent diagnostic fix explicitly hides the actual canvas and records context/window classes; it is outside this frozen matrix.",
+    "shutdownWarnings": "Kool allocator cleanup frees retained loading/UI mesh buffers and cached font/icon/canvas/map/atlas images at proven device-idle shutdown. These warnings remain in logs. Residency is bounded during the measured runs, but inactive-scene ownership, terminal atlas release, and final retired-texture queue draining remain cleanup work; no warning-free teardown claim.",
+    "unverified": "Original 1.15 two-way 10-minute mixed multiplayer interoperability, physical awake-display 144 Hz presentation, native surface-zero/minimized acquisition, and full GPU visual correctness of every hidden/transport/upgraded unit form are not established by this matrix.",
+    "gpuBudget": "In sustained idle capacity, native GPU timestamp averages span 6.45–7.13 ms at roughly 575–581 draw calls, near the 6.94 ms target. Native drawable waiting is observed but is not established as the sole remaining bottleneck; removing that wait alone does not prove 144 FPS."
+  },
+  "rawArtifacts": "build/rwx-benchmark/<run name>{.log,-frame.jsonl,-native.jsonl,-trace.csv,-scenario.ndjson}; full manifest and summary remain in the ignored build directory.",
+  "reproduce": "desktop/tools/README.md; desktop/tools/vulkan_native_matrix.py; desktop/tools/analyze_vulkan_matrix.py",
+  "runs": [
+    {
+      "name": "661-land-air-vulkan-combat",
+      "units": 661,
+      "mix": "land-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 133.24431490898132,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 67,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 81470315436208,
+          "sampleEndNanos": 81500317697458,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 18,
+          "minimumVisibleUnits": 13,
+          "framesWithProjectiles": 6609,
+          "freshEngineFrames": 6639,
+          "engineFps": 221.24875602249574,
+          "engineIntervalP95Ms": 4.822125,
+          "engineIntervalP99Ms": 9.83175,
+          "tick": 13141,
+          "acceptedPresentFps": 119.49099336637501,
+          "freshSnapshotHz": 116.32456536921863,
+          "repeatRatio": 0.026499302649930265,
+          "presentIntervalP95Ms": 9.348875,
+          "presentIntervalP99Ms": 9.699083,
+          "presentIntervalMaxMs": 32.6015,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 81500317697458,
+          "sampleEndNanos": 81530319197041,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 9,
+          "minimumVisibleUnits": 4,
+          "framesWithProjectiles": 7094,
+          "freshEngineFrames": 7312,
+          "engineFps": 243.72115066352416,
+          "engineIntervalP95Ms": 4.14075,
+          "engineIntervalP99Ms": 4.174708,
+          "tick": 20453,
+          "acceptedPresentFps": 119.26070528912601,
+          "freshSnapshotHz": 117.42746359239545,
+          "repeatRatio": 0.015371716042481833,
+          "presentIntervalP95Ms": 9.246875,
+          "presentIntervalP99Ms": 9.642417,
+          "presentIntervalMaxMs": 42.643083,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 81530319197041,
+          "sampleEndNanos": 81560321895125,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 2,
+          "minimumVisibleUnits": 2,
+          "framesWithProjectiles": 4025,
+          "freshEngineFrames": 6607,
+          "engineFps": 220.21352818010115,
+          "engineIntervalP95Ms": 4.948166,
+          "engineIntervalP99Ms": 4.969167,
+          "tick": 27060,
+          "acceptedPresentFps": 119.62257494148372,
+          "freshSnapshotHz": 118.85597721965198,
+          "repeatRatio": 0.006408470325996099,
+          "presentIntervalP95Ms": 9.460791,
+          "presentIntervalP99Ms": 9.727083,
+          "presentIntervalMaxMs": 23.463541,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 7
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 160
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1105,
+          "maximum": 0.2581
+        },
+        "gpuAvgMs": {
+          "minimum": 2.1185,
+          "maximum": 5.8099
+        },
+        "drawCommandsAvg": {
+          "minimum": 41.67,
+          "maximum": 327.09
+        },
+        "gpuBufferBytes": {
+          "minimum": 2003272,
+          "maximum": 64496240
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 103407924
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 5.2872,
+          "maximum": 7.1647
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0009,
+          "maximum": 0.0402
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0094,
+          "maximum": 0.0254
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0079,
+          "maximum": 0.0195
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 210.85,
+          "maximum": 247.67
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 210.85,
+          "maximum": 247.67
+        },
+        "freshSnapshotHz": {
+          "minimum": 113.56,
+          "maximum": 120.01
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.04181
+        }
+      }
+    },
+    {
+      "name": "661-sea-air-vulkan-combat",
+      "units": 661,
+      "mix": "sea-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.16865992546082,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 47,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 81601325624458,
+          "sampleEndNanos": 81631325790875,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 113,
+          "minimumVisibleUnits": 89,
+          "framesWithProjectiles": 6392,
+          "freshEngineFrames": 6392,
+          "engineFps": 213.03725893953148,
+          "engineIntervalP95Ms": 4.806042,
+          "engineIntervalP99Ms": 7.951792,
+          "tick": 13052,
+          "acceptedPresentFps": 119.86600174198627,
+          "freshSnapshotHz": 117.69934709425848,
+          "repeatRatio": 0.018075639599555063,
+          "presentIntervalP95Ms": 9.413875,
+          "presentIntervalP99Ms": 9.695041,
+          "presentIntervalMaxMs": 18.742708,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 81631325790875,
+          "sampleEndNanos": 81661328863750,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 95,
+          "minimumVisibleUnits": 70,
+          "framesWithProjectiles": 6213,
+          "freshEngineFrames": 6213,
+          "engineFps": 207.07878909219892,
+          "engineIntervalP95Ms": 4.878125,
+          "engineIntervalP99Ms": 10.064041,
+          "tick": 19265,
+          "acceptedPresentFps": 119.85439008136929,
+          "freshSnapshotHz": 115.25486120727892,
+          "repeatRatio": 0.03837597330367074,
+          "presentIntervalP95Ms": 9.40825,
+          "presentIntervalP99Ms": 9.667417,
+          "presentIntervalMaxMs": 15.759833,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 81661328863750,
+          "sampleEndNanos": 81691331350333,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 86,
+          "minimumVisibleUnits": 10,
+          "framesWithProjectiles": 6243,
+          "freshEngineFrames": 6243,
+          "engineFps": 208.08275283214047,
+          "engineIntervalP95Ms": 4.914834,
+          "engineIntervalP99Ms": 9.920291,
+          "tick": 25508,
+          "acceptedPresentFps": 119.85673220957507,
+          "freshSnapshotHz": 116.39035285757402,
+          "repeatRatio": 0.028921023359288096,
+          "presentIntervalP95Ms": 9.381292,
+          "presentIntervalP99Ms": 9.770208,
+          "presentIntervalMaxMs": 17.418625,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 9
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 149
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.153,
+          "maximum": 0.2527
+        },
+        "gpuAvgMs": {
+          "minimum": 2.1445,
+          "maximum": 5.7959
+        },
+        "drawCommandsAvg": {
+          "minimum": 112.92,
+          "maximum": 374.94
+        },
+        "gpuBufferBytes": {
+          "minimum": 8191800,
+          "maximum": 76655728
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 88727860
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 5.0348,
+          "maximum": 6.8787
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0006,
+          "maximum": 0.0185
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0095,
+          "maximum": 0.0156
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0059,
+          "maximum": 0.0107
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          29
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 202.01,
+          "maximum": 230.15
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 202.01,
+          "maximum": 230.15
+        },
+        "freshSnapshotHz": {
+          "minimum": 113.69,
+          "maximum": 119.79
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.05008
+        }
+      }
+    },
+    {
+      "name": "661-all-vulkan-combat",
+      "units": 661,
+      "mix": "all",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.00559997558594,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 81732193782750,
+          "sampleEndNanos": 81762195476333,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 112,
+          "minimumVisibleUnits": 98,
+          "framesWithProjectiles": 6374,
+          "freshEngineFrames": 6374,
+          "engineFps": 212.39095430388386,
+          "engineIntervalP95Ms": 4.815959,
+          "engineIntervalP99Ms": 8.183459,
+          "tick": 12933,
+          "acceptedPresentFps": 119.85990024368552,
+          "freshSnapshotHz": 117.5266986260387,
+          "repeatRatio": 0.01946607341490545,
+          "presentIntervalP95Ms": 9.422,
+          "presentIntervalP99Ms": 9.6965,
+          "presentIntervalMaxMs": 24.910666,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 81762195476333,
+          "sampleEndNanos": 81792197844666,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 63,
+          "minimumVisibleUnits": 48,
+          "framesWithProjectiles": 6240,
+          "freshEngineFrames": 6297,
+          "engineFps": 209.8834308714838,
+          "engineIntervalP95Ms": 4.887291,
+          "engineIntervalP99Ms": 9.888917,
+          "tick": 19230,
+          "acceptedPresentFps": 119.62388969314839,
+          "freshSnapshotHz": 115.72419755213463,
+          "repeatRatio": 0.032599609919197546,
+          "presentIntervalP95Ms": 9.402334,
+          "presentIntervalP99Ms": 9.742042,
+          "presentIntervalMaxMs": 23.934791,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 81792197844666,
+          "sampleEndNanos": 81822199896375,
+          "requestedUnits": 661,
+          "minimumLivingUnits": 32,
+          "minimumVisibleUnits": 3,
+          "framesWithProjectiles": 4320,
+          "freshEngineFrames": 6167,
+          "engineFps": 205.5526088620808,
+          "engineIntervalP95Ms": 4.949625,
+          "engineIntervalP99Ms": 12.475167,
+          "tick": 25397,
+          "acceptedPresentFps": 119.85846950997934,
+          "freshSnapshotHz": 113.79221771609274,
+          "repeatRatio": 0.05061179087875417,
+          "presentIntervalP95Ms": 9.385917,
+          "presentIntervalP99Ms": 9.733458,
+          "presentIntervalMaxMs": 20.090667,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 8
+        },
+        "retirementCallbacks": {
+          "minimum": 0,
+          "maximum": 53
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1277,
+          "maximum": 0.2414
+        },
+        "gpuAvgMs": {
+          "minimum": 1.9844,
+          "maximum": 5.7903
+        },
+        "drawCommandsAvg": {
+          "minimum": 82.76,
+          "maximum": 338.04
+        },
+        "gpuBufferBytes": {
+          "minimum": 4819328,
+          "maximum": 66369960
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 104206500
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 5.14,
+          "maximum": 7.2332
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0005,
+          "maximum": 0.0256
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0095,
+          "maximum": 0.0199
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0063,
+          "maximum": 0.015
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 200.89,
+          "maximum": 228.12
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 200.89,
+          "maximum": 228.12
+        },
+        "freshSnapshotHz": {
+          "minimum": 110.83,
+          "maximum": 119.16
+        },
+        "repeatRatio": {
+          "minimum": 0.00335,
+          "maximum": 0.07654
+        }
+      }
+    },
+    {
+      "name": "1000-land-air-vulkan-combat",
+      "units": 1000,
+      "mix": "land-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.12514424324036,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 67,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 81863295376000,
+          "sampleEndNanos": 81893296921166,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 38,
+          "minimumVisibleUnits": 38,
+          "framesWithProjectiles": 3953,
+          "freshEngineFrames": 6152,
+          "engineFps": 205.03256092854969,
+          "engineIntervalP95Ms": 4.894125,
+          "engineIntervalP99Ms": 12.631667,
+          "tick": 12751,
+          "acceptedPresentFps": 119.82716157146878,
+          "freshSnapshotHz": 113.72747573904074,
+          "repeatRatio": 0.05090403337969402,
+          "presentIntervalP95Ms": 9.347625,
+          "presentIntervalP99Ms": 9.62675,
+          "presentIntervalMaxMs": 36.060541,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 81893296921166,
+          "sampleEndNanos": 81923299507041,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 38,
+          "minimumVisibleUnits": 38,
+          "framesWithProjectiles": 0,
+          "freshEngineFrames": 6357,
+          "engineFps": 211.881736677139,
+          "engineIntervalP95Ms": 4.898542,
+          "engineIntervalP99Ms": 11.880125,
+          "tick": 19108,
+          "acceptedPresentFps": 119.92299647071671,
+          "freshSnapshotHz": 115.49004523930888,
+          "repeatRatio": 0.03696498054474708,
+          "presentIntervalP95Ms": 9.366042,
+          "presentIntervalP99Ms": 9.646542,
+          "presentIntervalMaxMs": 15.061416,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 81923299507041,
+          "sampleEndNanos": 81953302582375,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 38,
+          "minimumVisibleUnits": 38,
+          "framesWithProjectiles": 0,
+          "freshEngineFrames": 6302,
+          "engineFps": 210.04513470185722,
+          "engineIntervalP95Ms": 4.910417,
+          "engineIntervalP99Ms": 12.62175,
+          "tick": 25410,
+          "acceptedPresentFps": 119.98769992489464,
+          "freshSnapshotHz": 114.95488251137823,
+          "repeatRatio": 0.041944444444444444,
+          "presentIntervalP95Ms": 9.339959,
+          "presentIntervalP99Ms": 9.63425,
+          "presentIntervalMaxMs": 12.866042,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 57901056,
+          "maximum": 57901056
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 7
+        },
+        "retirementCallbacks": {
+          "minimum": 0,
+          "maximum": 34
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1326,
+          "maximum": 0.29
+        },
+        "gpuAvgMs": {
+          "minimum": 2.5656,
+          "maximum": 6.8221
+        },
+        "drawCommandsAvg": {
+          "minimum": 104.0,
+          "maximum": 423.71
+        },
+        "gpuBufferBytes": {
+          "minimum": 2757024,
+          "maximum": 146005520
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 89276436
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 4.2123,
+          "maximum": 7.078
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0007,
+          "maximum": 0.0672
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0098,
+          "maximum": 0.02
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0073,
+          "maximum": 0.0154
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 202.56,
+          "maximum": 235.87
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 202.56,
+          "maximum": 235.87
+        },
+        "freshSnapshotHz": {
+          "minimum": 113.09,
+          "maximum": 118.64
+        },
+        "repeatRatio": {
+          "minimum": 0.00835,
+          "maximum": 0.05667
+        }
+      }
+    },
+    {
+      "name": "1000-sea-air-vulkan-combat",
+      "units": 1000,
+      "mix": "sea-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.01340198516846,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 47,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 81994337366750,
+          "sampleEndNanos": 82024340765125,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 205,
+          "minimumVisibleUnits": 153,
+          "framesWithProjectiles": 6573,
+          "freshEngineFrames": 6573,
+          "engineFps": 219.04291285351638,
+          "engineIntervalP95Ms": 4.739833,
+          "engineIntervalP99Ms": 5.360333,
+          "tick": 13375,
+          "acceptedPresentFps": 119.91974892410833,
+          "freshSnapshotHz": 119.2864873261211,
+          "repeatRatio": 0.0052807115063924406,
+          "presentIntervalP95Ms": 9.370167,
+          "presentIntervalP99Ms": 9.751291,
+          "presentIntervalMaxMs": 15.573375,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82024340765125,
+          "sampleEndNanos": 82054344694833,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 165,
+          "minimumVisibleUnits": 38,
+          "framesWithProjectiles": 6299,
+          "freshEngineFrames": 6299,
+          "engineFps": 209.93916667923958,
+          "engineIntervalP95Ms": 4.845,
+          "engineIntervalP99Ms": 8.887416,
+          "tick": 19674,
+          "acceptedPresentFps": 119.85096735649238,
+          "freshSnapshotHz": 116.98467614607571,
+          "repeatRatio": 0.023915461624026697,
+          "presentIntervalP95Ms": 9.466542,
+          "presentIntervalP99Ms": 9.753666,
+          "presentIntervalMaxMs": 13.670291,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82054344694833,
+          "sampleEndNanos": 82084347446083,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 153,
+          "minimumVisibleUnits": 47,
+          "framesWithProjectiles": 6043,
+          "freshEngineFrames": 6043,
+          "engineFps": 201.41486191203884,
+          "engineIntervalP95Ms": 4.899333,
+          "engineIntervalP99Ms": 14.212708,
+          "tick": 25717,
+          "acceptedPresentFps": 119.95566573248846,
+          "freshSnapshotHz": 112.7896562486082,
+          "repeatRatio": 0.059738816337871634,
+          "presentIntervalP95Ms": 9.361166,
+          "presentIntervalP99Ms": 9.654833,
+          "presentIntervalMaxMs": 13.277291,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 9
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 103
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1708,
+          "maximum": 0.3209
+        },
+        "gpuAvgMs": {
+          "minimum": 2.6017,
+          "maximum": 7.0882
+        },
+        "drawCommandsAvg": {
+          "minimum": 168.82,
+          "maximum": 469.34
+        },
+        "gpuBufferBytes": {
+          "minimum": 8780992,
+          "maximum": 157331808
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 88727860
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 4.0457,
+          "maximum": 6.9135
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0005,
+          "maximum": 0.0019
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0095,
+          "maximum": 0.0231
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0061,
+          "maximum": 0.0094
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          27
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 195.58,
+          "maximum": 239.88
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 195.58,
+          "maximum": 239.88
+        },
+        "freshSnapshotHz": {
+          "minimum": 109.68,
+          "maximum": 119.58
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.085
+        }
+      }
+    },
+    {
+      "name": "1000-all-vulkan-combat",
+      "units": 1000,
+      "mix": "all",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.06180882453918,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 82125414861291,
+          "sampleEndNanos": 82155417641666,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 98,
+          "minimumVisibleUnits": 63,
+          "framesWithProjectiles": 6403,
+          "freshEngineFrames": 6403,
+          "engineFps": 213.38080224454703,
+          "engineIntervalP95Ms": 4.824666,
+          "engineIntervalP99Ms": 7.249458,
+          "tick": 13021,
+          "acceptedPresentFps": 119.82222830906551,
+          "freshSnapshotHz": 117.92240438316377,
+          "repeatRatio": 0.015855354659248956,
+          "presentIntervalP95Ms": 9.432208,
+          "presentIntervalP99Ms": 9.749209,
+          "presentIntervalMaxMs": 13.789291,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82155417641666,
+          "sampleEndNanos": 82185421741833,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 63,
+          "minimumVisibleUnits": 32,
+          "framesWithProjectiles": 6197,
+          "freshEngineFrames": 6197,
+          "engineFps": 206.53843859699444,
+          "engineIntervalP95Ms": 4.892625,
+          "engineIntervalP99Ms": 10.12325,
+          "tick": 19218,
+          "acceptedPresentFps": 119.98360157320961,
+          "freshSnapshotHz": 115.85083307457684,
+          "repeatRatio": 0.034444444444444444,
+          "presentIntervalP95Ms": 9.378292,
+          "presentIntervalP99Ms": 9.665084,
+          "presentIntervalMaxMs": 12.73,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82185421741833,
+          "sampleEndNanos": 82215424087125,
+          "requestedUnits": 1000,
+          "minimumLivingUnits": 40,
+          "minimumVisibleUnits": 16,
+          "framesWithProjectiles": 6410,
+          "freshEngineFrames": 6410,
+          "engineFps": 213.64996428159898,
+          "engineIntervalP95Ms": 4.902458,
+          "engineIntervalP99Ms": 7.261125,
+          "tick": 25628,
+          "acceptedPresentFps": 119.89062738235751,
+          "freshSnapshotHz": 117.9241144505924,
+          "repeatRatio": 0.016402557686961357,
+          "presentIntervalP95Ms": 9.424125,
+          "presentIntervalP99Ms": 9.711042,
+          "presentIntervalMaxMs": 14.423541,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 9
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 194
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1666,
+          "maximum": 0.2906
+        },
+        "gpuAvgMs": {
+          "minimum": 2.3893,
+          "maximum": 6.6472
+        },
+        "drawCommandsAvg": {
+          "minimum": 123.27,
+          "maximum": 419.99
+        },
+        "gpuBufferBytes": {
+          "minimum": 6532008,
+          "maximum": 140347096
+        },
+        "gpuTextureBytes": {
+          "minimum": 86880708,
+          "maximum": 105255076
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 4.2056,
+          "maximum": 6.8687
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0005,
+          "maximum": 0.0573
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0097,
+          "maximum": 0.0181
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0066,
+          "maximum": 0.014
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          27
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 203.2,
+          "maximum": 239.32
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 203.2,
+          "maximum": 239.32
+        },
+        "freshSnapshotHz": {
+          "minimum": 112.6,
+          "maximum": 119.65
+        },
+        "repeatRatio": {
+          "minimum": 0.00167,
+          "maximum": 0.06167
+        }
+      }
+    },
+    {
+      "name": "2000-land-air-vulkan-combat",
+      "units": 2000,
+      "mix": "land-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.05095791816711,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 67,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 82256493422458,
+          "sampleEndNanos": 82286497170416,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 45,
+          "minimumVisibleUnits": 41,
+          "framesWithProjectiles": 6163,
+          "freshEngineFrames": 6163,
+          "engineFps": 205.3774467071269,
+          "engineIntervalP95Ms": 4.845,
+          "engineIntervalP99Ms": 14.891375,
+          "tick": 12653,
+          "acceptedPresentFps": 119.91835170181307,
+          "freshSnapshotHz": 113.65246784413078,
+          "repeatRatio": 0.05225125069483046,
+          "presentIntervalP95Ms": 9.404709,
+          "presentIntervalP99Ms": 9.707708,
+          "presentIntervalMaxMs": 12.78475,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82286497170416,
+          "sampleEndNanos": 82316499885916,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 26,
+          "minimumVisibleUnits": 26,
+          "framesWithProjectiles": 4895,
+          "freshEngineFrames": 6166,
+          "engineFps": 205.51473082494817,
+          "engineIntervalP95Ms": 4.903083,
+          "engineIntervalP99Ms": 13.4115,
+          "tick": 18819,
+          "acceptedPresentFps": 119.85581771756627,
+          "freshSnapshotHz": 113.95635171756369,
+          "repeatRatio": 0.04922135706340378,
+          "presentIntervalP95Ms": 9.292541,
+          "presentIntervalP99Ms": 9.677042,
+          "presentIntervalMaxMs": 15.679708,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82316499885916,
+          "sampleEndNanos": 82346503452083,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 24,
+          "minimumVisibleUnits": 24,
+          "framesWithProjectiles": 223,
+          "freshEngineFrames": 6342,
+          "engineFps": 211.37487339672876,
+          "engineIntervalP95Ms": 4.921084,
+          "engineIntervalP99Ms": 11.491292,
+          "tick": 25161,
+          "acceptedPresentFps": 120.01906639886792,
+          "freshSnapshotHz": 115.71957748871687,
+          "repeatRatio": 0.0358233823937795,
+          "presentIntervalP95Ms": 9.386375,
+          "presentIntervalP99Ms": 9.680667,
+          "presentIntervalMaxMs": 11.998125,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 57901056,
+          "maximum": 57901056
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 7
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 59
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.0892,
+          "maximum": 0.4719
+        },
+        "gpuAvgMs": {
+          "minimum": 2.4466,
+          "maximum": 7.2829
+        },
+        "drawCommandsAvg": {
+          "minimum": 94.0,
+          "maximum": 650.13
+        },
+        "gpuBufferBytes": {
+          "minimum": 2812760,
+          "maximum": 305255480
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 89526436
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 1.6026,
+          "maximum": 7.3829
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0006,
+          "maximum": 0.0257
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0092,
+          "maximum": 0.0229
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0063,
+          "maximum": 0.0164
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 198.17,
+          "maximum": 253.68
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 198.17,
+          "maximum": 253.68
+        },
+        "freshSnapshotHz": {
+          "minimum": 103.74,
+          "maximum": 119.27
+        },
+        "repeatRatio": {
+          "minimum": 0.00172,
+          "maximum": 0.07333
+        }
+      }
+    },
+    {
+      "name": "2000-sea-air-vulkan-combat",
+      "units": 2000,
+      "mix": "sea-air",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.06820464134216,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 47,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 82387565436291,
+          "sampleEndNanos": 82417566059208,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 307,
+          "minimumVisibleUnits": 222,
+          "framesWithProjectiles": 6695,
+          "freshEngineFrames": 6695,
+          "engineFps": 223.13115658519294,
+          "engineIntervalP95Ms": 4.660042,
+          "engineIntervalP99Ms": 6.597625,
+          "tick": 13721,
+          "acceptedPresentFps": 119.79751253642944,
+          "freshSnapshotHz": 118.19754575797963,
+          "repeatRatio": 0.01335559265442404,
+          "presentIntervalP95Ms": 9.433209,
+          "presentIntervalP99Ms": 9.826,
+          "presentIntervalMaxMs": 14.271834,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82417566059208,
+          "sampleEndNanos": 82447566634750,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 163,
+          "minimumVisibleUnits": 106,
+          "framesWithProjectiles": 6301,
+          "freshEngineFrames": 6301,
+          "engineFps": 210.02930397714437,
+          "engineIntervalP95Ms": 4.793292,
+          "engineIntervalP99Ms": 8.520709,
+          "tick": 20022,
+          "acceptedPresentFps": 119.93103248845665,
+          "freshSnapshotHz": 116.49776502144414,
+          "repeatRatio": 0.028627015008337964,
+          "presentIntervalP95Ms": 9.464792,
+          "presentIntervalP99Ms": 9.728,
+          "presentIntervalMaxMs": 12.918125,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82447566634750,
+          "sampleEndNanos": 82477568387625,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 82,
+          "minimumVisibleUnits": 37,
+          "framesWithProjectiles": 6180,
+          "freshEngineFrames": 6180,
+          "engineFps": 205.9879642949029,
+          "engineIntervalP95Ms": 4.869042,
+          "engineIntervalP99Ms": 11.422167,
+          "tick": 26202,
+          "acceptedPresentFps": 119.89299475222745,
+          "freshSnapshotHz": 114.99328103841665,
+          "repeatRatio": 0.0408673894912427,
+          "presentIntervalP95Ms": 9.377458,
+          "presentIntervalP99Ms": 9.680792,
+          "presentIntervalMaxMs": 24.400083,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 7
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 169
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1606,
+          "maximum": 0.52
+        },
+        "gpuAvgMs": {
+          "minimum": 2.6245,
+          "maximum": 7.0773
+        },
+        "drawCommandsAvg": {
+          "minimum": 137.21,
+          "maximum": 692.96
+        },
+        "gpuBufferBytes": {
+          "minimum": 8619536,
+          "maximum": 376112664
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 88227860
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 1.379,
+          "maximum": 6.8529
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0005,
+          "maximum": 0.0463
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0093,
+          "maximum": 0.0216
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.006,
+          "maximum": 0.0132
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          31
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 200.63,
+          "maximum": 267.24
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 200.63,
+          "maximum": 267.24
+        },
+        "freshSnapshotHz": {
+          "minimum": 105.97,
+          "maximum": 119.09
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.06333
+        }
+      }
+    },
+    {
+      "name": "2000-all-vulkan-combat",
+      "units": 2000,
+      "mix": "all",
+      "mode": "combat",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.1080687046051,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 82518642088000,
+          "sampleEndNanos": 82548644119041,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 202,
+          "minimumVisibleUnits": 164,
+          "framesWithProjectiles": 6504,
+          "freshEngineFrames": 6504,
+          "engineFps": 216.75322164912345,
+          "engineIntervalP95Ms": 4.734333,
+          "engineIntervalP99Ms": 8.454792,
+          "tick": 13130,
+          "acceptedPresentFps": 119.89188315565812,
+          "freshSnapshotHz": 117.29205916729524,
+          "repeatRatio": 0.021684737281067557,
+          "presentIntervalP95Ms": 9.414625,
+          "presentIntervalP99Ms": 9.724584,
+          "presentIntervalMaxMs": 15.850334,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82548644119041,
+          "sampleEndNanos": 82578644974125,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 113,
+          "minimumVisibleUnits": 73,
+          "framesWithProjectiles": 6338,
+          "freshEngineFrames": 6338,
+          "engineFps": 211.2606451467502,
+          "engineIntervalP95Ms": 4.813667,
+          "engineIntervalP99Ms": 8.13075,
+          "tick": 19468,
+          "acceptedPresentFps": 119.86325022841805,
+          "freshSnapshotHz": 117.56331578298956,
+          "repeatRatio": 0.01918798665183537,
+          "presentIntervalP95Ms": 9.448667,
+          "presentIntervalP99Ms": 9.746542,
+          "presentIntervalMaxMs": 12.976416,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82578644974125,
+          "sampleEndNanos": 82608645239666,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 107,
+          "minimumVisibleUnits": 66,
+          "framesWithProjectiles": 6374,
+          "freshEngineFrames": 6374,
+          "engineFps": 212.46478606294147,
+          "engineIntervalP95Ms": 4.854375,
+          "engineIntervalP99Ms": 8.344833,
+          "tick": 25842,
+          "acceptedPresentFps": 119.7322735390784,
+          "freshSnapshotHz": 117.03229743755686,
+          "repeatRatio": 0.02255011135857461,
+          "presentIntervalP95Ms": 9.413209,
+          "presentIntervalP99Ms": 9.705916,
+          "presentIntervalMaxMs": 16.46625,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": false
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 53706752,
+          "maximum": 53706752
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 9
+        },
+        "retirementCallbacks": {
+          "minimum": 0,
+          "maximum": 203
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.1464,
+          "maximum": 0.5226
+        },
+        "gpuAvgMs": {
+          "minimum": 3.104,
+          "maximum": 7.1368
+        },
+        "drawCommandsAvg": {
+          "minimum": 204.21,
+          "maximum": 688.51
+        },
+        "gpuBufferBytes": {
+          "minimum": 9332176,
+          "maximum": 289474320
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 94519316
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 1.5805,
+          "maximum": 7.019
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0006,
+          "maximum": 0.0138
+        },
+        "acquireAvgMs": {
+          "minimum": 0.009,
+          "maximum": 0.0215
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0057,
+          "maximum": 0.0095
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          28
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 205.56,
+          "maximum": 262.03
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 205.56,
+          "maximum": 262.03
+        },
+        "freshSnapshotHz": {
+          "minimum": 105.57,
+          "maximum": 119.33
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.03833
+        }
+      }
+    },
+    {
+      "name": "2000-all-vulkan-idle",
+      "units": 2000,
+      "mix": "all",
+      "mode": "idle",
+      "delay": null,
+      "exitCode": 0,
+      "elapsedSeconds": 131.05387806892395,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [
+        {
+          "repetition": 1,
+          "sampleStartNanos": 82649737606583,
+          "sampleEndNanos": 82679740894166,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 2250,
+          "minimumVisibleUnits": 2142,
+          "framesWithProjectiles": 0,
+          "freshEngineFrames": 7670,
+          "engineFps": 255.60647418774755,
+          "engineIntervalP95Ms": 3.9735,
+          "engineIntervalP99Ms": 4.580375,
+          "tick": 15247,
+          "acceptedPresentFps": 119.82020270461773,
+          "freshSnapshotHz": 119.62022461943617,
+          "repeatRatio": 0.0016689847009735744,
+          "presentIntervalP95Ms": 9.143333,
+          "presentIntervalP99Ms": 9.49025,
+          "presentIntervalMaxMs": 22.525584,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": true
+        },
+        {
+          "repetition": 2,
+          "sampleStartNanos": 82679740894166,
+          "sampleEndNanos": 82709743060000,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 2250,
+          "minimumVisibleUnits": 2136,
+          "framesWithProjectiles": 0,
+          "freshEngineFrames": 7637,
+          "engineFps": 254.5482896886517,
+          "engineIntervalP95Ms": 3.985833,
+          "engineIntervalP99Ms": 4.306,
+          "tick": 22884,
+          "acceptedPresentFps": 119.95800636237495,
+          "freshSnapshotHz": 119.92467543535011,
+          "repeatRatio": 0.0002778549597110308,
+          "presentIntervalP95Ms": 8.967459,
+          "presentIntervalP99Ms": 9.343542,
+          "presentIntervalMaxMs": 10.64525,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": true
+        },
+        {
+          "repetition": 3,
+          "sampleStartNanos": 82709743060000,
+          "sampleEndNanos": 82739743444541,
+          "requestedUnits": 2000,
+          "minimumLivingUnits": 2250,
+          "minimumVisibleUnits": 2135,
+          "framesWithProjectiles": 0,
+          "freshEngineFrames": 7625,
+          "engineFps": 254.16340879162067,
+          "engineIntervalP95Ms": 3.986208,
+          "engineIntervalP99Ms": 4.460417,
+          "tick": 30509,
+          "acceptedPresentFps": 119.93179604357393,
+          "freshSnapshotHz": 119.93179604357393,
+          "repeatRatio": 0.0,
+          "presentIntervalP95Ms": 8.969541,
+          "presentIntervalP99Ms": 9.35375,
+          "presentIntervalMaxMs": 13.147125,
+          "eligible2000CombatWindow": false,
+          "eligible2000IdleWindow": true
+        }
+      ],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 49512448,
+          "maximum": 49512448
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 2
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 2
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.2965,
+          "maximum": 0.3487
+        },
+        "gpuAvgMs": {
+          "minimum": 6.4536,
+          "maximum": 7.1309
+        },
+        "drawCommandsAvg": {
+          "minimum": 575.0,
+          "maximum": 580.93
+        },
+        "gpuBufferBytes": {
+          "minimum": 12415160,
+          "maximum": 15041984
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 87179284
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 3.317,
+          "maximum": 4.6674
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0005,
+          "maximum": 0.0188
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0095,
+          "maximum": 0.016
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0059,
+          "maximum": 0.0099
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 252.99,
+          "maximum": 265.33
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 252.99,
+          "maximum": 265.33
+        },
+        "freshSnapshotHz": {
+          "minimum": 117.88,
+          "maximum": 120.02
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.01007
+        }
+      }
+    },
+    {
+      "name": "2000-all-vulkan-idle-delay-upload",
+      "units": 2000,
+      "mix": "all",
+      "mode": "idle",
+      "delay": "upload",
+      "exitCode": 0,
+      "elapsedSeconds": 41.14898490905762,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 66289664,
+          "maximum": 66289664
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 0
+        },
+        "retirementCallbacks": {
+          "minimum": 2,
+          "maximum": 85
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 56.9076,
+          "maximum": 58.1985
+        },
+        "gpuAvgMs": {
+          "minimum": 9.9049,
+          "maximum": 10.8979
+        },
+        "drawCommandsAvg": {
+          "minimum": 577.0,
+          "maximum": 585.03
+        },
+        "gpuBufferBytes": {
+          "minimum": 13567784,
+          "maximum": 23869104
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 89526436
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 0.6004,
+          "maximum": 0.637
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0027,
+          "maximum": 0.0039
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0151,
+          "maximum": 0.0238
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0078,
+          "maximum": 0.009
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondWindowsAfterFirst": [
+        {
+          "seconds": 5.009,
+          "acceptedPresentFps": 15.57,
+          "presentFps": 15.57,
+          "producedSnapshotHz": 266.12,
+          "freshSnapshotHz": 15.57,
+          "simulationTicksPerSecond": 266.12,
+          "repeatRatio": 0.0,
+          "p95Ms": 70.502,
+          "p99Ms": 74.981
+        },
+        {
+          "seconds": 5.054,
+          "acceptedPresentFps": 15.83,
+          "presentFps": 15.83,
+          "producedSnapshotHz": 265.35,
+          "freshSnapshotHz": 15.83,
+          "simulationTicksPerSecond": 265.35,
+          "repeatRatio": 0.0,
+          "p95Ms": 67.061,
+          "p99Ms": 67.955
+        },
+        {
+          "seconds": 5.002,
+          "acceptedPresentFps": 15.79,
+          "presentFps": 15.79,
+          "producedSnapshotHz": 263.87,
+          "freshSnapshotHz": 15.79,
+          "simulationTicksPerSecond": 263.87,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.532,
+          "p99Ms": 66.877
+        },
+        {
+          "seconds": 5.054,
+          "acceptedPresentFps": 16.03,
+          "presentFps": 16.03,
+          "producedSnapshotHz": 263.76,
+          "freshSnapshotHz": 16.03,
+          "simulationTicksPerSecond": 263.76,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.382,
+          "p99Ms": 66.903
+        },
+        {
+          "seconds": 5.042,
+          "acceptedPresentFps": 15.87,
+          "presentFps": 15.87,
+          "producedSnapshotHz": 263.6,
+          "freshSnapshotHz": 15.87,
+          "simulationTicksPerSecond": 263.6,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.469,
+          "p99Ms": 68.348
+        },
+        {
+          "seconds": 5.068,
+          "acceptedPresentFps": 15.78,
+          "presentFps": 15.78,
+          "producedSnapshotHz": 260.83,
+          "freshSnapshotHz": 15.78,
+          "simulationTicksPerSecond": 260.83,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.003,
+          "p99Ms": 66.443
+        }
+      ],
+      "engineProgressLogs": [
+        {
+          "loops": 735,
+          "engineFps": 146.9,
+          "tick": 722,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1329,
+          "engineFps": 265.6,
+          "tick": 2051,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1327,
+          "engineFps": 265.3,
+          "tick": 3378,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1320,
+          "engineFps": 263.8,
+          "tick": 4698,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1318,
+          "engineFps": 263.4,
+          "tick": 6016,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1321,
+          "engineFps": 264.2,
+          "tick": 7337,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1305,
+          "engineFps": 260.8,
+          "tick": 8642,
+          "unitsIncludingTrees": 2250
+        }
+      ],
+      "visibilityTransitions": [],
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 260.83,
+          "maximum": 266.12
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 260.83,
+          "maximum": 266.12
+        },
+        "freshSnapshotHz": {
+          "minimum": 15.57,
+          "maximum": 16.03
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      }
+    },
+    {
+      "name": "2000-all-vulkan-idle-delay-present",
+      "units": 2000,
+      "mix": "all",
+      "mode": "idle",
+      "delay": "present",
+      "exitCode": 0,
+      "elapsedSeconds": 41.15184211730957,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 62095360,
+          "maximum": 62095360
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 0
+        },
+        "retirementCallbacks": {
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.3469,
+          "maximum": 0.4212
+        },
+        "gpuAvgMs": {
+          "minimum": 9.953,
+          "maximum": 10.6726
+        },
+        "drawCommandsAvg": {
+          "minimum": 570.85,
+          "maximum": 585.92
+        },
+        "gpuBufferBytes": {
+          "minimum": 13405272,
+          "maximum": 22422000
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 86630708
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 0.5988,
+          "maximum": 0.6308
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0034,
+          "maximum": 0.0053
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0185,
+          "maximum": 0.0253
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0372,
+          "maximum": 0.0668
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondWindowsAfterFirst": [
+        {
+          "seconds": 5.044,
+          "acceptedPresentFps": 15.66,
+          "presentFps": 15.66,
+          "producedSnapshotHz": 265.09,
+          "freshSnapshotHz": 15.66,
+          "simulationTicksPerSecond": 265.09,
+          "repeatRatio": 0.0,
+          "p95Ms": 69.041,
+          "p99Ms": 69.845
+        },
+        {
+          "seconds": 5.045,
+          "acceptedPresentFps": 15.86,
+          "presentFps": 15.86,
+          "producedSnapshotHz": 262.61,
+          "freshSnapshotHz": 15.86,
+          "simulationTicksPerSecond": 262.61,
+          "repeatRatio": 0.0,
+          "p95Ms": 67.707,
+          "p99Ms": 69.029
+        },
+        {
+          "seconds": 5.046,
+          "acceptedPresentFps": 15.85,
+          "presentFps": 15.85,
+          "producedSnapshotHz": 261.8,
+          "freshSnapshotHz": 15.85,
+          "simulationTicksPerSecond": 261.8,
+          "repeatRatio": 0.0,
+          "p95Ms": 68.504,
+          "p99Ms": 70.608
+        },
+        {
+          "seconds": 5.004,
+          "acceptedPresentFps": 15.99,
+          "presentFps": 15.99,
+          "producedSnapshotHz": 262.38,
+          "freshSnapshotHz": 15.99,
+          "simulationTicksPerSecond": 262.38,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.433,
+          "p99Ms": 67.979
+        },
+        {
+          "seconds": 5.06,
+          "acceptedPresentFps": 16.01,
+          "presentFps": 16.01,
+          "producedSnapshotHz": 259.89,
+          "freshSnapshotHz": 16.01,
+          "simulationTicksPerSecond": 259.89,
+          "repeatRatio": 0.0,
+          "p95Ms": 66.748,
+          "p99Ms": 69.457
+        },
+        {
+          "seconds": 5.088,
+          "acceptedPresentFps": 15.92,
+          "presentFps": 15.92,
+          "producedSnapshotHz": 252.34,
+          "freshSnapshotHz": 15.72,
+          "simulationTicksPerSecond": 252.34,
+          "repeatRatio": 0.01235,
+          "p95Ms": 67.04,
+          "p99Ms": 74.248
+        }
+      ],
+      "engineProgressLogs": [
+        {
+          "loops": 798,
+          "engineFps": 159.5,
+          "tick": 786,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1327,
+          "engineFps": 265.2,
+          "tick": 2113,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1313,
+          "engineFps": 262.5,
+          "tick": 3426,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1310,
+          "engineFps": 262.0,
+          "tick": 4736,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1310,
+          "engineFps": 261.9,
+          "tick": 6046,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1301,
+          "engineFps": 260.2,
+          "tick": 7347,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1262,
+          "engineFps": 252.3,
+          "tick": 8609,
+          "unitsIncludingTrees": 2250
+        }
+      ],
+      "visibilityTransitions": [],
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 252.34,
+          "maximum": 265.09
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 252.34,
+          "maximum": 265.09
+        },
+        "freshSnapshotHz": {
+          "minimum": 15.66,
+          "maximum": 16.01
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.01235
+        }
+      }
+    },
+    {
+      "name": "2000-all-vulkan-idle-delay-hide",
+      "units": 2000,
+      "mix": "all",
+      "mode": "idle",
+      "delay": "hide",
+      "exitCode": 0,
+      "elapsedSeconds": 41.03102397918701,
+      "viewportWidth": 1920.0,
+      "viewportHeight": 1080.0,
+      "representedTypes": 80,
+      "samples": [],
+      "nativeFiveSecondRangesAfterFirstWindow": {
+        "stagingResidentBytes": {
+          "minimum": 49512448,
+          "maximum": 53706752
+        },
+        "stagingAllocations": {
+          "minimum": 0,
+          "maximum": 2
+        },
+        "retirementCallbacks": {
+          "minimum": 1,
+          "maximum": 3
+        },
+        "uploadCpuAvgMs": {
+          "minimum": 0.3307,
+          "maximum": 0.369
+        },
+        "gpuAvgMs": {
+          "minimum": 6.6271,
+          "maximum": 7.1419
+        },
+        "drawCommandsAvg": {
+          "minimum": 577.0,
+          "maximum": 582.62
+        },
+        "gpuBufferBytes": {
+          "minimum": 12406920,
+          "maximum": 15105448
+        },
+        "gpuTextureBytes": {
+          "minimum": 86130708,
+          "maximum": 86130708
+        },
+        "queueSubmitAvgMs": {
+          "minimum": 3.0272,
+          "maximum": 3.7826
+        },
+        "fenceWaitAvgMs": {
+          "minimum": 0.0015,
+          "maximum": 0.0017
+        },
+        "acquireAvgMs": {
+          "minimum": 0.0124,
+          "maximum": 0.0159
+        },
+        "queuePresentAvgMs": {
+          "minimum": 0.0071,
+          "maximum": 0.0082
+        }
+      },
+      "shutdown": {
+        "allocatorDestroyed": true,
+        "deviceDestroyed": true,
+        "instanceDestroyed": true,
+        "allocatorRetainedBufferWarnings": [
+          37
+        ],
+        "allocatorRetainedImageWarnings": [
+          26
+        ]
+      },
+      "frameFiveSecondWindowsAfterFirst": [
+        {
+          "seconds": 5.005,
+          "acceptedPresentFps": 117.89,
+          "presentFps": 117.89,
+          "producedSnapshotHz": 267.95,
+          "freshSnapshotHz": 117.89,
+          "simulationTicksPerSecond": 267.95,
+          "repeatRatio": 0.0,
+          "p95Ms": 9.69,
+          "p99Ms": 10.653
+        },
+        {
+          "seconds": 5.006,
+          "acceptedPresentFps": 119.06,
+          "presentFps": 119.06,
+          "producedSnapshotHz": 267.29,
+          "freshSnapshotHz": 119.06,
+          "simulationTicksPerSecond": 267.29,
+          "repeatRatio": 0.0,
+          "p95Ms": 9.546,
+          "p99Ms": 9.858
+        },
+        {
+          "seconds": 5.007,
+          "acceptedPresentFps": 119.43,
+          "presentFps": 119.43,
+          "producedSnapshotHz": 264.42,
+          "freshSnapshotHz": 119.43,
+          "simulationTicksPerSecond": 264.42,
+          "repeatRatio": 0.0,
+          "p95Ms": 9.534,
+          "p99Ms": 9.757
+        },
+        {
+          "seconds": 5.006,
+          "acceptedPresentFps": 118.85,
+          "presentFps": 118.85,
+          "producedSnapshotHz": 257.87,
+          "freshSnapshotHz": 118.65,
+          "simulationTicksPerSecond": 257.87,
+          "repeatRatio": 0.00168,
+          "p95Ms": 9.563,
+          "p99Ms": 9.811
+        },
+        {
+          "seconds": 5.006,
+          "acceptedPresentFps": 119.67,
+          "presentFps": 119.67,
+          "producedSnapshotHz": 265.11,
+          "freshSnapshotHz": 119.27,
+          "simulationTicksPerSecond": 265.11,
+          "repeatRatio": 0.00334,
+          "p95Ms": 9.499,
+          "p99Ms": 9.82
+        },
+        {
+          "seconds": 5.001,
+          "acceptedPresentFps": 118.39,
+          "presentFps": 118.39,
+          "producedSnapshotHz": 259.57,
+          "freshSnapshotHz": 116.99,
+          "simulationTicksPerSecond": 259.57,
+          "repeatRatio": 0.01182,
+          "p95Ms": 9.563,
+          "p99Ms": 10.178
+        }
+      ],
+      "engineProgressLogs": [
+        {
+          "loops": 745,
+          "engineFps": 149.0,
+          "tick": 740,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1342,
+          "engineFps": 268.3,
+          "tick": 2082,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1337,
+          "engineFps": 267.2,
+          "tick": 3419,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1324,
+          "engineFps": 264.7,
+          "tick": 4743,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1289,
+          "engineFps": 257.8,
+          "tick": 6032,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1326,
+          "engineFps": 265.0,
+          "tick": 7358,
+          "unitsIncludingTrees": 2300
+        },
+        {
+          "loops": 1299,
+          "engineFps": 259.7,
+          "tick": 8657,
+          "unitsIncludingTrees": 2250
+        }
+      ],
+      "visibilityTransitions": [
+        {
+          "visible": false,
+          "monotonicNanos": 82846609202166
+        },
+        {
+          "visible": true,
+          "monotonicNanos": 82856616288583
+        }
+      ],
+      "frameFiveSecondRangesAfterFirstWindow": {
+        "producedSnapshotHz": {
+          "minimum": 257.87,
+          "maximum": 267.95
+        },
+        "simulationTicksPerSecond": {
+          "minimum": 257.87,
+          "maximum": 267.95
+        },
+        "freshSnapshotHz": {
+          "minimum": 116.99,
+          "maximum": 119.43
+        },
+        "repeatRatio": {
+          "minimum": 0.0,
+          "maximum": 0.01182
+        }
+      }
+    }
+  ]
+}

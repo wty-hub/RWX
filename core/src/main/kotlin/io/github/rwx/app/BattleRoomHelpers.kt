@@ -1,6 +1,5 @@
 package io.github.rwx.app
 
-import com.corrodinggames.rts.gameFramework.GameEngine
 import com.corrodinggames.rts.gameFramework.network.GameRoomSettings
 import io.github.rwx.BATTLE_ROOM_AUTO_TEAM_VALUE
 import io.github.rwx.BATTLE_ROOM_CLEAR_OVERRIDE
@@ -246,6 +245,7 @@ internal fun BattleRoomSnapshot.toBattleRoomModel(
                 settings = room.options,
                 networkStatusText = networkStatusText,
                 requiredModsSummary = requiredModsSummary,
+                customStartingUnitsLabel = startingUnitsLabel,
             ),
             mapPreviewAssetPath = previewAssetPath,
             rwxModeLabel = rwxModeLabel,
@@ -267,6 +267,7 @@ internal fun battleRoomDetailLines(
     settings: GameRoomSettings,
     networkStatusText: String? = null,
     requiredModsSummary: String? = null,
+    customStartingUnitsLabel: String? = null,
 ): List<String> {
     val statusLines = networkStatusText
         ?.takeIf { it.isNotBlank() }
@@ -275,7 +276,7 @@ internal fun battleRoomDetailLines(
         add("Starting Credits: ${startingCreditsLabel(settings.startingCredits)}")
         add("Fog: ${fogLabel(settings.fogMode)}")
         if (settings.startingUnits != 1) {
-            add("Starting Units: ${startingUnitsLabel(settings.startingUnits)}")
+            add("Starting Units: ${startingUnitsLabel(settings.startingUnits, customStartingUnitsLabel)}")
         }
         if (settings.incomeMultiplier != 1.0f) {
             add("${incomeLabel(settings.incomeMultiplier)}X income")
@@ -312,7 +313,7 @@ internal fun startingCreditsLabel(code: Int): String =
         else -> "$999"
     }
 
-internal fun startingUnitsLabel(value: Int): String =
+internal fun startingUnitsLabel(value: Int, customLabel: String? = null): String =
     when (value) {
         1 -> "Normal (1 builder)"
         2 -> "Small Army"
@@ -320,9 +321,7 @@ internal fun startingUnitsLabel(value: Int): String =
         4 -> "3 Engineers (No Command Center)"
         5 -> "Experimental Spider"
         9 -> "Custom"
-        else -> runCatching {
-            GameEngine.getInstance()?.networkEngine?.d(value)
-        }.getOrNull()?.takeIf { it != "Unknown" } ?: "Unknown"
+        else -> customLabel?.takeIf { it != "Unknown" } ?: "Unknown"
     }
 
 private fun incomeLabel(value: Float): String =

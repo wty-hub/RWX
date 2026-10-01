@@ -24,8 +24,16 @@ import io.github.rwx.ui.BattleRoomUiBridge
 import io.github.rwx.ui.InGameMenuCallbacks
 import io.github.rwx.ui.InGameMenuController
 import io.github.rwx.ui.model.BattleRoomPlayer
+import io.github.rwx.ui.model.MapEntry
+import io.github.rwx.ui.model.LevelSelectViewModel
+import io.github.rwx.p2p.MapFeatureDetector
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentLinkedQueue
+import io.github.rwx.render.canvas.FrameEnvelope
+import io.github.rwx.render.canvas.CanvasFramePresentationTracker
 
 data class RunningMultiplayerExitInfo(
     val isHost: Boolean,
@@ -41,6 +49,57 @@ fun NetworkEngine.hasActiveStartedGameConnection(): Boolean =
 internal fun battleRoomPlayerTeams(): List<PlayerTeam> = PlayerTeam.getSortedTeams(true)
 
 abstract class GameSession {
+    open val usesIndependentEngineLoop: Boolean = false
+    private val sessionCompletions = ConcurrentLinkedQueue<() -> Unit>()
+
+    /** Result-bearing operations complete on the UI driver, never with a speculative result. */
+    open fun <T> submitSessionTask(action: () -> T): CompletableFuture<T> =
+        try { CompletableFuture.completedFuture(action()) }
+        catch (error: Throwable) { CompletableFuture<T>().apply { completeExceptionally(error) } }
+
+    fun <T> requestSessionTask(action: () -> T, onComplete: (Result<T>) -> Unit) {
+        submitSessionTask(action).whenComplete { value, error ->
+            val completion = {
+                val failure = if (error is java.util.concurrent.CompletionException || error is java.util.concurrent.ExecutionException)
+                    error.cause ?: error else error
+                onComplete(if (failure == null) Result.success(value) else Result.failure(failure))
+            }
+            if (usesIndependentEngineLoop) sessionCompletions.add(completion) else completion()
+        }
+    }
+
+    fun drainSessionCompletions() { while (true) (sessionCompletions.poll() ?: return).invoke() }
+    protected open fun <T> executeEngineTask(label: String, action: () -> T): T = action()
+    /** Native / headless sessions without a canvas presentation acknowledgement keep their own camera policy. */
+    open val canvasPresentationTracker: CanvasFramePresentationTracker? = null
+    open fun currentFrameEnvelope(): FrameEnvelope? = null
+    open fun cameraSnapshot(): GameCameraSnapshot? = GameEngine.getInstance()?.let {
+        GameCameraSnapshot(0L, 0L, lastViewport, it.viewpointXSnapped, it.viewpointYSnapped, it.zoom)
+    }
+    open fun hasActiveStartedGameConnection(): Boolean =
+        GameEngine.getInstance()?.networkEngine?.hasActiveStartedGameConnection() == true
+    open fun portalTargetMapIds(): List<String> = GameEngine.getInstance()?.missionEngine?.mapPortalTargetMapIds?.toList().orEmpty()
+    /** Legacy backends read inline; an independent owner publishes detached map identifiers. */
+    open fun extraCustomMapEntries(): List<MapEntry> {
+        val root = "/SD/rusted_warfare_maps"
+        val paths = detachedCustomMapPaths(GameEngine.getInstance()?.modManager?.addExtraMapsForPath(null, root))
+        return Collections.unmodifiableList(paths.filter { it.startsWith("MOD|") }.map { entry ->
+            val path = "$root/$entry"
+            MapEntry(path, LevelSelectViewModel.playerCount(path.substringAfterLast('/')),
+                Collections.unmodifiableList(MapFeatureDetector.requiredFeaturesForMap(path).toList()))
+        })
+    }
+    open fun localPlayerId(): String? = GameEngine.getInstance()?.let { engine ->
+        engine.networkEngine?.localPlayerTeam?.teamId?.toString() ?: engine.playerTeam?.teamId?.toString()
+    }
+    open fun isP2pNetworkGame(): Boolean = GameEngine.getInstance()?.let {
+        it.isNetworkGameActive() && it.networkEngine?.p2pSession == true
+    } ?: false
+    fun showGameMessage(message: String) { postEngineCommand("game message") { it.gameUI?.showMediumPriorityMessage(message) } }
+    open fun updateMenuMusic(deltaSeconds: Float) {
+        postEngineCommand("menu music") { it.musicManager?.update(deltaSeconds.toGameSpeedDelta()) }
+    }
+    open fun close() = Unit
     protected val gameLock = Any()
     private val engineStartLock = Any()
     val inGameMenuController = InGameMenuController()
@@ -61,6 +120,9 @@ abstract class GameSession {
     open val compositesExternalGameFrameInKool: Boolean = false
     open val acceptsKoolInput: Boolean
         get() = rendererProfile.acceptsKoolInput
+
+    open val acceptsKoolKeyboardInput: Boolean
+        get() = acceptsKoolInput
     /** True when the game accepts window logical pixels rather than Kool framebuffer pixels. */
     open val usesLogicalPointerCoordinates: Boolean = false
     open val canStartNewSessionInPlace: Boolean
@@ -180,6 +242,26 @@ abstract class GameSession {
         runEngineCommand(label, command)
     }
 
+    /** Refreshes HUD layout on its owner thread, including while the match is paused. */
+    fun applyDisplaySettings() {
+        // Loading already lays out the interface from the latest settings. Do not make a slider
+        // wait for a background loader that owns the engine lock.
+        if (!usesIndependentEngineLoop && isEngineBusyForUiReads()) return
+        postEngineCommand("apply display settings") { engine ->
+            synchronized(engine.gameStateLock) {
+                if (engine.screenWidth > 0f && engine.screenHeight > 0f &&
+                    engine.screenScale != engine.getScreenScale()
+                ) {
+                    engine.updateWindowResolution(
+                        engine.screenWidth.toInt(),
+                        engine.screenHeight.toInt(),
+                        engine.renderSurfaceScale,
+                    )
+                }
+            }
+        }
+    }
+
     open fun configureRendererProfile(profile: GameSessionRendererProfile) {
         rendererProfile = profile
     }
@@ -206,12 +288,23 @@ abstract class GameSession {
         pointerId: Int,
     ) = Unit
 
+    open fun submitPointer(
+        screenX: Float,
+        screenY: Float,
+        isDown: Boolean,
+        pointerId: Int,
+        frameContext: GamePointerFrameContext,
+    ) = submitPointer(screenX, screenY, isDown, pointerId)
+
     open fun movePointer(screenX: Float, screenY: Float) = Unit
+
+    open fun movePointer(screenX: Float, screenY: Float, frameContext: GamePointerFrameContext) =
+        movePointer(screenX, screenY)
 
     open fun submitKey(androidKeyCode: Int, isDown: Boolean) {
         // Input during a long engine hold is meaningless (nothing interactive is running) and must
         // not park the UI thread on gameLock — drop it.
-        if (isEngineBusyForUiReads()) return
+        if (!usesIndependentEngineLoop && isEngineBusyForUiReads()) return
         postEngineCommand("key state") { engine ->
             engine.setKeyState(androidKeyCode, isDown)
         }
@@ -223,7 +316,7 @@ abstract class GameSession {
      * new key-downs until the dialog is gone.
      */
     open fun setModalKeyCapture(capture: Boolean) {
-        if (isEngineBusyForUiReads()) return
+        if (!usesIndependentEngineLoop && isEngineBusyForUiReads()) return
         postEngineCommand("modal key capture") { engine ->
             if (capture) engine.beginModalKeyCapture() else engine.endModalKeyCapture()
         }
@@ -231,7 +324,7 @@ abstract class GameSession {
 
     /** Ignores the next press of [androidKeyCode] until the matching key-up reaches the engine. */
     open fun suppressKeyUntilRelease(androidKeyCode: Int) {
-        if (isEngineBusyForUiReads()) return
+        if (!usesIndependentEngineLoop && isEngineBusyForUiReads()) return
         postEngineCommand("suppress key until release") { engine ->
             engine.suppressKeyUntilRelease(androidKeyCode)
         }
@@ -239,7 +332,7 @@ abstract class GameSession {
 
     open fun submitMouseWheel(amount: Int) {
         if (amount == 0) return
-        if (isEngineBusyForUiReads()) return
+        if (!usesIndependentEngineLoop && isEngineBusyForUiReads()) return
         postEngineCommand("mouse wheel") { engine ->
             engine.queueMouseWheelDelta(amount)
         }
@@ -398,9 +491,6 @@ abstract class GameSession {
 
     open fun prepareBattleRoomAsync(config: BattleRoomLaunchConfig, viewport: KoolCanvasViewport) {
         val requestedMapPath = config.room.mapPath.takeIf { it.isNotBlank() } ?: return
-        if (isMapLoaded(requestedMapPath) && loadState.activeRendererBattleRoomConfig == config) {
-            return
-        }
         val generation = tryBeginAsyncLoad(
             requestKey = requestedMapPath,
             viewport = viewport,
@@ -415,7 +505,9 @@ abstract class GameSession {
         ) ?: return
         logger.info { "Preparing $sessionLogName battle room map asynchronously: $requestedMapPath" }
         launchOnIO("${rendererMode.id}-battleroom-map-loader") {
-            loadMapInBackground(requestedMapPath, viewport, generation)
+            loadLevelInBackground("battle room map", requestedMapPath, viewport, generation) { engine ->
+                loadBattleRoomMap(engine, config)
+            }
         }
     }
 
@@ -549,30 +641,33 @@ abstract class GameSession {
                 trimmedAddress,
                 true,
                 Runnable {
+                    postEngineCommand("attach connected socket") { currentEngine ->
                     if (activeBattleRoomJoinConnector !== connector) {
-                        return@Runnable
+                        return@postEngineCommand
                     }
                     val errorMessage = connector.errorMessage
                     if (errorMessage != null) {
                         latestBattleRoomJoinError = "Connection failed: $errorMessage"
                         activeBattleRoomJoinConnector = null
-                        return@Runnable
+                        return@postEngineCommand
                     }
                     val socket = connector.connectedSocket
                     if (socket == null) {
                         latestBattleRoomJoinError = "Connection failed: no socket returned"
                         activeBattleRoomJoinConnector = null
-                        return@Runnable
+                        return@postEngineCommand
                     }
+                    val currentNetwork = currentEngine.networkEngine
                     runCatching {
-                        networkEngine.disconnectNetworking("starting new")
-                        networkEngine.a(socket)
-                        networkEngine.p2pSession = p2pSession
+                        currentNetwork.disconnectNetworking("starting new")
+                        currentNetwork.a(socket)
+                        currentNetwork.p2pSession = p2pSession
                         BattleRoomUiBridge.updateUI()
                     }.onFailure { error ->
                         latestBattleRoomJoinError = "Connection failed: ${error.message ?: error.javaClass.simpleName}"
                     }
                     activeBattleRoomJoinConnector = null
+                    }
                 },
             )
             activeBattleRoomJoinConnector = connector
@@ -843,8 +938,9 @@ abstract class GameSession {
             state.asyncMapLoadInProgress -> "Loading map data"
             else -> "Loading..."
         }
-        val text = engine?.getLoadingText()?.takeIf { it.isNotBlank() } ?: fallbackText
-        val progress = engine?.getLoadingProgress()?.coerceIn(0.0f, 1.0f)
+        val published = engine?.loadingStatusSnapshot
+        val text = published?.text?.takeIf { it.isNotBlank() } ?: fallbackText
+        val progress = published?.progress?.coerceIn(0.0f, 1.0f)
             ?: when {
                 state.asyncMapLoadInProgress -> 0.15f
                 asyncEnginePreloadInProgress.get() -> 0.05f
@@ -1108,7 +1204,7 @@ abstract class GameSession {
         }
     }
 
-    open suspend fun requestReloadMods(): Boolean {
+    open suspend fun requestReloadMods(): Boolean = executeEngineTask("reload mods") {
         // Flag first, lock second: readers check the flag before touching gameLock, so the frame
         // loop keeps rendering (and the reload dialog stays clickable) for the whole reload.
         modReloadInProgress = true
@@ -1131,7 +1227,7 @@ abstract class GameSession {
         } finally {
             modReloadInProgress = false
         }
-        return true
+        true
     }
 
     open fun requestSurrender() {
@@ -1348,20 +1444,22 @@ abstract class GameSession {
         }
 
     protected fun preloadEngineInBackground(requestedViewport: KoolCanvasViewport) {
-        val startedAt = System.nanoTime()
-        runCatching {
-            val viewport = requestedViewport.takeIf { it.width > 0 && it.height > 0 } ?: defaultPreloadViewport
-            lastViewport = viewport
-            val engine = ensureStartedOutsideGameLock(viewport)
-            synchronized(gameLock) {
-                applyViewport(engine, viewport)
+        executeEngineTask("preload engine") {
+            val startedAt = System.nanoTime()
+            runCatching {
+                val viewport = requestedViewport.takeIf { it.width > 0 && it.height > 0 } ?: defaultPreloadViewport
+                lastViewport = viewport
+                val engine = ensureStartedOutsideGameLock(viewport)
+                synchronized(gameLock) {
+                    applyViewport(engine, viewport)
+                }
+                logger.info { "Prepared $sessionLogName engine asynchronously: ${elapsedMs(startedAt)}ms" }
+            }.onFailure { error ->
+                asyncEnginePreloadError = error
+                logger.error(error) { "$sessionLogName async engine preload failed" }
+            }.also {
+                asyncEnginePreloadInProgress.set(false)
             }
-            logger.info { "Prepared $sessionLogName engine asynchronously: ${elapsedMs(startedAt)}ms" }
-        }.onFailure { error ->
-            asyncEnginePreloadError = error
-            logger.error(error) { "$sessionLogName async engine preload failed" }
-        }.also {
-            asyncEnginePreloadInProgress.set(false)
         }
     }
 
@@ -1394,7 +1492,7 @@ abstract class GameSession {
         return BattleRoomSnapshot(
             room = BattleRoomCoreConfig(
                 mapPath = networkEngine.selectedMapPath ?: engine.currentMapPath ?: "",
-                options = settings,
+                options = settings.clone(),
             ),
             mapDisplayName = settings.mapPath?.let(MapMetadata::getMapName) ?: "Unknown map",
             mapTypeLabel = settings.gameModeType?.a() ?: "Multiplayer",
@@ -1415,6 +1513,7 @@ abstract class GameSession {
                 cachedBattleRoomNetworkStatusText
             },
             maxPlayers = PlayerTeam.TEAM_NEUTRAL,
+            startingUnitsLabel = networkEngine.d(settings.startingUnits),
         )
     }
 
@@ -1526,47 +1625,49 @@ abstract class GameSession {
         generation: Long,
         load: (GameEngine) -> Unit,
     ) {
-        var loadMs = 0L
-        var firstFrameMs = 0L
-        val startedAt = System.nanoTime()
-        var loadedCurrentRequest = false
-        runCatching {
-            synchronized(gameLock) {
-                if (generation != loadState.mapLoadGeneration) {
-                    return@synchronized
+        executeEngineTask("load level") {
+            var loadMs = 0L
+            var firstFrameMs = 0L
+            val startedAt = System.nanoTime()
+            var loadedCurrentRequest = false
+            runCatching {
+                synchronized(gameLock) {
+                    if (generation != loadState.mapLoadGeneration) {
+                        return@synchronized
+                    }
+                    val viewport = requestedViewport.takeIf { it.width > 0 && it.height > 0 } ?: defaultPreloadViewport
+                    lastViewport = viewport
+                    val engine = ensureStarted(viewport)
+                    applyViewport(engine, viewport)
+                    val loadStartedAt = System.nanoTime()
+                    load(engine)
+                    loadMs = elapsedMs(loadStartedAt)
+                    val firstFrameStartedAt = System.nanoTime()
+                    val preparedFrame = prepareFrameAfterBackgroundLoad(engine, viewport)
+                    firstFrameMs = elapsedMs(firstFrameStartedAt)
+                    if (generation == loadState.mapLoadGeneration) {
+                        lastFrame = preparedFrame
+                        loadedCurrentRequest = true
+                    }
                 }
-                val viewport = requestedViewport.takeIf { it.width > 0 && it.height > 0 } ?: defaultPreloadViewport
-                lastViewport = viewport
-                val engine = ensureStarted(viewport)
-                applyViewport(engine, viewport)
-                val loadStartedAt = System.nanoTime()
-                load(engine)
-                loadMs = elapsedMs(loadStartedAt)
-                val firstFrameStartedAt = System.nanoTime()
-                val preparedFrame = prepareFrameAfterBackgroundLoad(engine, viewport)
-                firstFrameMs = elapsedMs(firstFrameStartedAt)
-                if (generation == loadState.mapLoadGeneration) {
-                    lastFrame = preparedFrame
-                    loadedCurrentRequest = true
+                if (!loadedCurrentRequest) {
+                    logger.info { "Discarded stale $sessionLogName $kind preparation: $requestKey" }
+                    return@runCatching
                 }
+                logger.info {
+                    "Prepared $sessionLogName $kind asynchronously: $requestKey " +
+                            "(total=${elapsedMs(startedAt)}ms, load=${loadMs}ms, firstFrame=${firstFrameMs}ms)"
+                }
+            }.onFailure { error ->
+                if (loadState.mapLoadGeneration == generation) {
+                    updateLoadState { if (it.mapLoadGeneration == generation) it.copy(asyncMapLoadError = error) else it }
+                    logger.error(error) { "$sessionLogName async $kind load failed: $requestKey" }
+                } else {
+                    logger.info { "Ignored stale $sessionLogName $kind load failure for: $requestKey" }
+                }
+            }.also {
+                updateLoadState { if (it.mapLoadGeneration == generation) it.copy(asyncMapLoadInProgress = false) else it }
             }
-            if (!loadedCurrentRequest) {
-                logger.info { "Discarded stale $sessionLogName $kind preparation: $requestKey" }
-                return@runCatching
-            }
-            logger.info {
-                "Prepared $sessionLogName $kind asynchronously: $requestKey " +
-                        "(total=${elapsedMs(startedAt)}ms, load=${loadMs}ms, firstFrame=${firstFrameMs}ms)"
-            }
-        }.onFailure { error ->
-            if (loadState.mapLoadGeneration == generation) {
-                updateLoadState { if (it.mapLoadGeneration == generation) it.copy(asyncMapLoadError = error) else it }
-                logger.error(error) { "$sessionLogName async $kind load failed: $requestKey" }
-            } else {
-                logger.info { "Ignored stale $sessionLogName $kind load failure for: $requestKey" }
-            }
-        }.also {
-            updateLoadState { if (it.mapLoadGeneration == generation) it.copy(asyncMapLoadInProgress = false) else it }
         }
     }
 

@@ -692,6 +692,27 @@ public abstract class GameEngine {
 
     public volatile boolean loadingStatusComplete = false;
 
+    /** Published together so the desktop UI never reads a partially updated loading operation. */
+    public static final class LoadingStatusSnapshot {
+        public final String text;
+        public final float progress;
+
+        public LoadingStatusSnapshot(String text, float progress) {
+            this.text = text;
+            this.progress = progress;
+        }
+    }
+
+    private volatile LoadingStatusSnapshot publishedLoadingStatus = new LoadingStatusSnapshot("Loading...", 0.02f);
+
+    public LoadingStatusSnapshot getLoadingStatusSnapshot() {
+        return this.publishedLoadingStatus;
+    }
+
+    private void publishLoadingStatus() {
+        this.publishedLoadingStatus = new LoadingStatusSnapshot(getLoadingText(), getLoadingProgress());
+    }
+
     /* JADX INFO: renamed from: dJ */
     Object pendingMessageLock = new Object();
 
@@ -1247,6 +1268,7 @@ public abstract class GameEngine {
         this.loadingStep = 0;
         this.loadingStepEstimate = Math.max(1, i);
         this.loadingStatusComplete = false;
+        publishLoadingStatus();
     }
 
     public void advanceLoadingStatus(String str) {
@@ -1255,12 +1277,14 @@ public abstract class GameEngine {
             this.loadingStep++;
         }
         this.loadingStatusComplete = false;
+        publishLoadingStatus();
     }
 
     public void markLoadingStatusComplete(String str) {
         this.loadingText = str != null && str.length() != 0 ? str : "Loading complete";
         this.loadingStep = Math.max(this.loadingStepEstimate, this.loadingStep);
         this.loadingStatusComplete = true;
+        publishLoadingStatus();
     }
 
     public String getLoadingText() {

@@ -29,3 +29,13 @@ internal fun desktopTargetFrameRate(
     highRefreshRate = settings.highRefreshRate,
     environmentOverride = environmentOverride,
 )
+
+/** Software pacing also honours vertical sync when the GL canvas swaps without waiting. */
+internal fun desktopFramePeriodNanos(targetFrameRate: Int, vsync: Boolean, refreshRate: Int): Long {
+    val fps = if (vsync) minOf(targetFrameRate, refreshRate.takeIf { it > 0 } ?: 60) else targetFrameRate
+    return 1_000_000_000L / fps.coerceAtLeast(1)
+}
+
+/** Slow frames start a new interval instead of causing a burst of catch-up frames. */
+internal fun desktopNextFrameDelayNanos(frameStartNanos: Long, nowNanos: Long, periodNanos: Long): Long =
+    (frameStartNanos + periodNanos - nowNanos).coerceAtLeast(0L)

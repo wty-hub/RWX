@@ -1,6 +1,7 @@
 package io.github.rwx
 
 import com.corrodinggames.rts.gameFramework.GameEngine
+import com.corrodinggames.rts.game.PlayerTeam
 import com.corrodinggames.rts.gameFramework.InputController
 import com.corrodinggames.rts.gameFramework.MusicManager
 import com.corrodinggames.rts.gameFramework.NullMusicFactory
@@ -10,6 +11,11 @@ import com.corrodinggames.rts.gameFramework.graphics.GraphicsEngine
 import com.corrodinggames.rts.gameFramework.ui.Message
 import com.corrodinggames.rts.gameFramework.ui.MessageManager
 import io.github.rwx.diagnostics.GameStateTrace
+import io.github.rwx.benchmark.VanillaBattleBenchmark
+import io.github.rwx.benchmark.DriverParityHarness
+import io.github.rwx.benchmark.VanillaUnitSmokeHarness
+import io.github.rwx.benchmark.OwnerSessionAcceptanceHarness
+import io.github.rwx.diagnostics.SimulationCompatibilityTrace
 import io.github.rwx.di.coreModule
 import io.github.rwx.headless.HeadlessGameSession
 import io.github.rwx.headless.HeadlessGraphicsEngine
@@ -36,6 +42,7 @@ object HeadlessMain {
     private const val MAP_PREFIX = "--map="
     private const val TICKS_PREFIX = "--ticks="
     private const val CHECKSUM_PREFIX = "--checksum="
+    private const val PARITY_PREFIX = "--driver-parity="
     private const val HEADLESS_FLAG = "--headless"
     private const val STEP_CROSS_EPSILON = 0.001f
     private const val FRAME_MILLIS = 16
@@ -65,6 +72,7 @@ object HeadlessMain {
             EXIT_FAILURE
         }
         GameStateTrace.close()
+        SimulationCompatibilityTrace.close()
         exitProcess(code)
     }
 
@@ -73,6 +81,7 @@ object HeadlessMain {
         var map: String? = null
         var ticks: Int? = null
         var checksum: String? = null
+        var parity: String? = null
         args.forEach { arg ->
             when {
                 arg == HEADLESS_FLAG -> Unit
@@ -96,6 +105,9 @@ object HeadlessMain {
                         require(it.isNotEmpty()) { "Checksum path must not be empty" }
                     }
                 }
+                arg.startsWith(PARITY_PREFIX) -> parity = arg.removePrefix(PARITY_PREFIX).trim().also {
+                    require(it.isNotEmpty()) { "Parity report path must not be empty" }
+                }
                 else -> throw IllegalArgumentException("Unsupported headless argument: $arg")
             }
         }
@@ -105,11 +117,13 @@ object HeadlessMain {
         if (map != null && ticks == null) {
             throw IllegalArgumentException("--ticks=N is required with --map=")
         }
+        require(parity == null || map != null) { "--driver-parity requires a map, not replay playback" }
         return HeadlessOptions(
             replay = replay,
             map = map,
             ticks = ticks,
             checksum = checksum?.let(::File),
+            parity = parity?.let(::File),
         )
     }
 
@@ -120,6 +134,7 @@ object HeadlessMain {
         GlobalContext.startKoin {
             modules(coreModule, headlessModule)
         }
+
         val koin = GlobalContext.get()
         (koin.get<CrashReporter>() as? FileCrashReporter)
             ?.installAsDefaultUncaughtExceptionHandler()
@@ -130,6 +145,10 @@ object HeadlessMain {
         koin.get<GameSettingsRepository>().loadInto(settings)
         koin.get<GameSettingsRepository>().saveFrom(settings)
         LocaleSettings.initialize()
+        System.getenv("RWX_OWNER_SESSION_STRESS_OUTPUT")?.takeIf(String::isNotBlank)?.let { path ->
+            check(options.map != null) { "Owner session stress requires --map" }
+            return if (OwnerSessionAcceptanceHarness.run(storage, options.map, File(path))) EXIT_OK else EXIT_FAILURE
+        }
         val graphics = koin.get<GraphicsEngine>()
         GameEngine.graphicsEngine = graphics
 
@@ -140,6 +159,50 @@ object HeadlessMain {
             session.openReplay(resolveReplayName(replayName))
         } else {
             session.openMap(options.map!!)
+            System.getenv("RWX_VANILLA_SMOKE_OUTPUT")?.takeIf(String::isNotBlank)?.let {
+                val matched = VanillaUnitSmokeHarness.run(engine, File(it))
+                println("Vanilla constructor/draw smoke: $matched; $it")
+                return if (matched) EXIT_OK else EXIT_FAILURE
+            }
+            VanillaBattleBenchmark.onFrame(engine)
+        }
+
+        options.parity?.let { output ->
+            val snapshot = checkNotNull(session.captureMapSnapshot()) { "Unable to capture parity initial state" }
+            // The legacy save loader deliberately replaces this wall-clock connection timestamp.
+            // Restore the fixture's initial value in both drivers rather than ignoring save bytes.
+            val initialPingTimes = (0 until PlayerTeam.TEAM_NEUTRAL).mapNotNull { id -> PlayerTeam.k(id)?.let { id to it.teamLastPingTime } }.toMap()
+            val initialGlobalSeed = engine.globalSeed
+            val result = DriverParityHarness.compare(DriverParityHarness.defaultTape(options.ticks!!),
+                { session.restoreSnapshot(snapshot).also {
+                    initialPingTimes.forEach { (id, timestamp) -> PlayerTeam.k(id)?.teamLastPingTime = timestamp }
+                    // Single-player map initialization chooses a new globalSeed before the
+                    // save payload restores room settings. Restore this fixture sideband too.
+                    it.globalSeed = initialGlobalSeed
+                } }, output)
+            println("Driver parity: ${result.json()}")
+            var replayMatched = true
+            if (System.getenv("RWX_PARITY_RECORD_REPLAY") == "1") {
+                session.restoreSnapshot(snapshot)
+                initialPingTimes.forEach { (id, timestamp) -> PlayerTeam.k(id)?.teamLastPingTime = timestamp }
+                engine.globalSeed = initialGlobalSeed
+                val replayFileName = "rwx-driver-parity-${System.nanoTime()}.replay"
+                engine.replayEngine.d(replayFileName)
+                check(engine.replayEngine.k()) { "Unable to record parity replay" }
+                try {
+                    DriverParityHarness.advanceTape(engine, DriverParityHarness.replayRecordingTape(maxOf(240, options.ticks * 3)))
+                } finally { engine.replayEngine.e() }
+                val replayResult = DriverParityHarness.compare(DriverParityHarness.replayPlaybackTape(options.ticks), {
+                    session.openReplay(replayFileName)
+                    initialPingTimes.forEach { (id, timestamp) -> PlayerTeam.k(id)?.teamLastPingTime = timestamp }
+                    engine.gameSpeed = 1f
+                    engine
+                }, File(output.path + ".replay.json"), "recorded-replay-step-negotiation-and-pause")
+                println("Replay driver parity: ${replayResult.json()}")
+                replayMatched = replayResult.matched
+                engine.replayEngine.e()
+            }
+            return if (result.matched && replayMatched) EXIT_OK else EXIT_FAILURE
         }
 
         val code = advance(engine, options.ticks, replay = replayName != null)
@@ -199,6 +262,7 @@ internal data class HeadlessOptions(
     val map: String?,
     val ticks: Int?,
     val checksum: File?,
+    val parity: File? = null,
 )
 
 private val headlessModule = module {

@@ -4442,26 +4442,32 @@ public abstract class OrderableUnit extends UnitBase {
             float f2 = (this.posY + shadowOffset.y) - gameEngine.viewpointYSnapped;
             float fCD = getRenderScale();
             GraphicsEngine graphicsEngine = gameEngine.renderGraphicsEngine;
-            if (fCD != 1.0f) {
-                graphicsEngine.k();
-                graphicsEngine.a(fCD, fCD, f, f2);
-            }
-            if (hasShadowFrames()) {
-                Rect rectA_ = a_(true);
-                RectF rectF = dB;
-                rectF.a(f - this.eu, f2 - this.ev, f + this.eu, f2 + this.ev);
-                graphicsEngine.k();
-                graphicsEngine.a(getRenderRotation(true), f, f2);
-                graphicsEngine.a(this.shadowTexture, rectA_, rectF, getSelectionPaint());
-                graphicsEngine.l();
-            } else {
-                graphicsEngine.a(this.shadowTexture, f, f2, getRenderRotation(true) - 90.0f, getSelectionPaint());
-            }
-            if (fCD != 1.0f) {
-                graphicsEngine.l();
+            // Metadata only: always execute the original draw path, including its state changes.
+            graphicsEngine.beginDrawRole(this.radius < 18.0f && this.posZ < 0.5d ? GraphicsEngine.DRAW_ROLE_UNIT_SHADOW : GraphicsEngine.DRAW_ROLE_GENERIC, this.objectId);
+            try {
+                if (fCD != 1.0f) {
+                    graphicsEngine.k();
+                    graphicsEngine.a(fCD, fCD, f, f2);
+                }
+                if (hasShadowFrames()) {
+                    Rect rectA_ = a_(true);
+                    RectF rectF = dB;
+                    rectF.a(f - this.eu, f2 - this.ev, f + this.eu, f2 + this.ev);
+                    graphicsEngine.k();
+                    graphicsEngine.a(getRenderRotation(true), f, f2);
+                    graphicsEngine.a(this.shadowTexture, rectA_, rectF, getSelectionPaint());
+                    graphicsEngine.l();
+                } else {
+                    graphicsEngine.a(this.shadowTexture, f, f2, getRenderRotation(true) - 90.0f, getSelectionPaint());
+                }
+                if (fCD != 1.0f) {
+                    graphicsEngine.l();
+                    return true;
+                }
                 return true;
+            } finally {
+                graphicsEngine.endDrawRole();
             }
-            return true;
         }
         return false;
     }

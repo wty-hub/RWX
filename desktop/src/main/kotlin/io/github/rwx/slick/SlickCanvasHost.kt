@@ -26,6 +26,9 @@ object SlickCanvasHost {
     private var hostFocusLostHandler: (() -> Unit)? = null
 
     @Volatile
+    private var koolCanvasKeyHandler: ((Int, Boolean) -> Unit)? = null
+
+    @Volatile
     private var pointerCursorController: ((Boolean) -> Unit)? = null
 
     fun install(
@@ -50,6 +53,14 @@ object SlickCanvasHost {
 
     fun notifyHostFocusLost() {
         hostFocusLostHandler?.invoke()
+    }
+
+    fun setKoolCanvasKeyHandler(handler: ((Int, Boolean) -> Unit)?) {
+        koolCanvasKeyHandler = handler
+    }
+
+    fun submitKoolCanvasKey(slickKey: Int, down: Boolean) {
+        koolCanvasKeyHandler?.invoke(slickKey, down)
     }
 
     fun setRendererShutdown(shutdown: (() -> Unit)?) {

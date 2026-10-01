@@ -85,9 +85,19 @@ object KoolDesktopMain : KoinComponent {
         val bridge=get<PlatformBridge>()
         bridge.filePickerHost=swingHost
         val context = createContext(createKoolConfig(swingHost, renderBackend))
+        context.onRender += { io.github.rwx.render.canvas.CanvasFramePresentation.beginFrame() }
+        swingHost.scheduleVisibilityProbe(context)
+        context.onShutdown += { io.github.rwx.render.canvas.CanvasFrameMetrics.close() }
         // Kool only reads its frame-rate limits once, from the config, so keep them in step with the
         // settings screen the same way the Slick canvas does: it re-resolves its target every frame.
         context.onRender += { syncDesktopFrameRateLimit(context) }
+        System.getenv("RWX_DEBUG_AUTO_EXIT_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }?.let { seconds ->
+            val exitAt = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(seconds)
+            var requested = false
+            context.onRender += {
+                if (!requested && System.nanoTime() >= exitAt) { requested = true; swingHost.requestClose() }
+            }
+        }
         val app = KoolApplication(context)
         val loadingScene = LoadingSceneHost.createScene()
         app.ctx.addScene(loadingScene)
@@ -97,6 +107,16 @@ object KoolDesktopMain : KoinComponent {
                 context = app.ctx,
                 options = options,
                 onQuit = swingHost::requestClose,
+                configureGameSession = { gameSession ->
+                    io.github.rwx.compatibility.GameCompatibilityProbe.install(gameSession)?.let { probe ->
+                        context.onShutdown += { probe.close() }
+                    }
+                },
+                configureCanvasHost = { host ->
+                    if (renderBackend === RenderBackendVk.Companion) {
+                        host.setGpuRetirementSink(io.github.rwx.kool.vulkan.VulkanFrameLifecycle::retainUntilFrameComplete)
+                    }
+                },
             )
             swingHost.setHostFocusLostHandler(session::onHostFocusLost)
             app.ctx.removeScene(loadingScene)
@@ -117,6 +137,7 @@ object KoolDesktopMain : KoinComponent {
         windowSize = swingHost.windowSize,
         renderBackend = renderBackend,
         windowSubsystem = swingHost.windowSubsystem,
+        numSamples = desktopKoolMsaaSamples(),
         asyncSceneUpdate = false,
         // The host provides a different AWT canvas type for Vulkan and OpenGL. Falling back to
         // OpenGL after creating a regular Vulkan canvas cannot produce a working window.
@@ -127,7 +148,9 @@ object KoolDesktopMain : KoinComponent {
         // the frame-rate limiter below pace the loop like the Slick canvas does. Kool reads this when
         // it creates the swapchain, so toggling it in game applies on the next swapchain recreation.
         isVsync = SettingsEngine.getInstance().renderVsync,
-        maxFrameRate = desktopTargetFrameRate(),
+        // The GL Swing host schedules frames outside the canvas lock. Kool's limiter would sleep
+        // inside that lock and block input as well as the embedded game canvas.
+        maxFrameRate = if (swingHost.windowSubsystem.usesExternalFramePacing) 0 else desktopTargetFrameRate(),
         // Same limit whether or not the window has focus: a stale focus flag must not silently
         // throttle a focused game, and the Slick path has no unfocused variant either.
         windowNotFocusedFrameRate = 0,
@@ -138,8 +161,13 @@ object KoolDesktopMain : KoinComponent {
         context: Lwjgl3Context,
         targetFrameRate: Int = desktopTargetFrameRate(),
     ) {
-        if (context.maxFrameRate != targetFrameRate) {
-            context.maxFrameRate = targetFrameRate
+        val limit = if ((context.windowSubsystem as? PacedSwingWindowSubsystem)?.usesExternalFramePacing == true) {
+            0
+        } else {
+            targetFrameRate
+        }
+        if (context.maxFrameRate != limit) {
+            context.maxFrameRate = limit
         }
     }
 

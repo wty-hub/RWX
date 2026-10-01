@@ -11,6 +11,14 @@ import io.github.rwx.ui.CoreUiEventQueue
 object UiRegistry : OwnedRegistry {
     private const val MENU_ID_BASE = 26000
 
+    /** Installed by the app: inline for legacy sessions, FIFO on the independent engine owner. */
+    @Volatile
+    internal var engineExecutor: (() -> Unit) -> Unit = { action -> action() }
+
+    internal fun cancelEngineSelectionDrag() {
+        engineExecutor { GameEngine.getInstance()?.gameUI?.isDraggingSelection = false }
+    }
+
     /**
      * All state here shares one monitor: the object itself, which is what [Synchronized]
      * on these methods and `synchronized(ModUiRegistry)` in [SelectionHandle] already take.
@@ -119,7 +127,7 @@ object UiRegistry : OwnedRegistry {
     fun openWindow(id: ModWindowId) {
         check(id.value in windows) { "Mod window is not registered: ${id.value}" }
         activeWindowId = id.value
-        GameEngine.getInstance().gameUI?.isDraggingSelection = false
+        cancelEngineSelectionDrag()
         CoreUiEventQueue.requestInGameModWindow()
     }
 

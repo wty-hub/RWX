@@ -4,6 +4,7 @@ import de.fabmax.kool.input.InputStack
 import de.fabmax.kool.input.KeyboardInput
 import de.fabmax.kool.input.PointerInput
 import io.github.rwx.mod.registry.UiRegistry
+import io.github.rwx.render.canvas.KoolCanvasViewport
 import io.github.rwx.session.GameSession
 import io.github.rwx.ui.AppScreen
 import io.github.rwx.ui.component.PlatformTextInputBridge
@@ -15,11 +16,13 @@ internal class InputController(
     private val navigateBack: () -> Unit,
     private val dismissDialog: () -> Boolean = { false },
     private val isModalOverlayOpen: () -> Boolean = { false },
+    pointerViewport: () -> KoolCanvasViewport? = { null },
 ) {
     private val legacyPointerSink = LegacyGamePointerSink(
         gameSession = gameSession,
         scaleProvider = KoolPointerScaleProvider(pointerScale),
         blockWorldWheel = isModalOverlayOpen,
+        viewportProvider = pointerViewport,
     )
     private val legacyKeyboardSink = LegacyGameKeyboardSink(gameSession)
 
@@ -42,6 +45,9 @@ internal class InputController(
                 return@addKeyListener
             }
             if (dismissDialog()) return@addKeyListener
+            if (currentScreen() == AppScreen.InGame && !gameSession.acceptsKoolKeyboardInput) {
+                return@addKeyListener
+            }
             if (!UiRegistry.cancelWorldPositionSelection()) navigateBack()
         }
         InputStack.defaultInputHandler.pointerListeners += GatedPointerListener(
@@ -50,7 +56,7 @@ internal class InputController(
         )
         InputStack.defaultInputHandler.keyboardListeners += GatedKeyboardListener(
             {
-                shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) &&
+                shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolKeyboardInput) &&
                     !isModalOverlayOpen()
             },
             legacyKeyboardSink,

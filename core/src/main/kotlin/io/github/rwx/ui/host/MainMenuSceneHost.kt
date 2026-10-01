@@ -62,7 +62,6 @@ class MainMenuSceneHost(
     companion object {
         const val MAIN_MENU_SCENE_NAME: String = "main-menu"
         const val MENU_TITLE: String = "RWXX"
-        const val MENU_SUBTITLE: String = "Rusted Warfare Extension"
     }
 }
 
@@ -259,29 +258,24 @@ internal fun UiScope.MainMenuHeader(
     theme: io.github.rwx.ui.ColorSchemeDefinition,
     isShortLandscape: Boolean = false,
 ) {
-    GradientMainTitle(MainMenuSceneHost.MENU_TITLE, contentWidth, theme)
-    Text(MainMenuSceneHost.MENU_SUBTITLE) {
-        modifier
-            .width(contentWidth)
-            .height(Dp(32f))
-            .margin(bottom = if (isShortLandscape) UiTheme.Spacing.sm else UiTheme.Spacing.xl)
-            .font(UiTheme.Fonts.bodySmall)
-            .textAlign(AlignmentX.Center, AlignmentY.Center)
-            .isWrapText(false)
-            .clipToBounds(true)
-            .textColor(theme.palette.textSecondary)
-    }
+    GradientMainTitle(
+        MainMenuSceneHost.MENU_TITLE,
+        contentWidth,
+        theme,
+        bottomMargin = if (isShortLandscape) UiTheme.Spacing.sm else UiTheme.Spacing.xl,
+    )
 }
 
 internal fun UiScope.GradientMainTitle(
     text: String,
     contentWidth: Dp,
     theme: io.github.rwx.ui.ColorSchemeDefinition,
+    bottomMargin: Dp = UiTheme.Spacing.xl,
 ) {
     Box(width = contentWidth, height = UiTheme.Layout.mainMenuTitleHeight) {
         modifier
             .width(contentWidth)
-            .margin(bottom = UiTheme.Spacing.xs)
+            .margin(bottom = bottomMargin)
 
         if (UiTheme.Fonts.titleInstalledState().use()) {
             GradientText(text) {
@@ -316,7 +310,7 @@ private fun UiScope.mainMenuLayoutMetrics(): MainMenuLayoutMetrics {
         else -> 1
     }
     val cardHeight = if (isShortLandscape) Dp(108f) else UiTheme.Layout.mainMenuTileHeight
-    val reservedHeight = if (isShortLandscape) 230f else 290f
+    val reservedHeight = if (isShortLandscape) 198f else 258f
     val viewportHeight = Dp((viewportHeightDp - reservedHeight).coerceIn(100f, 470f))
     return MainMenuLayoutMetrics(
         contentWidth = contentWidth,

@@ -24,6 +24,7 @@ import de.fabmax.kool.pipeline.BlendMode as KoolBlendMode
 class KoolCanvasFrameRenderer(
     private val textureStore: KoolCanvasTextureStore = KoolCanvasTextureRegistry,
     private val renderingFrameTextureIds: MutableSet<KoolCanvasTextureId> = mutableSetOf(),
+    private val performanceRates: () -> CanvasFrameRateSample? = CanvasFrameMetrics::snapshot,
 ) {
     private var attachedScene: Scene? = null
     private val primitiveMeshes = linkedMapOf<PrimitiveMeshKey, Mesh<VertexLayouts.PositionNormalColor>>()
@@ -40,6 +41,8 @@ class KoolCanvasFrameRenderer(
     private val usedDisplacementTextureMeshKeys = mutableSetOf<DisplacementTextureMeshKey>()
     private val textMeshes = linkedMapOf<TextMeshKey, TextMeshEntry>()
     private val usedTextMeshKeys = mutableSetOf<TextMeshKey>()
+    private val performanceHudEntries = mutableListOf<Pair<KoolCanvasCommand.DrawText, TextMeshEntry>>()
+    private var performanceHudSample: CanvasFrameRateSample? = null
     private var activeBatchIndex = -1
     private var activeBatchKey: CanvasBatchKey? = null
     private var activeOrderingSegment = 0
@@ -106,8 +109,28 @@ class KoolCanvasFrameRenderer(
     private val textureRunTextureIds = arrayOfNulls<KoolCanvasTextureId>(TEXTURE_RUN_CACHE_SIZE)
     private val textureRunFilters = arrayOfNulls<KoolCanvasTextureFilter>(TEXTURE_RUN_CACHE_SIZE)
     private val textureRunEntries = arrayOfNulls<InstancedTextureMeshEntry>(TEXTURE_RUN_CACHE_SIZE)
+    private val primitiveShaders = mutableMapOf<CanvasRenderBlend, KslUnlitShader>()
+    private val spriteAtlas = KoolCanvasSpriteAtlas(textureStore)
+    private val spriteMeshes = linkedMapOf<SpriteMeshKey, SpriteMeshEntry>()
+    private val spriteShaders = mutableMapOf<SpriteMaterialKey, KoolCanvasSpriteShader>()
+    private val usedSpriteMeshKeys = mutableSetOf<SpriteMeshKey>()
+    private val meshLastUsed = java.util.IdentityHashMap<Mesh<*>, Long>()
+    private var renderSequence = 0L
+    private val adaptiveVisuals = KoolCanvasAdaptiveVisuals()
+    private val ringMeshes = linkedMapOf<Int, RingMeshEntry>()
+    private val usedRingMeshKeys = mutableSetOf<Int>()
+    private var ringShader: KoolCanvasRingShader? = null
+    private data class RingMeshEntry(val mesh: Mesh<VertexLayouts.Position>, val instances: MeshInstanceList<KoolCanvasRingInstanceLayout>)
 
-    private fun createPrimitiveShader(renderBlend: CanvasRenderBlend): KslUnlitShader = KslUnlitShader {
+    private data class SpriteMaterialKey(val pageSerial: Int, val filter: KoolCanvasTextureFilter, val blend: CanvasRenderBlend)
+    private data class SpriteMeshKey(val batchIndex: Int, val material: SpriteMaterialKey)
+    private data class SpriteMeshEntry(
+        val mesh: Mesh<VertexLayouts.Position>,
+        val instances: MeshInstanceList<KoolCanvasSpriteInstanceLayout>,
+        val shader: KoolCanvasSpriteShader,
+    )
+
+    private fun createPrimitiveShader(renderBlend: CanvasRenderBlend): KslUnlitShader = primitiveShaders.getOrPut(renderBlend) { KslUnlitShader {
         color { vertexColor() }
         pipeline {
             blendMode = renderBlend.primitiveBlendMode
@@ -115,7 +138,7 @@ class KoolCanvasFrameRenderer(
             depthTest = DepthCompareOp.ALWAYS
             isWriteDepth = false
         }
-    }
+    } }
 
     private fun createTextureShader(
         texture: Texture2d,
@@ -259,6 +282,7 @@ class KoolCanvasFrameRenderer(
         val fontData: MsdfFontData,
         val renderBlend: CanvasRenderBlend,
         val typefaceKey: String?,
+        val performanceHud: Boolean,
     )
 
     private sealed interface CanvasBatchKey {
@@ -299,11 +323,20 @@ class KoolCanvasFrameRenderer(
             val fontData: MsdfFontData,
             val renderBlend: CanvasRenderBlend,
             val typefaceKey: String?,
+            val performanceHud: Boolean,
         ) : CanvasBatchKey
+
+        data class Sprite(val material: SpriteMaterialKey) : CanvasBatchKey
+        data object Ring : CanvasBatchKey
     }
 
     fun render(scene: Scene, frame: KoolCanvasFrame) {
         resetSceneCachesIfNeeded(scene)
+        performanceHudEntries.clear()
+        performanceHudSample = performanceRates()
+        renderSequence++
+        adaptiveVisuals.prepare(frame)
+        spriteAtlas.prepare(frame.commands)
         configureCamera(scene, frame.viewport)
         scene.clearColor = ClearColorFill(KoolCanvasColor.Transparent.toKoolColor())
         currentTextureRevision = textureRevisionStore?.textureRevision ?: Int.MIN_VALUE
@@ -347,6 +380,16 @@ class KoolCanvasFrameRenderer(
         usedTeamColorTextureMeshKeys.clear()
         usedDisplacementTextureMeshKeys.clear()
         usedTextMeshKeys.clear()
+        usedSpriteMeshKeys.clear()
+        usedRingMeshKeys.clear()
+        for (entry in spriteMeshes.values) {
+            entry.instances.clear()
+            entry.mesh.isVisible = false
+        }
+        for (entry in ringMeshes.values) {
+            entry.instances.clear()
+            entry.mesh.isVisible = false
+        }
 
         for (mesh in primitiveMeshes.values) {
             mesh.geometry.clear()
@@ -384,8 +427,16 @@ class KoolCanvasFrameRenderer(
         var commandIndex = 0
         while (commandIndex < commands.size) {
             val command = commands[commandIndex]
+            if (!adaptiveVisuals.shouldDraw(command)) {
+                commandIndex++
+                continue
+            }
             when (command) {
                 is KoolCanvasCommand.DrawTexture -> if (command.state.renderTarget == null) {
+                    if (addAtlasSprite(scene, viewport, command)) {
+                        commandIndex++
+                        continue
+                    }
                     val textureRunLength = addUnorderedDefaultInstancedTextureRun(
                         scene = scene,
                         viewport = viewport,
@@ -425,7 +476,7 @@ class KoolCanvasFrameRenderer(
                 }
 
                 is KoolCanvasCommand.DrawCircle -> if (command.state.renderTarget == null) {
-                    addCircle(scene, viewport, command)
+                    if (!addSelectionRing(scene, viewport, command)) addCircle(scene, viewport, command)
                 }
 
                 is KoolCanvasCommand.DrawText -> if (command.state.renderTarget == null) {
@@ -470,6 +521,14 @@ class KoolCanvasFrameRenderer(
         for (entry in textMeshes.values) {
             entry.mesh.isVisible = !entry.mesh.geometry.isEmpty()
         }
+        for (entry in spriteMeshes.values) {
+            entry.mesh.isVisible = entry.instances.numInstances != 0
+            if (entry.mesh.isVisible) entry.instances.incrementModCount()
+        }
+        for (entry in ringMeshes.values) {
+            entry.mesh.isVisible = entry.instances.numInstances != 0
+            if (entry.mesh.isVisible) entry.instances.incrementModCount()
+        }
         pruneUnusedMeshes(scene)
         (textureStore as? KoolCanvasRetiredTextureReleaser)?.releaseRetiredTextures()
     }
@@ -477,6 +536,7 @@ class KoolCanvasFrameRenderer(
     private fun resetSceneCachesIfNeeded(scene: Scene) {
         if (attachedScene !== scene) {
             primitiveMeshes.clear()
+            primitiveShaders.clear()
             usedPrimitiveMeshKeys.clear()
             textureMeshes.clear()
             usedTextureMeshKeys.clear()
@@ -490,6 +550,13 @@ class KoolCanvasFrameRenderer(
             usedDisplacementTextureMeshKeys.clear()
             textMeshes.clear()
             usedTextMeshKeys.clear()
+            spriteMeshes.clear()
+            spriteShaders.clear()
+            usedSpriteMeshKeys.clear()
+            ringMeshes.clear()
+            usedRingMeshKeys.clear()
+            ringShader = null
+            meshLastUsed.clear()
             lastPrimitiveMeshKey = null
             lastPrimitiveMesh = null
             lastTextureMeshKey = null
@@ -523,6 +590,9 @@ class KoolCanvasFrameRenderer(
         pruneUnusedMeshMap(scene, teamColorTextureMeshes, usedTeamColorTextureMeshKeys) { it.mesh }
         pruneUnusedMeshMap(scene, displacementTextureMeshes, usedDisplacementTextureMeshKeys) { it.mesh }
         pruneUnusedMeshMap(scene, textMeshes, usedTextMeshKeys) { it.mesh }
+        pruneUnusedMeshMap(scene, spriteMeshes, usedSpriteMeshKeys) { it.mesh }
+        pruneUnusedMeshMap(scene, ringMeshes, usedRingMeshKeys) { it.mesh }
+        spriteShaders.keys.removeAll { material -> spriteMeshes.keys.none { it.material == material } }
     }
 
     private fun markPrimitiveMeshKeyUsed(key: PrimitiveMeshKey) {
@@ -580,19 +650,128 @@ class KoolCanvasFrameRenderer(
         usedKeys: Set<K>,
         meshOf: (V) -> Mesh<*>,
     ) {
-        if (!meshPruneRequired && meshes.size == usedKeys.size) {
-            return
-        }
         val iterator = meshes.iterator()
         while (iterator.hasNext()) {
             val (key, entry) = iterator.next()
-            if (key !in usedKeys) {
-                val mesh = meshOf(entry)
+            val mesh = meshOf(entry)
+            if (key in usedKeys) {
+                meshLastUsed[mesh] = renderSequence
+            } else if (renderSequence - (meshLastUsed[mesh] ?: renderSequence) > 60 || meshes.size > 4096) {
                 scene.removeNode(mesh)
-                mesh.release()
+                KoolCanvasGpuRetirement.retire { mesh.release() }
+                meshLastUsed.remove(mesh)
                 iterator.remove()
             }
         }
+    }
+
+    private fun addAtlasSprite(scene: Scene, viewport: KoolCanvasViewport, command: KoolCanvasCommand.DrawTexture): Boolean {
+        if (frameProjectionDepth != 0 || command.paint.isRenderNoOp) return false
+        val slot = spriteAtlas.slot(command) ?: return false
+        val material = SpriteMaterialKey(slot.page.serial, command.paint.textureFilter, command.paint.renderBlend)
+        val batch = CanvasBatchKey.Sprite(material)
+        if (activeBatchKey != batch) {
+            if (pendingOrderingSegmentAdvance) advanceOrderingSegmentIfAllowed()
+            activeBatchIndex++
+            activeBatchKey = batch
+        }
+        val key = SpriteMeshKey(activeBatchIndex, material)
+        val entry = spriteMeshes.getOrPut(key) {
+            val shader = spriteShaders.getOrPut(material) {
+                KoolCanvasSpriteShader(PipelineConfig(
+                    blendMode = material.blend.textureBlendMode,
+                    cullMethod = CullMethod.NO_CULLING, depthTest = DepthCompareOp.ALWAYS, isWriteDepth = false,
+                ), additive = material.blend == CanvasRenderBlend.Additive)
+            }
+            val instances = MeshInstanceList(KoolCanvasSpriteInstanceLayout, initialSize = ORDERED_TEXTURE_INSTANCE_INITIAL_SIZE)
+            val mesh = Mesh(IndexedVertexList(VertexLayouts.Position, usage = Usage.STATIC), instances,
+                name = "rwx-canvas-sprites-${material.pageSerial}-$activeBatchIndex")
+            mesh.shader = shader
+            mesh.isOpaque = false
+            mesh.geometry.addVertex { set(it.position, 0f, 0f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 1f, 0f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 1f, 1f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 0f, 1f, 0f) }
+            mesh.geometry.addTriIndices(0, 1, 2)
+            mesh.geometry.addTriIndices(0, 2, 3)
+            SpriteMeshEntry(mesh, instances, shader)
+        }
+        entry.shader.colorMap = spriteAtlas.texture(slot.page, material.filter)
+        if (usedSpriteMeshKeys.add(key)) placeBatchNode(scene, entry.mesh, activeBatchIndex)
+        val d = command.destination
+        val transform = command.state.transform
+        val p0 = transform.map(KoolCanvasPoint(d.left, d.top))
+        val px = transform.map(KoolCanvasPoint(d.right, d.top))
+        val py = transform.map(KoolCanvasPoint(d.left, d.bottom))
+        val uv = slot.uv(command.source)
+        val tint = command.paint.toRenderColor()
+        val effect = command.paint.textureEffect as? KoolCanvasTextureEffect.TeamColor
+        val mode = effect?.mode?.let { it.ordinal + 1 }?.toFloat() ?: 0f
+        val team = effect?.color?.toKoolColor() ?: Color.WHITE
+        val clip = command.state.clip.toWorldClip(viewport)
+        entry.instances.addInstances(1) { data ->
+            data.put { layout ->
+                set(layout.originAxisX, p0.x - currentViewportHalfWidth, currentViewportHalfHeight - p0.y,
+                    px.x - p0.x, -(px.y - p0.y))
+                set(layout.axisYModeAmount, py.x - p0.x, -(py.y - p0.y), mode, effect?.amount ?: 0f)
+                set(layout.uv, uv.left, uv.top, uv.right, uv.bottom)
+                set(layout.tint, tint.r, tint.g, tint.b, tint.a)
+                set(layout.team, team.r, team.g, team.b, team.a)
+                set(layout.clip, clip)
+            }
+        }
+        markOrderingBarrier()
+        return true
+    }
+
+    private fun addSelectionRing(scene: Scene, viewport: KoolCanvasViewport, command: KoolCanvasCommand.DrawCircle): Boolean {
+        if (command.state.drawRole != KoolCanvasDrawRole.SelectionRing || command.paint.style != KoolCanvasPaintStyle.Stroke ||
+            command.paint.blendMode != KoolCanvasBlendMode.SourceOver || command.paint.textureEffect != null ||
+            command.radius <= 0f || command.paint.isRenderNoOp) return false
+        val t = command.state.transform
+        val scale = hypot(t.scaleX, t.skewY)
+        if (!scale.isFinite() || scale <= 0f || abs(scale - hypot(t.skewX, t.scaleY)) > 0.0001f ||
+            abs(t.scaleX * t.skewX + t.skewY * t.scaleY) > 0.0001f) return false
+        if (activeBatchKey != CanvasBatchKey.Ring) {
+            if (pendingOrderingSegmentAdvance) advanceOrderingSegmentIfAllowed()
+            activeBatchIndex++
+            activeBatchKey = CanvasBatchKey.Ring
+        }
+        val entry = ringMeshes.getOrPut(activeBatchIndex) {
+            val shader = ringShader ?: KoolCanvasRingShader(PipelineConfig(
+                blendMode = KoolBlendMode.BLEND_MULTIPLY_ALPHA, cullMethod = CullMethod.NO_CULLING,
+                depthTest = DepthCompareOp.ALWAYS, isWriteDepth = false,
+            )).also { ringShader = it }
+            val instances = MeshInstanceList(KoolCanvasRingInstanceLayout, initialSize = 128)
+            val mesh = Mesh(IndexedVertexList(VertexLayouts.Position, usage = Usage.STATIC), instances,
+                name = "rwx-canvas-selection-rings-$activeBatchIndex")
+            mesh.shader = shader
+            mesh.isOpaque = false
+            mesh.geometry.addVertex { set(it.position, 0f, 0f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 1f, 0f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 1f, 1f, 0f) }
+            mesh.geometry.addVertex { set(it.position, 0f, 1f, 0f) }
+            mesh.geometry.addTriIndices(0, 1, 2)
+            mesh.geometry.addTriIndices(0, 2, 3)
+            RingMeshEntry(mesh, instances)
+        }
+        if (usedRingMeshKeys.add(activeBatchIndex)) placeBatchNode(scene, entry.mesh, activeBatchIndex)
+        val center = t.map(command.center)
+        val radius = command.radius * scale
+        val halfStroke = command.paint.strokeWidth.coerceAtLeast(1f) * scale * 0.5f
+        val extent = radius + halfStroke + 1f
+        val color = command.paint.toRenderColor()
+        val clip = command.state.clip.toWorldClip(viewport)
+        entry.instances.addInstance { layout ->
+            set(layout.rect, center.x - extent - currentViewportHalfWidth,
+                currentViewportHalfHeight - center.y + extent, center.x + extent - currentViewportHalfWidth,
+                currentViewportHalfHeight - center.y - extent)
+            set(layout.props, extent, radius, halfStroke, 0f)
+            set(layout.color, color.r, color.g, color.b, color.a)
+            set(layout.clip, clip)
+        }
+        markOrderingBarrier()
+        return true
     }
 
     private fun ensurePrimitiveMesh(
@@ -1043,7 +1222,7 @@ class KoolCanvasFrameRenderer(
         val instances =
             MeshInstanceList(
                 KoolCanvasAffineTextureInstanceLayout,
-                initialSize = UNORDERED_TEXTURE_INSTANCE_INITIAL_SIZE
+                initialSize = ORDERED_TEXTURE_INSTANCE_INITIAL_SIZE
             )
         val mesh = createAffineInstancedTextureMesh(
             textureId,
@@ -1143,7 +1322,7 @@ class KoolCanvasFrameRenderer(
         val batchIndex = activateAffineTextureBatch(batchKey)
         val shader = createAffineInstancedTextureShader(texture, renderBlend, premultipliedAlpha)
         val instances =
-            MeshInstanceList(KoolCanvasAffineTextureInstanceLayout, initialSize = ORDERED_TEXTURE_INSTANCE_INITIAL_SIZE)
+            MeshInstanceList(KoolCanvasAffineTextureInstanceLayout, initialSize = UNORDERED_TEXTURE_INSTANCE_INITIAL_SIZE)
         val mesh = createAffineInstancedTextureMesh(
             textureId,
             renderBlend,
@@ -1368,8 +1547,9 @@ class KoolCanvasFrameRenderer(
         renderBlend: CanvasRenderBlend,
         typefaceKey: String?,
         ordered: Boolean,
+        performanceHud: Boolean = false,
     ): TextMeshEntry {
-        val batchIndex = batchIndexFor(CanvasBatchKey.Text(font.data, renderBlend, typefaceKey))
+        val batchIndex = batchIndexFor(CanvasBatchKey.Text(font.data, renderBlend, typefaceKey, performanceHud))
         val key = TextMeshKey(
             batchIndex = batchIndex.takeIf { ordered },
             orderingSegment = activeOrderingSegment.takeIf { !ordered },
@@ -1377,6 +1557,7 @@ class KoolCanvasFrameRenderer(
             fontData = font.data,
             renderBlend = renderBlend,
             typefaceKey = typefaceKey,
+            performanceHud = performanceHud,
         )
         markTextMeshKeyUsed(key)
         val existing = textMeshes[key]
@@ -1509,19 +1690,11 @@ class KoolCanvasFrameRenderer(
     }
 
     private fun placeBatchNode(scene: Scene, mesh: Mesh<*>, batchIndex: Int) {
-        val targetIndex = batchIndex.coerceIn(0, scene.children.size)
-        if (mesh.parent === scene) {
-            if (targetIndex < scene.children.size && scene.children[targetIndex] === mesh) {
-                return
-            }
-            val currentIndex = scene.children.indexOf(mesh)
-            if (currentIndex == targetIndex) {
-                return
-            }
-            scene.removeNode(mesh)
-            scene.addNode(mesh, targetIndex.coerceIn(0, scene.children.size))
-        } else {
-            scene.addNode(mesh, targetIndex)
+        // Kool orders draw groups before traversing meshes. Changing a group is O(1), unlike
+        // searching and splicing the scene's children for every sprite batch.
+        mesh.drawGroupId = batchIndex + 1
+        if (mesh.parent !== scene) {
+            scene.addNode(mesh)
         }
     }
 
@@ -1664,6 +1837,7 @@ class KoolCanvasFrameRenderer(
         var commandIndex = startIndex
         while (commandIndex < commands.size) {
             val command = commands[commandIndex] as? KoolCanvasCommand.DrawTexture ?: break
+            if (!adaptiveVisuals.shouldDraw(command)) break
             if (!command.canUseUnorderedDefaultInstancedTextureRun()) break
 
             val textureRef = command.texture
@@ -2407,6 +2581,7 @@ class KoolCanvasFrameRenderer(
         }
         val ordered = command.paint.requiresOrderedTextBatch()
         val orderingBarrier = command.paint.requiresTextOrderingBarrier()
+        val performanceHud = command.state.drawRole == KoolCanvasDrawRole.PerformanceHud && frameProjectionDepth == 0
 
         val font = KoolCanvasFontRegistry.font(command.paint.textSize, command.paint.typefaceKey)
         val entry = ensureTextMesh(
@@ -2415,7 +2590,34 @@ class KoolCanvasFrameRenderer(
             command.paint.renderBlend,
             command.paint.typefaceKey,
             ordered,
+            performanceHud,
         )
+        if (performanceHud) performanceHudEntries += command to entry
+        val displayed = if (performanceHud) CanvasPerformanceHud.command(command, performanceHudSample) else command
+        return writeText(entry, font, viewport, displayed).also { added ->
+            if (added && orderingBarrier) markOrderingBarrier()
+        }
+    }
+
+    /** Refresh the one display-only counter mesh while keeping repeated world batches intact. */
+    fun refreshPerformanceHud(viewport: KoolCanvasViewport): Boolean {
+        val sample = performanceRates()
+        if (sample === performanceHudSample || performanceHudEntries.isEmpty()) return false
+        performanceHudSample = sample
+        for ((command, entry) in performanceHudEntries) {
+            val font = KoolCanvasFontRegistry.font(command.paint.textSize, command.paint.typefaceKey)
+            entry.builder.clear()
+            entry.mesh.isVisible = writeText(entry, font, viewport, CanvasPerformanceHud.command(command, sample))
+        }
+        return true
+    }
+
+    private fun writeText(
+        entry: TextMeshEntry,
+        font: MsdfFont,
+        viewport: KoolCanvasViewport,
+        command: KoolCanvasCommand.DrawText,
+    ): Boolean {
         val metrics = font.textDimensions(command.text, TextMetrics())
         val origin = alignedTextOrigin(command, metrics)
         if (!command.state.intersectsClip(textBounds(origin, metrics))) {
@@ -2449,9 +2651,6 @@ class KoolCanvasFrameRenderer(
                     isYAxisUp = false
                 },
             )
-            if (orderingBarrier) {
-                markOrderingBarrier()
-            }
             true
         } finally {
             builder.vertexCustomizer = previousCustomizer
@@ -2522,6 +2721,7 @@ class KoolCanvasFrameRenderer(
         var commandIndex = startIndex
         while (commandIndex < commands.size) {
             val command = commands[commandIndex] as? KoolCanvasCommand.DrawRect ?: break
+            if (!adaptiveVisuals.shouldDraw(command)) break
             if (!command.canUseFilledIdentityPrimitiveRectRun()) break
             geometry.addFilledRectIdentityUnchecked(command.rect, command.paint)
             hasOrderingBarrier = hasOrderingBarrier || command.paint.requiresPrimitiveOrderingBarrier()

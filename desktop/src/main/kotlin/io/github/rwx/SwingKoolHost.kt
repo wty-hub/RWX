@@ -8,6 +8,7 @@ import io.github.rwx.KoolDesktopMain.getKoin
 import io.github.rwx.app.launchOnIO
 import io.github.rwx.slick.SlickAwtGLCanvas
 import io.github.rwx.slick.SlickCanvasHost
+import io.github.rwx.slick.toSlickKey
 import io.github.rwx.ui.component.PlatformTextInputBridge
 import io.github.rwx.ui.emoji.EmojiRasterizerBridge
 import kotlinx.coroutines.launch
@@ -68,6 +69,17 @@ class SwingKoolHost private constructor(
         koolCanvas.background = if (singleWindowCapture) Color.BLACK else TransparentCanvasColor
         koolCanvas.isFocusable = true
         koolCanvas.ignoreRepaint = true
+        if (singleWindowCapture) {
+            koolCanvas.addKeyListener(object : KeyAdapter() {
+                override fun keyPressed(event: KeyEvent) {
+                    SlickCanvasHost.submitKoolCanvasKey(event.toSlickKey(), true)
+                }
+
+                override fun keyReleased(event: KeyEvent) {
+                    SlickCanvasHost.submitKoolCanvasKey(event.toSlickKey(), false)
+                }
+            })
+        }
         keyboardFocusManager.addKeyEventDispatcher(koolTypedControlCharacterFilter)
         textInputController = DesktopTextInputController(
             editorHost = if (singleWindowCapture) frame.layeredPane else checkNotNull(overlayWindow).layeredPane,
@@ -115,7 +127,7 @@ class SwingKoolHost private constructor(
         overlayWindow?.let { configureKoolOverlayWindow(it, overlayPanel, koolCanvas) }
 
         frame.defaultCloseOperation = JFrame.DO_NOTHING_ON_CLOSE
-        frame.isUndecorated = startupFullscreen
+        frame.isUndecorated = startupFullscreen || System.getenv("RWX_BENCHMARK_UNITS") != null
         frame.background = Color.BLACK
         frame.contentPane.background = Color.BLACK
         frame.rootPane.background = Color.BLACK
@@ -157,6 +169,8 @@ class SwingKoolHost private constructor(
         frame.isVisible = true
         resizeCanvases()
         showKool()
+        DebugResizeProbe.scheduleResize(frame)
+        DebugResizeProbe.log("startup panel=${panel.width}x${panel.height} frame=${frame.width}x${frame.height}")
     }
 
     fun showGame(koolOverlay: Boolean = false) {
@@ -241,6 +255,56 @@ class SwingKoolHost private constructor(
 
     fun setHostFocusLostHandler(handler: (() -> Unit)?) {
         hostFocusLostHandler = handler
+    }
+
+    /** Opt-in acceptance probe. The provided canvas controls the unmanaged Vulkan loop's visibility. */
+    internal fun scheduleVisibilityProbe(context: de.fabmax.kool.platform.Lwjgl3Context) {
+        val hideAfter = System.getenv("RWX_DEBUG_HIDE_AFTER_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }
+            ?.coerceAtMost(3600) ?: return
+        val hideDuration = System.getenv("RWX_DEBUG_HIDE_SECONDS")?.toLongOrNull()?.coerceIn(1, 60) ?: 10
+        val timer = java.util.Timer("RWX-window-visibility-probe", true)
+        context.onShutdown += { timer.cancel() }
+        val windowClass = context.window.javaClass.name
+        val subsystemClass = context.windowSubsystem.javaClass.name
+        logger.info { "RWX visibility probe scheduled: window=$windowClass subsystem=$subsystemClass " +
+            "hideAfterSeconds=$hideAfter hiddenSeconds=$hideDuration at ${System.nanoTime()}" }
+        var previousCanvasVisible = true
+        var previousGameVisible = false
+        var previousOverlayVisible = false
+        var previousFrameVisible = true
+        io.github.rwx.debug.WindowVisibilityProbeSchedule(
+            after = { delayMillis, task ->
+                timer.schedule(object : java.util.TimerTask() { override fun run() = task() }, delayMillis)
+            },
+            onWindowOwner = { task -> SwingUtilities.invokeLater(task) },
+            setVisible = { visible ->
+                check(SwingUtilities.isEventDispatchThread())
+                if (!visible) {
+                    previousCanvasVisible = koolCanvas.isVisible
+                    previousGameVisible = gameCanvas?.isVisible ?: false
+                    previousOverlayVisible = overlayWindow?.isVisible ?: false
+                    previousFrameVisible = frame.isVisible
+                    // Hiding only JFrame leaves CanvasWrapper.flags.isVisible true. Its component
+                    // listener must see the actual render canvas hide before the Vulkan loop stops.
+                    koolCanvas.isVisible = false
+                    gameCanvas?.isVisible = false
+                    overlayWindow?.isVisible = false
+                    frame.isVisible = false
+                } else {
+                    frame.isVisible = previousFrameVisible
+                    koolCanvas.isVisible = previousCanvasVisible
+                    gameCanvas?.isVisible = previousGameVisible
+                    overlayWindow?.isVisible = previousOverlayVisible
+                    focusVisibleCanvas()
+                }
+                logger.info { "RWX visibility probe: visible=$visible window=$windowClass subsystem=$subsystemClass " +
+                    "canvasVisible=${koolCanvas.isVisible} canvasShowing=${koolCanvas.isShowing} " +
+                    "frameVisible=${frame.isVisible} at ${System.nanoTime()}" }
+            },
+            isClosed = closeRequested::get,
+            cancel = timer::cancel,
+            requested = { visible -> logger.info { "RWX visibility probe requested: visible=$visible at ${System.nanoTime()}" } },
+        ).start(hideAfter * 1000, hideDuration * 1000)
     }
 
     override fun openFilePicker(
@@ -532,6 +596,12 @@ class SwingKoolHost private constructor(
         }
 
         private fun initialWindowSize(fullscreen: Boolean): Vec2i {
+            val requestedWidth = System.getenv("RWX_WINDOW_WIDTH")?.toIntOrNull()
+            val requestedHeight = System.getenv("RWX_WINDOW_HEIGHT")?.toIntOrNull()
+            if (requestedWidth != null && requestedHeight != null) {
+                require(requestedWidth in 800..8192 && requestedHeight in 600..8192) { "Invalid diagnostic window size" }
+                return Vec2i(requestedWidth, requestedHeight)
+            }
             if (!fullscreen) return DEFAULT_WINDOW_SIZE
             val bounds = fullscreenBounds()
             return Vec2i(bounds.width.coerceAtLeast(800), bounds.height.coerceAtLeast(600))

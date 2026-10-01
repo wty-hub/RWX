@@ -48,11 +48,16 @@ interface KoolCanvasTextureStore : KoolCanvasTextureResolver {
     }
 
     fun registerAsset(id: KoolCanvasTextureId, assetPath: String)
+    /** Legacy stores may load by path; detached frame stores must own these encoded bytes. */
+    fun registerAssetSnapshot(id: KoolCanvasTextureId, assetPath: String, encodedBytes: ByteArray?) =
+        registerAsset(id, assetPath)
     fun registerFrame(id: KoolCanvasTextureId, frame: KoolCanvasFrame)
     fun unregister(id: KoolCanvasTextureId)
     fun frame(id: KoolCanvasTextureId): KoolCanvasFrame?
     fun argbImage(id: KoolCanvasTextureId): KoolCanvasArgbImage? = null
     fun argbImageView(id: KoolCanvasTextureId): KoolCanvasArgbImage? = argbImage(id)
+    /** Only decoded, immutable sprite pixels qualify for the static renderer atlas. */
+    fun staticArgbImage(id: KoolCanvasTextureId): KoolCanvasArgbImage? = null
 }
 
 interface KoolCanvasRetiredTextureReleaser {
@@ -88,6 +93,7 @@ object KoolCanvasTextureRegistry :
     KoolCanvasFrameSnapshotRetainer {
     private val registeredTextures = mutableMapOf<KoolCanvasTextureId, Texture2d>()
     private val registeredArgbImages = mutableMapOf<KoolCanvasTextureId, KoolCanvasArgbImage>()
+    private val staticArgbIds = mutableSetOf<KoolCanvasTextureId>()
     private val registeredAssets = mutableMapOf<KoolCanvasTextureId, String>()
     private val registeredFrames = mutableMapOf<KoolCanvasTextureId, KoolCanvasFrame>()
     private val argbTextures = mutableMapOf<Pair<KoolCanvasTextureId, KoolCanvasTextureFilter>, Texture2d>()
@@ -126,6 +132,7 @@ object KoolCanvasTextureRegistry :
     override fun register(id: KoolCanvasTextureId, texture: Texture2d) {
         registeredTextures.put(id, texture)?.takeIf { it !== texture }?.retireTexture()
         registeredArgbImages.remove(id)
+        staticArgbIds -= id
         registeredAssets.remove(id)
         registeredFrames.remove(id)
         releaseCachedTextures(id)
@@ -146,6 +153,7 @@ object KoolCanvasTextureRegistry :
         }
         val uploadPixels = if (alphaBleed) bleedTransparentRgb(width, height, argbPixels) else argbPixels
         registerArgbImage(id, KoolCanvasArgbImage(width, height, uploadPixels, premultipliedAlpha = false))
+        if (alphaBleed) staticArgbIds += id else staticArgbIds -= id
     }
 
     /**
@@ -196,6 +204,7 @@ object KoolCanvasTextureRegistry :
     }
 
     private fun registerArgbImage(id: KoolCanvasTextureId, image: KoolCanvasArgbImage) {
+        staticArgbIds -= id
         registeredArgbImages[id] = image
         registeredTextures.remove(id)?.retireTexture()
         registeredAssets.remove(id)
@@ -236,6 +245,7 @@ object KoolCanvasTextureRegistry :
             registeredAssets[id] = normalizedPath
             registeredTextures.remove(id)?.retireTexture()
             registeredArgbImages.remove(id)
+            staticArgbIds -= id
             registeredFrames.remove(id)
             releaseCachedTextures(id)
             frameTextureRevisionValue++
@@ -247,6 +257,7 @@ object KoolCanvasTextureRegistry :
         registeredFrames[id] = frame
         registeredTextures.remove(id)?.retireTexture()
         registeredArgbImages.remove(id)
+        staticArgbIds -= id
         registeredAssets.remove(id)
         releaseCachedTextures(id)
         frameTextureRevisionValue++
@@ -269,6 +280,7 @@ object KoolCanvasTextureRegistry :
             completeFrameArgbSlot = -1
         }
         registeredArgbImages.remove(id)
+        staticArgbIds -= id
         registeredAssets.remove(id)
         registeredFrames.remove(id)
         releaseCachedTextures(id)
@@ -319,6 +331,18 @@ object KoolCanvasTextureRegistry :
     @Synchronized
     override fun argbImageView(id: KoolCanvasTextureId): KoolCanvasArgbImage? =
         registeredArgbImages[id]
+
+    @Synchronized
+    override fun staticArgbImage(id: KoolCanvasTextureId): KoolCanvasArgbImage? =
+        registeredArgbImages[id]?.takeIf { id in staticArgbIds }
+
+    /** Installs an already detached immutable image on the render thread without bleeding twice. */
+    @Synchronized
+    internal fun installFrozenImage(id: KoolCanvasTextureId, image: KoolCanvasArgbImage, isStatic: Boolean) {
+        if (registeredArgbImages[id] === image) return
+        registerArgbImage(id, image)
+        if (isStatic) staticArgbIds += id
+    }
 
     @Synchronized
     override fun resolve(texture: KoolCanvasTextureRef, filter: KoolCanvasTextureFilter): Texture2d =
@@ -520,7 +544,7 @@ object KoolCanvasTextureRegistry :
             ?: Uint8Buffer(byteCount).also { buffers[slot] = it }
     }
 
-    private fun bleedTransparentRgb(width: Int, height: Int, argbPixels: IntArray): IntArray {
+    internal fun bleedTransparentRgb(width: Int, height: Int, argbPixels: IntArray): IntArray {
         val pixelCount = width * height
         val result = argbPixels.copyOf(pixelCount)
         val hasBleedRgb = BooleanArray(pixelCount)
@@ -564,7 +588,7 @@ object KoolCanvasTextureRegistry :
         return result
     }
 
-    private fun sanitizePremultipliedRgb(width: Int, height: Int, argbPixels: IntArray): IntArray {
+    internal fun sanitizePremultipliedRgb(width: Int, height: Int, argbPixels: IntArray): IntArray {
         val pixelCount = width * height
         val result = argbPixels.copyOf(pixelCount)
         for (index in 0 until pixelCount) {

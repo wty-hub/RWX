@@ -14,6 +14,8 @@ const val KEY_ANDROID_OPENGL_RENDERER = "newRender"
 class GameSettingsRepository(
     private val preferenceStorage: PreferenceStorage,
 ) {
+    var engineExecutor: ((() -> Unit) -> Unit)? = null
+
     private val preferences: Preference
         get() = preferenceStorage.preference(PREFERENCE_NAME)
 
@@ -30,6 +32,7 @@ class GameSettingsRepository(
             live?.slick2dFullScreen ?: prefs.getBoolean(KEY_SLICK2D_FULL_SCREEN, GameEngine.isPC())
         model.vsync.value = live?.renderVsync ?: prefs.getBoolean(KEY_RENDER_VSYNC, false)
         model.showUnitHp.value = live?.showHp ?: prefs.getBoolean(KEY_SHOW_HP, true)
+        model.adaptiveBattleVisuals.value = live?.adaptiveBattleVisuals ?: prefs.getBoolean(KEY_ADAPTIVE_BATTLE_VISUALS, true)
         model.showWaypoints.value = live?.showUnitWaypoints ?: prefs.getBoolean(KEY_SHOW_UNIT_WAYPOINTS, true)
         model.showZoomButton.value = live?.showZoomButton ?: prefs.getBoolean(KEY_SHOW_ZOOM_BUTTON, true)
         model.showFps.value = live?.showFps ?: prefs.getBoolean(KEY_SHOW_FPS, false)
@@ -125,17 +128,23 @@ class GameSettingsRepository(
      */
     fun applyLive(model: SettingsModel) {
         normalizeAudioSettings(model)
-        applySliderSettings(model, runtimeSettings())
-        GameEngine.getInstance()?.musicManager?.onSettingsChanged()
+        val snapshot = detachedSettings(model)
+        executeOnEngine {
+            applySliderSettings(snapshot, runtimeSettings())
+            GameEngine.getInstance()?.musicManager?.onSettingsChanged()
+        }
     }
 
     fun saveFrom(model: SettingsModel) {
         normalizeAudioSettings(model)
         model.maxFrameRate.value = SettingsEngine.normalizeMaxFrameRate(model.maxFrameRate.value)
-        val settings = runtimeSettings()
-        applyToLiveSettings(model, settings)
-        settings.save()
-        GameEngine.getInstance()?.musicManager?.onSettingsChanged()
+        val snapshot = detachedSettings(model)
+        executeOnEngine {
+            val settings = runtimeSettings()
+            applyToLiveSettings(snapshot, settings)
+            settings.save()
+            GameEngine.getInstance()?.musicManager?.onSettingsChanged()
+        }
         writePreferences(model)
         preferenceStorage.flush()
     }
@@ -147,6 +156,67 @@ class GameSettingsRepository(
      * enough to update preferences: [SettingsEngine] may already have been initialized by the
      * platform bootstrap and would otherwise retain its old defaults when the game starts.
      */
+    private fun executeOnEngine(action: () -> Unit) { engineExecutor?.invoke(action) ?: action() }
+
+    /** Copy UI state before an asynchronous engine handoff. */
+    private fun detachedSettings(model: SettingsModel): SettingsModel = SettingsModel().also { copy ->
+        copy.batterySaving.value = model.batterySaving.value
+        copy.highRefreshRate.value = model.highRefreshRate.value
+        copy.maxFrameRate.value = model.maxFrameRate.value
+        copy.slick2dFullScreen.value = model.slick2dFullScreen.value
+        copy.vsync.value = model.vsync.value
+        copy.showUnitHp.value = model.showUnitHp.value
+        copy.adaptiveBattleVisuals.value = model.adaptiveBattleVisuals.value
+        copy.showWaypoints.value = model.showWaypoints.value
+        copy.showZoomButton.value = model.showZoomButton.value
+        copy.showFps.value = model.showFps.value
+        copy.renderClouds.value = model.renderClouds.value
+        copy.renderDoubleScale.value = model.renderDoubleScale.value
+        copy.softFogFading.value = model.softFogFading.value
+        copy.shaderEffects.value = model.shaderEffects.value
+        copy.teamShaders.value = model.teamShaders.value
+        copy.useAndroidOpenGlRenderer.value = model.useAndroidOpenGlRenderer.value
+        copy.showMainMenuBackgroundDemo.value = model.showMainMenuBackgroundDemo.value
+        copy.renderBackground.value = model.renderBackground.value
+        copy.renderExtraLayers.value = model.renderExtraLayers.value
+        copy.showHpChanges.value = model.showHpChanges.value
+        copy.showUnitIcons.value = model.showUnitIcons.value
+        copy.useMinimapAllyColors.value = model.useMinimapAllyColors.value
+        copy.showWarLogOnScreen.value = model.showWarLogOnScreen.value
+        copy.mouseCaptureEnabled.value = model.mouseCaptureEnabled.value
+        copy.mouseSupport.value = model.mouseSupport.value
+        copy.keyboardSupport.value = model.keyboardSupport.value
+        copy.gestureZoom.value = model.gestureZoom.value
+        copy.useCircleSelect.value = model.useCircleSelect.value
+        copy.showUnitGroups.value = model.showUnitGroups.value
+        copy.immersiveFullScreen.value = model.immersiveFullScreen.value
+        copy.unlockedScreenRotation.value = model.unlockedScreenRotation.value
+        copy.classicInterface.value = model.classicInterface.value
+        copy.forceEnglish.value = model.forceEnglish.value
+        copy.quickRally.value = model.quickRally.value
+        copy.doubleClickToAttackMove.value = model.doubleClickToAttackMove.value
+        copy.showMapPingsOnBattlefield.value = model.showMapPingsOnBattlefield.value
+        copy.showMapPingsOnMinimap.value = model.showMapPingsOnMinimap.value
+        copy.showPlayerChatInGame.value = model.showPlayerChatInGame.value
+        copy.showChatAndPingShortcuts.value = model.showChatAndPingShortcuts.value
+        copy.smartSelection.value = model.smartSelection.value
+        copy.autosaving.value = model.autosaving.value
+        copy.udpInMultiplayer.value = model.udpInMultiplayer.value
+        copy.saveMultiplayerReplays.value = model.saveMultiplayerReplays.value
+        copy.replaysShowRecordedChat.value = model.replaysShowRecordedChat.value
+        copy.sendReports.value = model.sendReports.value
+        copy.enableSounds.value = model.enableSounds.value
+        copy.masterVolume.value = model.masterVolume.value
+        copy.gameVolume.value = model.gameVolume.value
+        copy.interfaceVolume.value = model.interfaceVolume.value
+        copy.musicVolume.value = model.musicVolume.value
+        copy.scrollSpeed.value = model.scrollSpeed.value
+        copy.edgeScrollSpeed.value = model.edgeScrollSpeed.value
+        copy.uiScale.value = model.uiScale.value
+        copy.selectedColorSchemeId.value = model.selectedColorSchemeId.value
+        copy.storageType.value = model.storageType.value
+    }
+
     private fun runtimeSettings(): SettingsEngine =
         GameEngine.getInstance()?.settingsEngine ?: SettingsEngine.getInstance()
 
@@ -157,6 +227,7 @@ class GameSettingsRepository(
         settings.slick2dFullScreen = model.slick2dFullScreen.value
         settings.renderVsync = model.vsync.value
         settings.showHp = model.showUnitHp.value
+        settings.adaptiveBattleVisuals = model.adaptiveBattleVisuals.value
         settings.showUnitWaypoints = model.showWaypoints.value
         settings.showZoomButton = model.showZoomButton.value
         settings.showFps = model.showFps.value
@@ -234,6 +305,7 @@ class GameSettingsRepository(
             .putBoolean(KEY_SLICK2D_FULL_SCREEN, model.slick2dFullScreen.value)
             .putBoolean(KEY_RENDER_VSYNC, model.vsync.value)
             .putBoolean(KEY_SHOW_HP, model.showUnitHp.value)
+            .putBoolean(KEY_ADAPTIVE_BATTLE_VISUALS, model.adaptiveBattleVisuals.value)
             .putBoolean(KEY_SHOW_UNIT_WAYPOINTS, model.showWaypoints.value)
             .putBoolean(KEY_SHOW_ZOOM_BUTTON, model.showZoomButton.value)
             .putBoolean(KEY_SHOW_FPS, model.showFps.value)
@@ -292,6 +364,7 @@ class GameSettingsRepository(
         private const val KEY_SLICK2D_FULL_SCREEN = "slick2dFullScreen"
         private const val KEY_RENDER_VSYNC = "renderVsync"
         private const val KEY_SHOW_HP = "showHp"
+        private const val KEY_ADAPTIVE_BATTLE_VISUALS = "adaptiveBattleVisuals"
         private const val KEY_SHOW_UNIT_WAYPOINTS = "showUnitWaypoints"
         private const val KEY_SHOW_ZOOM_BUTTON = "showZoomButton"
         private const val KEY_SHOW_FPS = "showFps"

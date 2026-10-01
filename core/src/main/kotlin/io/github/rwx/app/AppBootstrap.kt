@@ -172,7 +172,9 @@ internal fun createAppBootstrap(
     val modsSceneHost = koin.get<ModsSceneHost> {
         parametersOf(settingsModel, { action: ModsAction -> actions.mods(action) })
     }
-    modsSceneHost.updateMods(modRepository.listMods())
+    gameSession.requestSessionTask({ modRepository.listMods() }) { result ->
+        result.onSuccess { modsSceneHost.updateMods(it) }
+    }
     val modsScene = modsSceneHost.createScene()
     context.addScene(modsScene)
 

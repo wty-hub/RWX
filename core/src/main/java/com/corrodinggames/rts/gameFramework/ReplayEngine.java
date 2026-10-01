@@ -760,6 +760,7 @@ public class ReplayEngine {
                                 if (this.nextCommand.command.isSystemAction && this.nextCommand.command.systemActionType != 0) {
                                     GameEngine.log("replay:issueCommand", "systemAction_action:" + this.nextCommand.command.systemActionType);
                                 }
+                                io.github.rwx.diagnostics.SimulationCompatibilityTrace.onCommandExecuted(gameEngine, this.nextCommand.command);
                                 this.nextCommand.command.executeCommand();
                                 if (d) {
                                     if (this.nextCommand.command.sourceTeam != null) {

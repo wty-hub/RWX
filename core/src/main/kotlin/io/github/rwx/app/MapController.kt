@@ -81,7 +81,7 @@ internal class MapController(
         }
         mapRows.putIfAbsent(currentMapPath, MapMetadata.getMapName(currentMapPath))
         val runtimeMissingTargets = mutableListOf<String>()
-        GameEngine.getInstance()?.missionEngine?.mapPortalTargetMapIds?.forEach { targetId ->
+        gameSession.portalTargetMapIds().forEach { targetId ->
             val targetPath = MapLinkResolver.findMapPathById(mapStorage, targetId)
             if (targetPath == null) {
                 runtimeMissingTargets += targetId
@@ -143,13 +143,13 @@ internal class MapController(
             showUnavailableDialog("Linked map not found: ${transfer.targetMapId}")
             return
         }
-        if (GameEngine.getInstance()?.isNetworkGameActive() == true) {
+        if (gameSession.isNetworkMultiplayerActive()) {
             P2PLobbyService.getInstance().broadcastPortalTransfer(transfer)
-            GameEngine.getInstance()?.gameUI?.showMediumPriorityMessage("RWX portal transfer sent")
+            gameSession.showGameMessage("RWX portal transfer sent")
             return
         }
         state.queuePortalTransfer(targetMapPath, transfer)
-        GameEngine.getInstance()?.gameUI?.showMediumPriorityMessage(
+        gameSession.showGameMessage(
             "Unit transferred to ${MapMetadata.getMapName(targetMapPath)}"
         )
     }
@@ -179,15 +179,15 @@ internal class MapController(
         val transfers = state.removePortalTransfersFor(currentMapPath) ?: return
         transfers.groupBy { it.targetPortalId }.forEach { (portalId, groupedTransfers) ->
             val units = groupedTransfers.flatMap { it.units }
-            gameSession.injectTransferredUnits(units, portalId)
+            gameSession.requestSessionTask({ gameSession.injectTransferredUnits(units, portalId) }) { result ->
+                result.onFailure { showUnavailableDialog(it.message ?: "Unit transfer failed") }
+            }
         }
     }
 
     fun ensureP2PAssignedMapLoaded() {
         if (!LinkedMapAvailability.ENABLED) return
-        val engine = GameEngine.getInstance() ?: return
-        val networkEngine = engine.networkEngine ?: return
-        if (!engine.isNetworkGameActive() || !networkEngine.p2pSession) {
+        if (!gameSession.isP2pNetworkGame()) {
             return
         }
         val localPlayerId = currentLocalPlayerId() ?: return
@@ -214,7 +214,7 @@ internal class MapController(
         if (state.samePath(currentMapPath, targetMapPath)) {
             return
         }
-        if (GameEngine.getInstance()?.isNetworkGameActive() == true) {
+        if (gameSession.isNetworkMultiplayerActive()) {
             val assignment = P2PLobbyService.getInstance().currentMultiMapAssignments()
                 ?.instances
                 ?.firstOrNull { state.samePath(it.mapPath, targetMapPath) }
@@ -228,13 +228,12 @@ internal class MapController(
             requestP2PAssignedMap(targetMapPath)
             return
         }
-        currentMapPath?.let { mapPath ->
-            gameSession.captureMapSnapshot()?.let { snapshot ->
-                state.putSnapshot(mapPath, snapshot)
-            }
+        gameSession.requestSessionTask({ gameSession.captureMapSnapshot() }) { result ->
+            result.onSuccess { snapshot ->
+                if (currentMapPath != null && snapshot != null) state.putSnapshot(currentMapPath, snapshot)
+                queueMapLoad(targetMapPath, state.snapshotFor(targetMapPath))
+            }.onFailure { showUnavailableDialog(it.message ?: "Map snapshot failed") }
         }
-        val snapshot = state.snapshotFor(targetMapPath)
-        queueMapLoad(targetMapPath, snapshot)
     }
 
     private fun requestP2PAssignedMap(targetMapPath: String) {
@@ -286,9 +285,7 @@ internal class MapController(
     }
 
     private fun shouldSimulateMapLocally(mapPath: String): Boolean {
-        val engine = GameEngine.getInstance()
-        val networkEngine = engine?.networkEngine
-        if (engine?.isNetworkGameActive() != true || networkEngine?.p2pSession != true) {
+        if (!gameSession.isP2pNetworkGame()) {
             return true
         }
         val localPlayerId = currentLocalPlayerId() ?: return false
@@ -300,8 +297,6 @@ internal class MapController(
 
     private fun currentLocalPlayerId(): String? {
         gameSession.currentBattleRoom()?.players?.firstOrNull { it.isLocal }?.id?.let { return it }
-        val engine = GameEngine.getInstance() ?: return null
-        return engine.networkEngine?.localPlayerTeam?.teamId?.toString()
-            ?: engine.playerTeam?.teamId?.toString()
+        return gameSession.localPlayerId()
     }
 }

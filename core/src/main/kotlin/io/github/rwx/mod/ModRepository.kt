@@ -6,6 +6,7 @@ import io.github.rwx.PlatformStorage
 import io.github.rwx.PreferenceStorage
 import io.github.rwx.mod.asset.JvmModAssetKeyStore
 import io.github.rwx.ui.model.ModEntry
+import io.github.rwx.ui.model.ModDisplayMetadata
 import java.io.File
 import java.util.*
 
@@ -31,11 +32,8 @@ class ModRepository(
         }
         val legacyModEntries = manager.mods.mapNotNull { modInfo ->
             ModEntry(
-                (jvmModManifests.firstOrNull { it.id == modInfo.id }
-                    ?: modInfo).apply {
-                    if (this is JvmModManifest)
-                        this.description = modInfo.fullDescription
-                },
+                ModDisplayMetadata.from(jvmModManifests.firstOrNull { it.id == modInfo.id }
+                    ?: modInfo, modInfo.fullDescription),
                 !modInfo.disabled,
                 modInfo.errorsAndWarnings,
                 modInfo.path
@@ -163,4 +161,3 @@ class ModRepository(
         private val SUPPORTED_MOD_FILE_EXTENSIONS = setOf("rwmod", "zip", "jar", "ini")
     }
 }
-

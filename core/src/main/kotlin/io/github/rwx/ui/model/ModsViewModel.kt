@@ -4,19 +4,40 @@ import io.github.rwx.mod.JvmModManifest
 import io.github.rwx.mod.ModManifest
 import io.github.rwx.ui.AppScreen
 
+/** Display values copied on the engine owner; never a live ModInfo/JvmModManifest. */
+data class ModDisplayMetadata(
+    val id: String,
+    val name: String,
+    val description: String,
+    val author: String? = null,
+    val version: String? = null,
+    val thumbnail: String? = null,
+) {
+    companion object {
+        fun from(manifest: ModManifest, description: String = manifest.description) = ModDisplayMetadata(
+            manifest.id, manifest.name, description,
+            (manifest as? JvmModManifest)?.author,
+            (manifest as? JvmModManifest)?.version,
+            (manifest as? JvmModManifest)?.thumbnail,
+        )
+    }
+}
 
 data class ModEntry(
-    val info: ModManifest,
+    val info: ModDisplayMetadata,
     val isEnabled: Boolean,
     val errorMessage: String? = null,
     val path: String = "",
 ) {
+    constructor(info: ModManifest, isEnabled: Boolean, errorMessage: String? = null, path: String = "") :
+        this(ModDisplayMetadata.from(info), isEnabled, errorMessage, path)
+
     val id: String get() = info.id
     val name: String get() = info.name
-    val author: String? get() = (info as? JvmModManifest)?.author
+    val author: String? = info.author
     val description: String get() = info.description
-    val version: String? get() = (info as? JvmModManifest)?.version
-    val thumbnail: String? = (info as? JvmModManifest)?.thumbnail
+    val version: String? = info.version
+    val thumbnail: String? = info.thumbnail
 
 }
 

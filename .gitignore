@@ -55,3 +55,11 @@ local.properties
 /crashes.txt
 /p2p.toml
 /preferences.toml
+/desktop/logs/
+/hs_err_pid*.jfr
+
+replays/
+
+### Python verification tools ###
+__pycache__/
+*.pyc

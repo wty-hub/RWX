@@ -7,6 +7,7 @@ import io.github.rwx.logger
 import io.github.rwx.map.MapMetadata
 import io.github.rwx.p2p.P2PLobbyService
 import io.github.rwx.p2p.P2PRoomAdvertisement
+import io.github.rwx.session.GameSession
 import io.github.rwx.ui.*
 import io.github.rwx.ui.host.MultiplayerSceneHost
 import io.github.rwx.ui.model.ModeLabel
@@ -15,6 +16,7 @@ import io.github.rwx.ui.model.MultiplayerRoomItem
 
 internal class MultiplayerLobbyController(
     private val sceneHost: MultiplayerSceneHost,
+    private val gameSession: GameSession,
 ) {
     var activeLobbyKind: MultiplayerLobbyKind = MultiplayerLobbyKind.Original
         private set
@@ -54,43 +56,42 @@ internal class MultiplayerLobbyController(
     }
 
     private fun requestOriginalRefresh() {
-        val gameEngine = GameEngine.getInstance()
-        if (gameEngine?.networkEngine == null) {
-            updateOriginalRooms()
-            return
-        }
-        runCatching {
+        sceneHost.updateRooms(latestRooms, "Searching for rooms...", MultiplayerLobbyKind.Original)
+        gameSession.requestSessionTask(action = {
+            if (GameEngine.getInstance()?.networkEngine == null) return@requestSessionTask false
             MasterServerClient.loadServerListAsync {
                 CoreUiEventQueue.requestOriginalRoomListRefresh()
             }
-        }.onFailure { error ->
-            logger.warn(error) { "Original room refresh failed" }
-            sceneHost.updateRooms(
-                emptyList(),
-                "Original lobby unavailable: ${error.message ?: error.javaClass.simpleName}",
-                MultiplayerLobbyKind.Original,
-            )
-            return
-        }
-        updateOriginalRooms("Searching for rooms...")
+            true
+        }, onComplete = { result ->
+            if (activeLobbyKind != MultiplayerLobbyKind.Original) return@requestSessionTask
+            result.onSuccess { available ->
+                updateOriginalRooms(if (available) "Searching for rooms..." else "")
+            }.onFailure { error ->
+                logger.warn(error) { "Original room refresh failed" }
+                sceneHost.updateRooms(emptyList(), "Original lobby unavailable: ${error.message ?: error.javaClass.simpleName}",
+                    MultiplayerLobbyKind.Original)
+            }
+        })
     }
 
     private fun requestP2PRefresh() {
         val lobby = P2PLobbyService.getInstance()
-        runCatching {
+        gameSession.requestSessionTask(action = {
             lobby.inLobby = true
             lobby.startIfNeeded()
             lobby.requestRefresh()
-        }.onFailure { error ->
-            logger.warn { "P2P room refresh failed: ${error.message}" }
-            sceneHost.updateRooms(
-                emptyList(),
-                "P2P unavailable: ${error.message ?: error.javaClass.simpleName}",
-                MultiplayerLobbyKind.P2P,
-            )
-            return
-        }
-        updateP2PRooms("Searching for rooms...")
+        }, onComplete = { result ->
+            if (activeLobbyKind != MultiplayerLobbyKind.P2P) return@requestSessionTask
+            result.onSuccess { updateP2PRooms("Searching for rooms...") }.onFailure { error ->
+                logger.warn { "P2P room refresh failed: ${error.message}" }
+                sceneHost.updateRooms(
+                    emptyList(),
+                    "P2P unavailable: ${error.message ?: error.javaClass.simpleName}",
+                    MultiplayerLobbyKind.P2P,
+                )
+            }
+        })
     }
 
     private fun updateActiveRooms(statusText: String = "") {
@@ -111,36 +112,26 @@ internal class MultiplayerLobbyController(
     }
 
     private fun updateOriginalRooms(statusText: String = "") {
-        val gameEngine = GameEngine.getInstance()
-        if (gameEngine?.networkEngine == null) {
-            latestRooms = emptyList()
-            sceneHost.updateRooms(
-                rooms = emptyList(),
-                statusText = "Original lobby requires the RW engine to be loaded",
-                lobbyKind = MultiplayerLobbyKind.Original,
-            )
-            return
-        }
-        val rooms = runCatching {
+        gameSession.requestSessionTask(action = {
+            if (GameEngine.getInstance()?.networkEngine == null) return@requestSessionTask null
             ServerListUiBridge.getServerList()
                 .filterIsInstance<ServerInfo>()
                 .map(::serverInfoToMultiplayerItem)
-        }.getOrElse { error ->
-            logger.warn(error) { "Original room list read failed" }
-            latestRooms = emptyList()
-            sceneHost.updateRooms(
-                rooms = emptyList(),
-                statusText = "Original lobby unavailable: ${error.message ?: error.javaClass.simpleName}",
-                lobbyKind = MultiplayerLobbyKind.Original,
-            )
-            return
-        }
-        latestRooms = rooms
-        sceneHost.updateRooms(
-            rooms = rooms,
-            statusText = statusText.ifBlank { if (rooms.isEmpty()) "No rooms found" else "" },
-            lobbyKind = MultiplayerLobbyKind.Original,
-        )
+        }, onComplete = { result ->
+            if (activeLobbyKind != MultiplayerLobbyKind.Original) return@requestSessionTask
+            result.onSuccess { rooms ->
+                latestRooms = rooms.orEmpty()
+                sceneHost.updateRooms(latestRooms,
+                    if (rooms == null) "Original lobby requires the RW engine to be loaded"
+                    else statusText.ifBlank { if (rooms.isEmpty()) "No rooms found" else "" },
+                    MultiplayerLobbyKind.Original)
+            }.onFailure { error ->
+                logger.warn(error) { "Original room list read failed" }
+                latestRooms = emptyList()
+                sceneHost.updateRooms(emptyList(), "Original lobby unavailable: ${error.message ?: error.javaClass.simpleName}",
+                    MultiplayerLobbyKind.Original)
+            }
+        })
     }
 }
 
@@ -186,6 +177,9 @@ internal fun serverInfoToMultiplayerItem(server: ServerInfo): MultiplayerRoomIte
         currentPlayers = server.currentPlayers,
         maxPlayers = server.maxPlayers,
         joinAddress = server.getConnectDescriptor(),
+        rejoinAddress = (if (server.isLanServer) server.lanHost else server.publicHost)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "$it:${server.port}" },
         originalServerId = server.serverId?.takeIf { it.isNotBlank() },
         infoText = runCatching { server.getInfoText() }.getOrDefault(""),
     )

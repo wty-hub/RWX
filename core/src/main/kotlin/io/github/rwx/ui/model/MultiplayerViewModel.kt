@@ -14,6 +14,7 @@ data class MultiplayerRoomItem(
     val transportLabel: String,
     val stateLabel: String,
     val joinAddress: String = roomId,
+    val rejoinAddress: String? = null,
     val originalServerId: String? = null,
     val requiresJoinInput: Boolean = false,
     val joinInputHint: String = "",
@@ -160,6 +161,8 @@ sealed interface MultiplayerAction {
     /** Join by a manually-entered address / room code in the active lobby. */
     data object JoinDirect : MultiplayerAction
 
+    data object RejoinLastGame : MultiplayerAction
+
     /** Configure the player name used by multiplayer sessions. */
     data object ConfigurePlayerName : MultiplayerAction
 
@@ -174,6 +177,7 @@ sealed interface MultiplayerOutcome {
     data class SwitchLobby(val lobbyKind: MultiplayerLobbyKind) : MultiplayerOutcome
     data object HostGameRequested : MultiplayerOutcome
     data object JoinDirectRequested : MultiplayerOutcome
+    data object RejoinLastGameRequested : MultiplayerOutcome
     data object ConfigurePlayerNameRequested : MultiplayerOutcome
     data class JoinRoom(val roomId: String) : MultiplayerOutcome
 }
@@ -186,6 +190,7 @@ object MultiplayerNavigation {
         is MultiplayerAction.SwitchLobby -> MultiplayerOutcome.SwitchLobby(action.lobbyKind)
         MultiplayerAction.HostGame -> MultiplayerOutcome.HostGameRequested
         MultiplayerAction.JoinDirect -> MultiplayerOutcome.JoinDirectRequested
+        MultiplayerAction.RejoinLastGame -> MultiplayerOutcome.RejoinLastGameRequested
         MultiplayerAction.ConfigurePlayerName -> MultiplayerOutcome.ConfigurePlayerNameRequested
         is MultiplayerAction.JoinRoom -> MultiplayerOutcome.JoinRoom(action.roomId)
     }

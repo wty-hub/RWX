@@ -25,6 +25,7 @@ internal class FrameDriver(
     private var nextBattleRoomNetworkPollMillis: Long = 0L
 
     fun drive(isRenderLoopFrame: Boolean = false) {
+        gameSession.drainSessionCompletions()
         if (modsController.driveReload()) {
             return
         }
@@ -90,8 +91,7 @@ internal class FrameDriver(
     private fun driveMusicOutsideRwFrame(screen: AppScreen, deltaSeconds: Float) {
         if (screen == AppScreen.InGame) return
         if (gameSession.isMenuBackgroundActive()) return
-        val musicManager = GameEngine.getInstance()?.musicManager ?: return
-        musicManager.update((deltaSeconds * 60f).coerceIn(0f, 3f))
+        gameSession.updateMenuMusic(deltaSeconds)
     }
 }
 

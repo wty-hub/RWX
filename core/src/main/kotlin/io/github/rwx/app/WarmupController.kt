@@ -152,6 +152,8 @@ internal class WarmupController(
         return frame
     }
 
+    private var engineFinalizationPending = false
+
     fun renderRwGameLoadingFrame(
         canvasViewport: KoolCanvasViewport,
         deltaSeconds: Float,
@@ -169,12 +171,21 @@ internal class WarmupController(
             if (gameSession.isPreparingEngine()) {
                 return KoolCanvasFrame(canvasViewport, emptyList())
             }
-            val gameEngine = gameSession.preload(canvasViewport)
-            gameEngine.settingsEngine.numIncompleteLoadAttempts = 0
-            gameEngine.settingsEngine.numLoadsSinceRunningGameOrNormalExit = 0
-            gameEngine.settingsEngine.save()
-            pendingRwGameLoad = false
-            navigateTo(pendingWarmupTarget)
+            if (!engineFinalizationPending) {
+                engineFinalizationPending = true
+                gameSession.requestSessionTask({
+                    val engine = gameSession.preload(canvasViewport)
+                    engine.settingsEngine.numIncompleteLoadAttempts = 0
+                    engine.settingsEngine.numLoadsSinceRunningGameOrNormalExit = 0
+                    engine.settingsEngine.save()
+                }) { result ->
+                    engineFinalizationPending = false
+                    result.onSuccess {
+                        pendingRwGameLoad = false
+                        navigateTo(pendingWarmupTarget)
+                    }.onFailure { error -> logger.error(error) { "Engine warmup finalization failed" } }
+                }
+            }
             return KoolCanvasFrame(canvasViewport, emptyList())
         }
         if (!gameSession.rendersIntoKoolCanvas) {

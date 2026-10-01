@@ -57,9 +57,26 @@ public class ImmediateModeOGLRenderer implements SGL {
     }
 
     /**
+     * @see org.newdawn.slick.opengl.renderer.SGL#setDisplaySize(int, int)
+     */
+    public void setDisplaySize(int width, int height) {
+        this.width = width;
+        this.height = height;
+    }
+
+    /**
      * @see org.newdawn.slick.opengl.renderer.SGL#enterOrtho(int, int)
      */
+    private static String lastOrthoLog = "";
+
     public void enterOrtho(int xsize, int ysize) {
+        String key = width + "x" + height + "|" + xsize + "x" + ysize;
+        if (!key.equals(lastOrthoLog)) {
+            lastOrthoLog = key;
+            StackTraceElement[] trace = new Throwable().getStackTrace();
+            System.out.println("[ORTHODBG] renderer=" + width + "x" + height + " xsize=" + xsize + " ysize=" + ysize
+                    + " caller=" + (trace.length > 1 ? trace[1] : "?"));
+        }
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
         GL11.glOrtho(0, width, height, 0, 1, -1);

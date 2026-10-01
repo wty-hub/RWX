@@ -6,6 +6,7 @@ import io.github.rwx.mod.ModRepository
 import io.github.rwx.net.ResourceBrowserRepository
 import io.github.rwx.render.canvas.*
 import io.github.rwx.settings.GameSettingsRepository
+import io.github.rwx.session.GameSession
 import io.github.rwx.ui.host.*
 import io.github.rwx.ui.model.*
 import org.koin.dsl.module
@@ -34,11 +35,12 @@ val coreModule = module {
     }
     single<LevelSelectViewModelFactory> {
         val storage = get<PlatformStorage>()
+        val gameSession = get<GameSession>()
         val viewModels = mutableMapOf<LevelSelectMode, LevelSelectViewModel>()
         object : LevelSelectViewModelFactory {
             override fun create(mode: LevelSelectMode): LevelSelectViewModel =
                 synchronized(viewModels) {
-                    viewModels.getOrPut(mode) { LevelSelectViewModel(mode, storage) }
+                    viewModels.getOrPut(mode) { LevelSelectViewModel(mode, storage, modMapEntriesProvider = gameSession::extraCustomMapEntries) }
                 }
 
             override fun invalidateCaches() {

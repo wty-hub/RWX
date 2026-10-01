@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-01",
+  "passed": true,
+  "scope": "Immutable camera advances only after accepted native presentation; packet selection alone is not acknowledgement. Native smoke validates startup and present hook integration, not every physical display timing or pointer action.",
+  "suites": [
+    {
+      "suite": "io.github.rwx.render.canvas.CanvasFramePresentationTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "accepted and repeated presents retain the exact immutable camera()",
+        "older sequence and previous session generation cannot replace accepted state()",
+        "selected but rejected picture never becomes an input camera()",
+        "session close prevents late present from resurrecting an input camera()",
+        "accepted empty picture clears camera and blocks old session acknowledgement()",
+        "cleanup clears only the releasing scene selection()",
+        "failed acquire cannot leak its selection into a later nongame present()",
+        "scene cleanup invalidates queued acknowledgement but allows a recreated scene()"
+      ]
+    },
+    {
+      "suite": "io.github.rwx.kool.vulkan.VulkanOverlayIntegrationTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "graphics pipelines use shared native cache and textures preflight before passes()",
+        "native memory deletion uses GPU fences instead of render frame counts()",
+        "MixedBuffer uploads use bytes while numeric buffers use elements()",
+        "failed native waits cannot be mistaken for completed GPU work()",
+        "presentation metrics only record returned presentation status()",
+        "texture transfers and lifecycle are installed in actual runtime classes()"
+      ]
+    },
+    {
+      "suite": "io.github.rwx.kool.KoolAcceptedCameraTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "cases": [
+        "mailbox consumption and rejected native present preserve acknowledged camera()",
+        "pointer down and release remain queued before the first accepted camera()"
+      ]
+    }
+  ],
+  "covered": [
+    "Selected/rejected camera stays unpublished",
+    "Accepted/repeated camera preserves exact immutable state",
+    "Failed acquire candidate cleared before next UI-only frame",
+    "Old generation/sequence and released/closed tracker cannot overwrite accepted state",
+    "Null camera still queues pointer down/up with original coordinate fallback"
+  ],
+  "limits": [
+    "vkQueuePresent SUCCESS/SUBOPTIMAL is acceptance, not proof of physical scanout timing.",
+    "Original600-second interop evidence used earlier frozenv4; later display/input corrections have separate test/smoke evidence."
+  ],
+  "tests": 16
+}

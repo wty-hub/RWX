@@ -48,6 +48,7 @@ class MultiplayerSceneHost(
                     onSwitchLobby = { dispatch(MultiplayerAction.SwitchLobby(it)) },
                     onHostGame = { dispatch(MultiplayerAction.HostGame) },
                     onJoinDirect = { dispatch(MultiplayerAction.JoinDirect) },
+                    onRejoinLastGame = { dispatch(MultiplayerAction.RejoinLastGame) },
                     onConfigure = { dispatch(MultiplayerAction.ConfigurePlayerName) },
                 ),
             )
@@ -73,7 +74,7 @@ private fun UiScope.multiplayerLayoutMetrics(): MultiplayerLayoutMetrics {
     val compact = contentWidth.value < MULTIPLAYER_COMPACT_WIDTH_DP
     val controlRow = UiTheme.Layout.menuButtonHeight.value + UiTheme.Spacing.sm.value
     val filterRows = if (compact) 3f else 1f
-    val extraCompactRows = if (compact) 3f else 0f // second lobby row and two extra footer buttons
+    val extraFooterRows = if (compact) 4f else 1f // compact lobby/footer rows, or the return button row
     return MultiplayerLayoutMetrics(
         contentWidth = contentWidth,
         viewportHeight = ResponsiveViewportHeight(
@@ -81,7 +82,7 @@ private fun UiScope.multiplayerLayoutMetrics(): MultiplayerLayoutMetrics {
             minHeight = UiTheme.Layout.multiplayerMinViewportHeight,
             maxHeight = UiTheme.Layout.multiplayerMaxViewportHeight,
             verticalChrome = Dp(176f + filterRows * controlRow +
-                extraCompactRows * UiTheme.Layout.menuButtonHeight.value + MULTIPLAYER_STATUS_HEIGHT.value),
+                extraFooterRows * UiTheme.Layout.menuButtonHeight.value + MULTIPLAYER_STATUS_HEIGHT.value),
         ),
     )
 }

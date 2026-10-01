@@ -1,5 +1,6 @@
 package io.github.rwx
 
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import de.fabmax.kool.platform.ClientApi
 import de.fabmax.kool.platform.GlWindowCallbacks
 import de.fabmax.kool.platform.KoolWindowJvm
@@ -28,6 +29,9 @@ import javax.swing.SwingUtilities
 class PacedSwingWindowSubsystem(
     private val delegate: SwingWindowSubsystem,
 ) : WindowSubsystem by delegate {
+    val usesExternalFramePacing: Boolean
+        get() = delegate.providedCanvas is KoolGlCanvas
+
     @Volatile
     override var isCloseRequested: Boolean = false
         private set
@@ -61,9 +65,10 @@ class PacedSwingWindowSubsystem(
     }
 
     private inner class FrameLoop(private val canvas: KoolGlCanvas) : Runnable {
-        private var nextFrameNanos = System.nanoTime()
+        private var frameStartNanos = 0L
 
         override fun run() {
+            frameStartNanos = System.nanoTime()
             when {
                 isCloseRequested -> {
                     scheduler.shutdownNow()
@@ -80,6 +85,9 @@ class PacedSwingWindowSubsystem(
                     window?.pollEvents()
                     if (canvas.isShowing) {
                         canvas.render()
+                        // KoolGlCanvas.paintGL swaps before render() returns. Hidden back-buffer
+                        // rendering below deliberately has no presentation acknowledgement.
+                        io.github.rwx.render.canvas.CanvasFramePresentation.presented(true)
                     } else {
                         renderWithoutPresenting(canvas)
                     }
@@ -89,10 +97,7 @@ class PacedSwingWindowSubsystem(
         }
 
         private fun scheduleNext() {
-            val now = System.nanoTime()
-            val period = framePeriodNanos()
-            nextFrameNanos = maxOf(nextFrameNanos + period, now - period)
-            val delay = nextFrameNanos - now
+            val delay = desktopNextFrameDelayNanos(frameStartNanos, System.nanoTime(), framePeriodNanos())
             if (delay <= 0L) {
                 SwingUtilities.invokeLater(this)
             } else {
@@ -101,12 +106,17 @@ class PacedSwingWindowSubsystem(
         }
 
         private fun framePeriodNanos(): Long {
+            val settings = SettingsEngine.getInstance()
+            val targetFrameRate = desktopTargetFrameRate(settings)
+            if (!settings.renderVsync) {
+                return desktopFramePeriodNanos(targetFrameRate, vsync = false, refreshRate = 0)
+            }
             val refreshRate = runCatching {
                 (canvas.graphicsConfiguration?.device
                     ?: GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice)
                     .displayMode.refreshRate
-            }.getOrNull()?.takeIf { it > 0 } ?: DEFAULT_REFRESH_RATE
-            return 1_000_000_000L / refreshRate.coerceIn(MIN_REFRESH_RATE, MAX_REFRESH_RATE)
+            }.getOrNull() ?: 0
+            return desktopFramePeriodNanos(targetFrameRate, vsync = true, refreshRate = refreshRate)
         }
     }
 
@@ -134,11 +144,5 @@ class PacedSwingWindowSubsystem(
         Class.forName("de.fabmax.kool.platform.WindowSubsystemKt")
             .getMethod("shutdown", WindowSubsystem::class.java)
             .invoke(null, this)
-    }
-
-    private companion object {
-        const val DEFAULT_REFRESH_RATE = 60
-        const val MIN_REFRESH_RATE = 30
-        const val MAX_REFRESH_RATE = 240
     }
 }

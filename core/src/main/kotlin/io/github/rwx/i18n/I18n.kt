@@ -889,6 +889,13 @@ object I18n {
             ),
         )
 
+        val noPreviousGame = entry(
+            key = "multiplayer.noPreviousGame",
+            translations = linkedMapOf(
+                "en" to "No previous game address is available",
+                "zh-CN" to "没有可重新连接的上次游戏地址",
+            ),
+        )
 
         val p2pRoomIdHint = entry(
             key = "multiplayer.p2pRoomIdHint",
@@ -914,6 +921,13 @@ object I18n {
             ),
         )
 
+        val rejoinLastGame = entry(
+            key = "multiplayer.rejoinLastGame",
+            translations = linkedMapOf(
+                "en" to "Return to Last Game",
+                "zh-CN" to "回到上一次游戏",
+            ),
+        )
 
         object roomInfo {
             val host = entry(
@@ -1404,6 +1418,11 @@ object I18n {
                     "en" to "Fullscreen",
                     "zh-CN" to "全屏",
                 ),
+            )
+
+            val adaptiveBattleVisuals = entry(
+                key = "settings.display.adaptiveBattleVisuals",
+                translations = linkedMapOf("en" to "Simplify visuals in large battles (Kool)", "zh-CN" to "大规模战斗画面简化（Kool）"),
             )
 
             val highRefreshRate = entry(
