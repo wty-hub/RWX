@@ -11,6 +11,38 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class KoolPointerProjectionTest {
+    @Test fun `camera drag has no movement from stale frames or camera inertia`() {
+        val seen = GameCameraSnapshot(1, 1, KoolCanvasViewport(1280, 720), 100f, 200f, 2f)
+        var current = seen
+        var previous = 800f to 500f
+        for ((x, y) in listOf(840f to 520f, 840f to 520f, 850f to 530f, 850f to 530f)) {
+            // The owner advances while rendering continues to display the same older picture.
+            current = current.copy(x = current.x + 75f, y = current.y - 30f)
+            val projected = projectSeenPointer(seen, current, current.viewport, x, y, screenRelative = true)
+            assertEquals(x - previous.first to y - previous.second,
+                projected.first - previous.first to projected.second - previous.second)
+            previous = projected
+        }
+    }
+
+    @Test fun `camera button and hover use screen space with both mouse order settings`() {
+        assertTrue(isScreenRelativePointer(2, true, 1))
+        assertTrue(isScreenRelativePointer(1, true, 2))
+        assertTrue(isScreenRelativePointer(3, true, 1))
+        assertTrue(isScreenRelativePointer(-1, true, 1))
+        assertTrue(isScreenRelativePointer(1, false, 1))
+        assertEquals(false, isScreenRelativePointer(1, true, 1))
+        assertEquals(false, isScreenRelativePointer(2, true, 2))
+    }
+
+    @Test fun `resized camera drag scales screen coordinates without camera compensation`() {
+        val seen = GameCameraSnapshot(1, 1, KoolCanvasViewport(1280, 720), 100f, 200f, 2f)
+        val surface = KoolCanvasViewport(1920, 900)
+        val current = seen.copy(viewport = surface, x = 5000f, y = 6000f, zoom = 0.5f)
+        assertEquals(1200f to 625f, projectSeenPointer(seen, current, surface, 1200f, 625f,
+            surfaceViewport = surface, screenRelative = true))
+    }
+
     @Test fun `click keeps its seen world target across a camera and resolution change`() {
         val seen = GameCameraSnapshot(1, 1, KoolCanvasViewport(1280, 720), 100f, 200f, 2f)
         val current = GameCameraSnapshot(2, 2, KoolCanvasViewport(1920, 1080), 400f, 350f, 0.75f)

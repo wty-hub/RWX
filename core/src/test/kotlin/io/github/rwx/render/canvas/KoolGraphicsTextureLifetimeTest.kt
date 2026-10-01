@@ -1,11 +1,43 @@
 package io.github.rwx.render.canvas
 
+import com.corrodinggames.rts.game.units.BaseUnit
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class KoolGraphicsTextureLifetimeTest {
+    @Test
+    fun `ship shadow retains source alpha after team coloring releases editable pixels`() {
+        val shipImage = sequenceOf(File("assets/drawable/battle_ship_t2.png"),
+            File("../assets/drawable/battle_ship_t2.png")).first { it.isFile }
+        val store = KoolCanvasCpuTextureStore()
+        val graphics = KoolGraphicsEngine(textureStore = store)
+        val source = shipImage.inputStream().use { graphics.a(it, true) }
+        val original = source.argbPixelsCopy!!
+        assertTrue(original.any { it ushr 24 != 0 })
+        // PlayerTeam's CPU coloring path opens the editable buffer and releases it afterwards.
+        source.j()
+        source.r()
+        val shadow = BaseUnit.attackUnit(source, source.width(), source.height())
+        val expected = original.map { it and 0xff000000.toInt() }
+        assertEquals(expected, shadow.argbPixelsCopy!!.toList())
+
+        graphics.beginFrame(128, 128)
+        graphics.a(shadow, 0f, 0f, null)
+        val frame = graphics.snapshot()
+        val packet = store.freezeFrame(frame, 1L, 1L, 1, 1L)
+        try {
+            val frozen = packet.resourceLease.resources().values.single() as FrozenCanvasResource.Pixels
+            assertEquals(expected, frozen.image.pixels.toList())
+        } finally {
+            packet.close()
+            source.o()
+            shadow.o()
+        }
+    }
+
     @Test
     fun `repeated legacy texture release removes CPU pixels and revision records while a completed packet remains valid`() {
         val store = KoolCanvasCpuTextureStore()

@@ -455,7 +455,7 @@ public class GameInterfaceRenderer extends Serializable {
             if (this.gameUI.isWorldClickAllowedAt(this.gameEngine.getTouchX(), this.gameEngine.getTouchY()) && !this.gameUI.isKeyboardShiftPressed) {
                 int mouseWheelDelta = this.gameEngine.getMouseWheelDelta();
                 if (mouseWheelDelta != 0) {
-                    this.mouseWheelZoomAccumulator += (mouseWheelDelta / 120.0f) * 0.18f;
+                    this.mouseWheelZoomAccumulator += (mouseWheelDelta / 120.0f) * 0.06f;
                 }
                 if (this.mouseWheelZoomAccumulator > 1.0f) {
                     this.mouseWheelZoomAccumulator = 1.0f;

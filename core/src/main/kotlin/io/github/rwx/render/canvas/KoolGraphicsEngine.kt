@@ -547,7 +547,9 @@ class KoolGraphicsEngine private constructor(
             // Decoded image: its transparent texels carry an arbitrary RGB, so expand opaque
             // neighbours over them once per pixel revision.
             texture.alphaBleedRequired = true
-            texture.j = pixels
+            // Team-color initialization releases the editable buffer before some units (ships)
+            // derive their shadows. Keep decoded source pixels available for later CPU reads.
+            texture.setCommittedArgbPixels(pixels)
             textureStore.registerArgb(texture.toCanvasTextureId(), texture.width(), texture.height(), pixels)
         } else if (assetPath != null) {
             textureStore.registerAssetSnapshot(texture.toCanvasTextureId(), assetPath, encodedBytes)

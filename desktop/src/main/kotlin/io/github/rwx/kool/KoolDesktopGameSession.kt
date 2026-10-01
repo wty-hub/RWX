@@ -293,7 +293,10 @@ internal class KoolDesktopGameSession(
         owner.submitInput("pointer", isDown) {
             if (isDown && camera != null && camera.generation != loadState.mapLoadGeneration) return@submitInput
             val engine = gameEngine
-            val (x, y) = mapPointer(engine, frameContext, screenX, screenY)
+            val screenRelative = engine?.settingsEngine?.let {
+                isScreenRelativePointer(pointerId, it.mouseSupport, it.mouseOrders)
+            } ?: true
+            val (x, y) = mapPointer(engine, frameContext, screenX, screenY, screenRelative)
             view.submitPointer(x, y, isDown, pointerId)
         }
     }
@@ -304,16 +307,18 @@ internal class KoolDesktopGameSession(
 
     override fun movePointer(screenX: Float, screenY: Float, frameContext: GamePointerFrameContext) {
         owner.submit {
-            val (x, y) = mapPointer(gameEngine, frameContext, screenX, screenY)
+            val (x, y) = mapPointer(gameEngine, frameContext, screenX, screenY, screenRelative = true)
             view.movePointer(x, y)
         }
     }
 
-    private fun mapPointer(engine: GameEngine?, frameContext: GamePointerFrameContext, x: Float, y: Float): Pair<Float, Float> {
+    private fun mapPointer(engine: GameEngine?, frameContext: GamePointerFrameContext, x: Float, y: Float,
+        screenRelative: Boolean): Pair<Float, Float> {
         val current = engine?.let { GameCameraSnapshot(0, viewportRevision, appliedViewport,
             it.viewpointXSnapped, it.viewpointYSnapped, it.zoom, loadState.mapLoadGeneration, it.sidebarWidth,
             captureGameHudLayout(it)) }
-        return projectSeenPointer(frameContext.camera, current, appliedViewport, x, y, frameContext.surfaceViewport)
+        return projectSeenPointer(frameContext.camera, current, appliedViewport, x, y,
+            frameContext.surfaceViewport, screenRelative)
     }
 
     override fun clearInputState() { owner.submitInput("pointer", false) { view.submitPointer(0f, 0f, false, -1) } }

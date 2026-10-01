@@ -5,7 +5,7 @@ import io.github.rwx.session.GameCameraSnapshot
 import io.github.rwx.session.GamePointerFrameContext
 import io.github.rwx.render.canvas.KoolCanvasRect
 
-/** Reconstruct the world point seen at the event, then express it in the owner's current camera. */
+/** Preserve seen world targets for commands, but keep camera gestures in screen space. */
 internal fun projectSeenPointer(
     seen: GameCameraSnapshot?,
     current: GameCameraSnapshot?,
@@ -13,6 +13,7 @@ internal fun projectSeenPointer(
     x: Float,
     y: Float,
     surfaceViewport: KoolCanvasViewport? = null,
+    screenRelative: Boolean = false,
 ): Pair<Float, Float> {
     val (seenX, seenY) = GamePointerFrameContext(seen, surfaceViewport).positionInSeenViewport(x, y)
     val seenHud = seen?.hudLayout
@@ -24,7 +25,11 @@ internal fun projectSeenPointer(
             mapHudRect(rect, currentHud.unitGroupButtons.getOrNull(index), seenX, seenY)?.let { return it }
         }
     }
-    if (current != null && seen != null && seen.zoom.isFinite() && seen.zoom > 0f &&
+    if (screenRelative && (seen == null || seenX < seen.viewport.width - seen.sidebarWidth)) {
+        return seenX * viewport.width / (seen?.viewport?.width ?: viewport.width).coerceAtLeast(1) to
+            seenY * viewport.height / (seen?.viewport?.height ?: viewport.height).coerceAtLeast(1)
+    }
+    if (!screenRelative && current != null && seen != null && seen.zoom.isFinite() && seen.zoom > 0f &&
         current.zoom.isFinite() && current.zoom > 0f && seenX < seen.viewport.width - seen.sidebarWidth) {
         return ((seenX / seen.zoom + seen.x) - current.x) * current.zoom to
             ((seenY / seen.zoom + seen.y) - current.y) * current.zoom
@@ -51,6 +56,12 @@ internal fun projectSeenPointer(
         seenY * viewport.height / (seen?.viewport?.height ?: viewport.height).coerceAtLeast(1)
     }
     return hudX to hudY
+}
+
+internal fun isScreenRelativePointer(pointerId: Int, mouseSupport: Boolean, mouseOrders: Int): Boolean {
+    // Match GameUI's camera-drag button rule. Hover also drives edge scrolling.
+    val commandButton = if (mouseOrders == 2) 2 else 1
+    return pointerId <= 0 || !mouseSupport || pointerId != commandButton
 }
 
 private fun mapHudRect(seen: KoolCanvasRect?, current: KoolCanvasRect?, x: Float, y: Float): Pair<Float, Float>? {

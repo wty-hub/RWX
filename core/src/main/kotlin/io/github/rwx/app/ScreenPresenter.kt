@@ -1,5 +1,8 @@
 package io.github.rwx.app
 
+import de.fabmax.kool.input.InputStack
+import de.fabmax.kool.modules.ui2.UiSurface
+import de.fabmax.kool.scene.Node
 import io.github.rwx.mod.registry.UiRegistry
 import io.github.rwx.render.canvas.KoolCanvasFrame
 import io.github.rwx.render.canvas.KoolCanvasViewport
@@ -45,20 +48,20 @@ internal class ScreenPresenter(
                 isLastExternalFrameBackgroundVisible
 
         bootstrap.mainMenuSceneHost.setBattleBackgroundVisible(isBattleBackgroundVisible)
-        bootstrap.koolCanvasScene.isVisible = visibility.world
-        bootstrap.modHudScene.isVisible = visibility.hud
-        bootstrap.loadingScene.isVisible = visibility.loading
+        bootstrap.koolCanvasScene.setScreenVisible(visibility.world)
+        bootstrap.modHudScene.setScreenVisible(visibility.hud)
+        bootstrap.loadingScene.setScreenVisible(visibility.loading)
 
-        bootstrap.mainMenuScene.isVisible = visibility.mainMenu
-        bootstrap.levelSelectScene.isVisible = visibility.levelSelect
-        bootstrap.replaySelectScene.isVisible = visibility.replaySelect
-        bootstrap.settingsScene.isVisible = visibility.settings
-        bootstrap.pauseScene.isVisible = visibility.paused
-        bootstrap.multiplayerScene.isVisible = visibility.multiplayer
-        bootstrap.modsScene.isVisible = visibility.mods
-        bootstrap.resourceBrowserScene.isVisible = visibility.resourceBrowser
-        bootstrap.battleRoomScene.isVisible = visibility.battleRoom
-        bootstrap.modWindowScene.isVisible = visibility.modWindow
+        bootstrap.mainMenuScene.setScreenVisible(visibility.mainMenu)
+        bootstrap.levelSelectScene.setScreenVisible(visibility.levelSelect)
+        bootstrap.replaySelectScene.setScreenVisible(visibility.replaySelect)
+        bootstrap.settingsScene.setScreenVisible(visibility.settings)
+        bootstrap.pauseScene.setScreenVisible(visibility.paused)
+        bootstrap.multiplayerScene.setScreenVisible(visibility.multiplayer)
+        bootstrap.modsScene.setScreenVisible(visibility.mods)
+        bootstrap.resourceBrowserScene.setScreenVisible(visibility.resourceBrowser)
+        bootstrap.battleRoomScene.setScreenVisible(visibility.battleRoom)
+        bootstrap.modWindowScene.setScreenVisible(visibility.modWindow)
         gameSession.setGameVisible(
             shouldSetRwGameVisibleForScreen(screen) || isExternalRwBackgroundVisible,
             viewport(),
@@ -77,6 +80,23 @@ internal class ScreenPresenter(
         bootstrap.menuBackgroundSession.prepareMenuBackgroundAsync(viewport())
         return true
     }
+}
+
+internal fun Node.setScreenVisible(visible: Boolean) {
+    isVisible = visible
+    if (!visible) removeScreenInputHandlers()
+}
+
+private fun Node.removeScreenInputHandlers() {
+    if (this is UiSurface) {
+        // Hidden scenes stop updating their surfaces, so UiSurface's own removal never runs.
+        // Stage removal unconditionally: InputStack.remove misses pending pushTop registrations.
+        // Leave capture modes intact so the surface can register normally when shown again.
+        InputStack.handlerStack.stageRemove(inputHandler)
+        inputHandler.requestFocus(null)
+        isFocused.set(false)
+    }
+    children.forEach { it.removeScreenInputHandlers() }
 }
 
 internal fun shouldShowExternalModHudOverlay(

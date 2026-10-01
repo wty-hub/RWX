@@ -1014,10 +1014,10 @@ public final class GameUI extends Serializable {
                     gameEngine.viewpointY += f12 * f;
                 }
                 if (inputController.r.b()) {
-                    gameEngine.targetZoom += 0.1f;
+                    gameEngine.targetZoom += 0.025f * f;
                 }
                 if (inputController.s.b()) {
-                    gameEngine.targetZoom -= 0.1f;
+                    gameEngine.targetZoom -= 0.025f * f;
                 }
             }
             if (inputController.y.a()) {
