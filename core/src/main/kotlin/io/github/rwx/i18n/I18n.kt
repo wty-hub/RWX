@@ -1031,6 +1031,14 @@ object I18n {
     }
 
     object pausemenu {
+        val title = entry(
+            key = "pausemenu.title",
+            translations = linkedMapOf(
+                "en" to "Tactical Command",
+                "zh-CN" to "战术指挥",
+            ),
+        )
+
         val chat = entry(
             key = "pausemenu.chat",
             translations = linkedMapOf(
@@ -1826,6 +1834,14 @@ object I18n {
     }
 
     object singleplayer {
+        val noPreview = entry(
+            key = "singleplayer.noPreview",
+            translations = linkedMapOf(
+                "en" to "No preview",
+                "zh-CN" to "暂无预览",
+            ),
+        )
+
         val back = entry(
             key = "singleplayer.back",
             translations = linkedMapOf(

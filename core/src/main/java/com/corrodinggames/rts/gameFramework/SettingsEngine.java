@@ -121,6 +121,7 @@ public class SettingsEngine {
     public int nextBackgroundMap;
     public String lastNetworkPlayerName;
     public String lastNetworkIP;
+    public String lastMultiplayerRoom;
     public String lastDebugOption;
     public boolean landscapeOrientation;
     public int aiDifficulty;
@@ -373,6 +374,7 @@ public class SettingsEngine {
         this.replaysShowRecordedChat = getBooleanPref("replaysShowRecordedChat", true);
         this.lastNetworkPlayerName = getStringPref("lastNetworkPlayerName", null);
         this.lastNetworkIP = getStringPref("lastNetworkIP", null);
+        this.lastMultiplayerRoom = getStringPref("lastMultiplayerRoom", null);
         this.lastDebugOption = getStringPref("lastDebugOption", null);
         this.aiDifficulty = getIntPref("aiDifficulty", 0);
         this.locationDpad = getIntPref("locationDpad", 0);
@@ -546,6 +548,7 @@ public class SettingsEngine {
         editorEdit.putBoolean("replaysShowRecordedChat", this.replaysShowRecordedChat);
         editorEdit.putString("lastNetworkPlayerName", this.lastNetworkPlayerName);
         editorEdit.putString("lastNetworkIP", this.lastNetworkIP);
+        editorEdit.putString("lastMultiplayerRoom", this.lastMultiplayerRoom);
         editorEdit.putString("lastDebugOption", this.lastDebugOption);
         editorEdit.putInt("aiDifficulty", this.aiDifficulty);
         editorEdit.putInt("locationDpad", this.locationDpad);

@@ -38,11 +38,11 @@ internal class ActionRouter(
     private val openMainMenuSettings: () -> Unit,
     private val settingsBackTarget: () -> AppScreen,
     private val showSaveGameDialog: () -> Unit,
-    private val showExitGameDialog: (() -> Unit) -> Unit,
+    private val showExitGameDialog: ((Boolean) -> Unit) -> Unit,
     private val showInGameChatDialog: (Boolean) -> Unit,
     private val showMultiplayerPlayerList: () -> Unit,
     private val requestInGameSurrender: () -> Unit,
-    private val exitRwGameToMainMenu: () -> Unit,
+    private val exitRwGame: (Boolean) -> Unit,
     private val showUnavailableDialog: (String) -> Unit,
 ) {
     fun install() {
@@ -195,7 +195,7 @@ internal class ActionRouter(
             }
 
             PauseMenuOutcome.Surrender -> requestInGameSurrender()
-            PauseMenuOutcome.ExitGame -> showExitGameDialog(exitRwGameToMainMenu)
+            PauseMenuOutcome.ExitGame -> showExitGameDialog(exitRwGame)
         }
     }
 

@@ -106,7 +106,7 @@ private fun UiScope.applySelectedColorScheme(
 
 internal fun visualScheme(style: PanelStyle, id: io.github.rwx.ui.ColorSchemeId): ColorSchemeDefinition =
     when (style) {
-        PanelStyle.Menu, PanelStyle.Dialog, PanelStyle.Snackbar -> ColorSchemeRegistry.cyberpunkMenuScheme
+        PanelStyle.Menu, PanelStyle.Pause, PanelStyle.Dialog, PanelStyle.Snackbar -> ColorSchemeRegistry.cyberpunkMenuScheme
         else -> ColorSchemeRegistry.schemeFor(id)
     }
 

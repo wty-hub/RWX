@@ -150,14 +150,16 @@ internal class BattleRoomController(
         sceneHost.updateRoom(snapshot.toBattleRoomModel(previewFor(snapshot), chatLines))
     }
 
-    private fun previewFor(snapshot: BattleRoomSnapshot): String? =
-        selectedMap?.previewAssetPath
-            ?: snapshot.room.mapPath.takeIf { it.isNotBlank() }
-                ?.let { path ->
-                    runCatching {
-                        levelSelectViewModelFactory.create(selectedMode).mapEntry(path).previewAssetPath
-                    }.getOrNull()
-                }
+    private fun previewFor(snapshot: BattleRoomSnapshot): String? = battleRoomMapPreview(
+        mapPath = snapshot.room.mapPath,
+        isSavedGame = snapshot.room.isSavedGame,
+        selectedMapPath = selectedMap?.mapAssetPath,
+        selectedPreviewPath = selectedMap?.previewAssetPath,
+    ) { path ->
+        runCatching {
+            levelSelectViewModelFactory.create(selectedMode).mapEntry(path).previewAssetPath
+        }.getOrNull()
+    }
 
     fun appendChat(text: String, teamColorIndex: Int = -1) {
         val line = BattleRoomChatLine(text, teamColorIndex)

@@ -154,3 +154,6 @@ internal fun backActionForScreen(
  */
 internal fun screenHandlesOwnBackNavigation(screen: AppScreen): Boolean =
     screen == AppScreen.Settings
+
+internal fun gameExitDestination(isMultiplayer: Boolean): AppScreen =
+    if (isMultiplayer) AppScreen.Multiplayer else AppScreen.MainMenu

@@ -300,7 +300,7 @@ internal class InGameDialogController(
         )
     }
 
-    fun showExitGameDialog(onExit: () -> Unit) {
+    fun showExitGameDialog(onExit: (Boolean) -> Unit) {
         val multiplayer = gameSession.runningMultiplayerExitInfo()
         val title = when {
             multiplayer?.isHost == true -> Locale.get("menus.ingame.multiplayerClose.title")
@@ -322,12 +322,12 @@ internal class InGameDialogController(
                 DialogButton(exitLabel) {
                     if (multiplayer != null) {
                         gameSession.requestSessionTask({ gameSession.disconnectRunningMultiplayer() }) { result ->
-                            result.onSuccess { onExit() }.onFailure { error ->
+                            result.onSuccess { onExit(true) }.onFailure { error ->
                                 logger.warn(error) { "Disconnect multiplayer failed" }
                                 showUnavailableDialog("Unable to disconnect: ${error.message ?: error.javaClass.simpleName}")
                             }
                         }
-                    } else onExit()
+                    } else onExit(false)
                 }
             )
             if (multiplayer?.isHost == true) {

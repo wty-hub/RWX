@@ -13,7 +13,7 @@ class MenuAppearanceTest {
         assertEquals(UiAppearance.Cyberpunk, visualScheme(PanelStyle.Menu, inGameColor).appearance)
         assertEquals(UiAppearance.Cyberpunk, visualScheme(PanelStyle.Dialog, inGameColor).appearance)
         assertEquals(UiAppearance.Cyberpunk, visualScheme(PanelStyle.Snackbar, inGameColor).appearance)
-        assertEquals(inGameColor, visualScheme(PanelStyle.Pause, inGameColor).id)
+        assertEquals(UiAppearance.Cyberpunk, visualScheme(PanelStyle.Pause, inGameColor).appearance)
         assertEquals(inGameColor, visualScheme(PanelStyle.Hud, inGameColor).id)
         assertEquals(inGameColor, visualScheme(PanelStyle.ModWindow, inGameColor).id)
     }

@@ -26,6 +26,9 @@ internal class MultiplayerLobbyController(
     fun roomById(roomId: String): MultiplayerRoomItem? =
         latestRooms.firstOrNull { it.roomId == roomId }
 
+    fun originalRoomByServerId(serverId: String): MultiplayerRoomItem? =
+        latestRooms.firstOrNull { it.originalServerId == serverId }
+
     fun requestRefresh() {
         if (activeLobbyKind == MultiplayerLobbyKind.Original) {
             requestOriginalRefresh()

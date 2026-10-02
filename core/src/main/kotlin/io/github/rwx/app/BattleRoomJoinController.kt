@@ -14,7 +14,7 @@ internal class BattleRoomJoinController(
     private val loadingDialogSceneHost: LoadingDialogSceneHost,
     private val onStarted: () -> Unit,
     private val onConnected: (BattleRoomSnapshot?) -> Unit,
-    private val onConnectedAddress: (String) -> Unit,
+    private val onConnectedRoom: (RememberedMultiplayerRoom) -> Unit,
     private val onFailed: (String) -> Unit,
 ) {
     private var pendingJoin: PendingBattleRoomJoin? = null
@@ -29,7 +29,7 @@ internal class BattleRoomJoinController(
         address: String,
         roomLabel: String,
         failurePrefix: String,
-        rememberAddress: String? = null,
+        rememberRoom: RememberedMultiplayerRoom? = null,
         requestJoin: () -> Unit,
     ) {
         val trimmedAddress = address.trim()
@@ -38,14 +38,14 @@ internal class BattleRoomJoinController(
             val joinToken = "$trimmedAddress:${System.nanoTime()}"
             onStarted()
             requestError.set(null)
-            probe.set(PendingBattleRoomJoinProbe(isJoinInProgress = true))
+            probe.set(PendingBattleRoomJoinProbe(token = joinToken, isJoinInProgress = true))
             token.set(joinToken)
             pendingJoin = PendingBattleRoomJoin(
                 token = joinToken,
                 address = trimmedAddress,
                 roomLabel = roomLabel,
                 failurePrefix = failurePrefix,
-                rememberAddress = rememberAddress,
+                rememberRoom = rememberRoom,
                 startedAtNanos = System.nanoTime(),
             )
             val job = launchOnIO("battleroom-join") {
@@ -59,6 +59,8 @@ internal class BattleRoomJoinController(
                 title = I18n.multiplayer.joiningRoom(),
                 message = I18n.multiplayer.connectingTo(roomLabel),
             ) {
+                clearPending()
+                gameSession.cancelBattleRoomJoin()
                 loadingDialogSceneHost.hide()
                 job.cancel()
             }
@@ -72,7 +74,7 @@ internal class BattleRoomJoinController(
 
     fun drive(nowNanos: Long = System.nanoTime()) {
         val pending = pendingJoin ?: return
-        val latestProbe = probe.get()
+        val latestProbe = probe.get()?.takeIf { it.token == pending.token }
         val joinError = requestError.get()
             ?: latestProbe?.errorMessage
         when (
@@ -88,7 +90,7 @@ internal class BattleRoomJoinController(
             BattleRoomJoinPollResult.Connected -> {
                 clearPending()
                 loadingDialogSceneHost.hide()
-                pending.rememberAddress?.let(onConnectedAddress)
+                pending.rememberRoom?.let(onConnectedRoom)
                 onConnected(latestProbe?.snapshot)
             }
 
@@ -119,19 +121,20 @@ internal class BattleRoomJoinController(
             requestJoin()
         }.onFailure { error ->
             logger.warn(error) { "Battle room join request failed" }
-            requestError.set(
-                "$failurePrefix: ${error.message ?: error.javaClass.simpleName}"
-            )
+            if (this.token.get() == token) {
+                requestError.set("$failurePrefix: ${error.message ?: error.javaClass.simpleName}")
+            }
             return
         }
         while (this.token.get() == token) {
             val snapshot = gameSession.currentBattleRoom()
             val isJoinInProgress = gameSession.isJoiningBattleRoom
-            val hasJoinedSnapshot = snapshot != null &&
+            val hasJoinedSnapshot = snapshot != null && snapshot.isNetworkMultiplayer && !snapshot.isHost &&
                     snapshot.players.isNotEmpty()
             val errorMessage = gameSession.latestBattleRoomJoinError
             probe.set(
                 PendingBattleRoomJoinProbe(
+                    token = token,
                     snapshot = snapshot,
                     hasJoinedSnapshot = hasJoinedSnapshot,
                     isJoinInProgress = isJoinInProgress,
@@ -165,11 +168,12 @@ private data class PendingBattleRoomJoin(
     val address: String,
     val roomLabel: String,
     val failurePrefix: String,
-    val rememberAddress: String?,
+    val rememberRoom: RememberedMultiplayerRoom?,
     val startedAtNanos: Long,
 )
 
 private data class PendingBattleRoomJoinProbe(
+    val token: String,
     val snapshot: BattleRoomSnapshot? = null,
     val hasJoinedSnapshot: Boolean = false,
     val isJoinInProgress: Boolean = false,

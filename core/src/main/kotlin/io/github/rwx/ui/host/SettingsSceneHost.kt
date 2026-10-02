@@ -359,7 +359,7 @@ class SettingsSceneHost(
         const val KEY_BINDINGS_HINT: String =
             "Click a binding slot, then press the replacement key. Escape cancels capture."
         const val COLOR_SCHEME_SECTION_TITLE: String = "In-game Color Scheme"
-        const val COLOR_SCHEME_HINT: String = "These colors apply to the game HUD, pause menu, and in-game mod windows. Menus use the fixed cyberpunk theme."
+        const val COLOR_SCHEME_HINT: String = "These colors apply to the game HUD and in-game mod windows. Menus and the pause panel use the fixed cyberpunk theme."
         private const val PRIMARY_KEY_SLOT: Int = 0
         private const val SECONDARY_KEY_SLOT: Int = 1
     }

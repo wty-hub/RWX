@@ -14,7 +14,7 @@ internal class CoreEventDispatcher(
     private val mapController: MapController,
     private val openInGameSettings: () -> Unit,
     private val requestInGameSurrender: () -> Unit,
-    private val exitRwGameToMainMenu: () -> Unit,
+    private val exitRwGame: (Boolean) -> Unit,
     private val returnRwGameToBattleRoom: () -> Unit,
     private val openInGameModWindow: () -> Unit,
     private val closeInGameModWindow: () -> Unit,
@@ -40,7 +40,7 @@ internal class CoreEventDispatcher(
                 CoreUiEvent.InGameSettingsRequested -> openInGameSettings()
                 CoreUiEvent.InGameSurrenderRequested -> requestInGameSurrender()
                 CoreUiEvent.InGameExitRequested ->
-                    inGameDialogController.showExitGameDialog(exitRwGameToMainMenu)
+                    inGameDialogController.showExitGameDialog(exitRwGame)
 
                 CoreUiEvent.InGameReturnToBattleRoomRequested -> {
                     returnRwGameToBattleRoom()

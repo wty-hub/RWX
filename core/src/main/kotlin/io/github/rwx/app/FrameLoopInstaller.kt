@@ -46,7 +46,7 @@ internal class FrameLoopInstaller(
             mapController = mapController,
             openInGameSettings = sessionActions::openInGameSettings,
             requestInGameSurrender = sessionActions::requestInGameSurrender,
-            exitRwGameToMainMenu = sessionActions::exitRwGameToMainMenu,
+            exitRwGame = sessionActions::exitRwGame,
             returnRwGameToBattleRoom = sessionActions::returnRwGameToBattleRoom,
             openInGameModWindow = sessionActions::openInGameModWindow,
             closeInGameModWindow = sessionActions::closeInGameModWindow,

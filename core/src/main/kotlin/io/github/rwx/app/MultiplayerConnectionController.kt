@@ -23,14 +23,15 @@ internal class MultiplayerConnectionController(
         connectDescriptor: String,
         roomLabel: String = "server",
         serverId: String? = null,
-        rejoinAddress: String? = connectDescriptor.takeIf(::isDirectNetworkAddress),
     ) {
         if (connectDescriptor.isBlank()) return
         battleRoomJoinController.start(
             address = connectDescriptor,
             roomLabel = roomLabel,
             failurePrefix = I18n.multiplayer.unableToJoinServer(),
-            rememberAddress = rejoinAddress?.takeIf(::isDirectNetworkAddress),
+            rememberRoom = RememberedMultiplayerRoom(
+                connectDescriptor = connectDescriptor.trim(), serverId = serverId, roomLabel = roomLabel,
+            ),
         ) {
             gameSession.submitSessionTask {
                 check(gameSession.joinBattleRoom(connectDescriptor, serverId, p2pSession = false)) {
@@ -41,10 +42,22 @@ internal class MultiplayerConnectionController(
     }
 
     fun rejoinLastGame() {
-        gameSession.requestSessionTask({ SettingsEngine.getInstance()?.lastNetworkIP?.takeIf(::isDirectNetworkAddress) }) { result ->
-            val address = result.getOrNull()
-            if (address == null) showUnavailableDialog(I18n.multiplayer.noPreviousGame())
-            else joinOriginalServer(address, roomLabel = address)
+        gameSession.requestSessionTask({
+            RememberedMultiplayerRoom.decode(SettingsEngine.getInstance()?.lastMultiplayerRoom)
+        }) { result ->
+            val room = result.getOrNull()
+            when {
+                room == null -> showUnavailableDialog(I18n.multiplayer.noPreviousGame())
+                room.p2pRoomId != null -> {
+                    lobbyController.switchLobby(MultiplayerLobbyKind.P2P)
+                    joinP2PRoom(room.p2pRoomId, room.roomLabel)
+                }
+                else -> {
+                    val listedRoom = room.serverId?.let(lobbyController::originalRoomByServerId)
+                    lobbyController.switchLobby(MultiplayerLobbyKind.Original)
+                    joinOriginalServer(listedRoom?.joinAddress ?: room.connectDescriptor, room.roomLabel, room.serverId)
+                }
+            }
         }
     }
 
@@ -56,6 +69,7 @@ internal class MultiplayerConnectionController(
                     address = address,
                     roomLabel = roomLabel,
                     failurePrefix = I18n.multiplayer.unableToJoinP2pRoom(),
+                    rememberRoom = RememberedMultiplayerRoom(p2pRoomId = roomId.trim(), roomLabel = roomLabel),
                 ) {
                     gameSession.submitSessionTask {
                         check(gameSession.joinBattleRoom(address, serverId = null, p2pSession = true)) {
@@ -93,7 +107,6 @@ internal class MultiplayerConnectionController(
                                 room.joinAddress,
                                 room.joinDisplayLabel(),
                                 room.originalServerId,
-                                room.rejoinAddress,
                             )
                         }
                     },

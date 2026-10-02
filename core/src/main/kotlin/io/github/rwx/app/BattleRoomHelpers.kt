@@ -340,3 +340,16 @@ private fun fogLabel(fogMode: Int): String =
     }
 
 internal const val DEFAULT_MAX_PLAYERS: Int = 10
+
+/** A cached selection is only a preview source for the exact map reported by the room. */
+internal fun battleRoomMapPreview(
+    mapPath: String,
+    isSavedGame: Boolean,
+    selectedMapPath: String?,
+    selectedPreviewPath: String?,
+    resolvePreview: (String) -> String?,
+): String? {
+    if (isSavedGame || mapPath.isBlank()) return null
+    if (selectedMapPath == mapPath && selectedPreviewPath != null) return selectedPreviewPath
+    return resolvePreview(mapPath)
+}

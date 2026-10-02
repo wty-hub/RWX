@@ -222,14 +222,14 @@ fun installApp(
             battleRoomController.updateConnectedRoom(snapshot)
             navigator.navigateTo(AppScreen.BattleRoom)
         },
-        onConnectedAddress = { address ->
+        onConnectedRoom = { room ->
             gameSession.requestSessionTask({
                 SettingsEngine.getInstance()?.apply {
-                    lastNetworkIP = address
+                    lastMultiplayerRoom = room.encode()
                     save()
                 }
             }) { result ->
-                result.onFailure { error -> logger.warn(error) { "Unable to remember multiplayer address" } }
+                result.onFailure { error -> logger.warn(error) { "Unable to remember multiplayer room" } }
             }
         },
         onFailed = dialogController::showUnavailable,
@@ -409,7 +409,7 @@ fun installApp(
                 }
 
                 BackNavigationAction.ShowExitDialog -> {
-                    inGameDialogController.showExitGameDialog(sessionActions::exitRwGameToMainMenu)
+                    inGameDialogController.showExitGameDialog(sessionActions::exitRwGame)
                 }
 
                 BackNavigationAction.MainMenu -> {
@@ -458,7 +458,7 @@ fun installApp(
         showInGameChatDialog = inGameDialogController::showInGameChatDialog,
         showMultiplayerPlayerList = inGameDialogController::showInGamePlayerListDialog,
         requestInGameSurrender = sessionActions::requestInGameSurrender,
-        exitRwGameToMainMenu = sessionActions::exitRwGameToMainMenu,
+        exitRwGame = sessionActions::exitRwGame,
         showUnavailableDialog = dialogController::showUnavailable,
     ).install()
 

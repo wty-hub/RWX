@@ -2,13 +2,13 @@ package io.github.rwx.ui.component
 
 import io.github.rwx.ui.smallCornerRadius
 import io.github.rwx.ui.mediumCornerRadius
-import de.fabmax.kool.AssetLoader
 import de.fabmax.kool.Assets
 import de.fabmax.kool.MimeType
 import de.fabmax.kool.modules.ui2.*
 import de.fabmax.kool.pipeline.ImageData2d
 import de.fabmax.kool.pipeline.TexFormat
 import de.fabmax.kool.pipeline.Texture2d
+import de.fabmax.kool.util.FrontendScope
 import de.fabmax.kool.util.Uint8Buffer
 import io.github.rwx.LegacyAssetBridge
 import io.github.rwx.i18n.I18n
@@ -16,9 +16,10 @@ import io.github.rwx.ui.ColorSchemeDefinition
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.model.*
 import io.github.rwx.ui.remainingAfter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 
 /**
  * A single map tile button for the level-select grid. The tile shows a map preview when the
@@ -120,7 +121,7 @@ internal fun UiScope.MapPreviewImage(
             .background(RoundRectBackground(theme.palette.surfaceBase, theme.smallCornerRadius))
             .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
 
-        val previewTexture = previewAssetPath?.let { MapPreviewTextureCache.textureFor(it) }
+        val previewTexture = previewAssetPath?.let { MapPreviewTextureCache.textureFor(it).use() }
         if (previewTexture != null) {
             Image(previewTexture) {
                 modifier
@@ -129,7 +130,7 @@ internal fun UiScope.MapPreviewImage(
                     .imageSize(ImageSize.FitContent)
             }
         } else {
-            Text("No preview") {
+            Text(I18n.singleplayer.noPreview()) {
                 modifier
                     .width(Grow.Std)
                     .height(Grow.Std)
@@ -143,39 +144,42 @@ internal fun UiScope.MapPreviewImage(
 }
 
 private object MapPreviewTextureCache {
-    private val textures = mutableMapOf<String, Texture2d>()
+    private data class Preview(
+        val texture: MutableStateValue<Texture2d?>,
+        val load: Deferred<Unit>,
+    )
+    private val previews = mutableMapOf<String, Preview>()
 
-    fun textureFor(assetPath: String): Texture2d = textures.getOrPut(assetPath) {
-        Texture2d(name = "map-preview:$assetPath") {
-            loadPreviewImage(assetPath) ?: AssetLoader.textureDataLoadFailed
+    fun textureFor(assetPath: String): MutableStateValue<Texture2d?> = entryFor(assetPath).texture
+
+    private fun entryFor(assetPath: String): Preview = previews.getOrPut(assetPath) {
+        val texture = mutableStateOf<Texture2d?>(null)
+        val load = FrontendScope.async {
+            // Only publish successfully decoded images; never upload the loader's error texture.
+            val image = runCatching { loadPreviewImage(assetPath) }.getOrElse {
+                if (it is CancellationException) throw it
+                null
+            }
+            if (image != null) {
+                texture.value = Texture2d(name = "map-preview:$assetPath").also { it.upload(image) }
+            }
         }
+        Preview(texture, load)
     }
 
     suspend fun preload(assetPaths: List<String>, onProgress: (Int, Int) -> Unit) {
-        var completed = assetPaths.count { textures[it]?.isLoaded == true }
+        var completed = 0
         onProgress(completed, assetPaths.size)
-        assetPaths.filter { textures[it]?.isLoaded != true }
-            .chunked(MAP_PREVIEW_PRELOAD_CONCURRENCY)
-            .forEach { paths ->
-                val loaded = coroutineScope {
-                    paths.map { assetPath ->
-                        async {
-                            assetPath to (loadPreviewImage(assetPath) ?: AssetLoader.textureDataLoadFailed)
-                        }
-                    }.awaitAll()
-                }
-                loaded.forEach { (assetPath, imageData) ->
-                    val texture = Texture2d(name = "map-preview:$assetPath")
-                    texture.upload(imageData)
-                    textures[assetPath] = texture
-                    completed++
-                    onProgress(completed, assetPaths.size)
-                }
-            }
+        assetPaths.chunked(MAP_PREVIEW_PRELOAD_CONCURRENCY).forEach { paths ->
+            paths.map { entryFor(it).load }.awaitAll()
+            completed += paths.size
+            onProgress(completed, assetPaths.size)
+        }
     }
 
     fun invalidate() {
-        textures.clear()
+        previews.values.forEach { it.load.cancel() }
+        previews.clear()
     }
 
     private suspend fun loadPreviewImage(assetPath: String): ImageData2d? {

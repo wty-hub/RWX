@@ -21,11 +21,13 @@ internal class SessionActions(
     private val refreshMainMenu: () -> Unit,
     private val onQuit: () -> Unit,
 ) {
-    fun exitRwGameToMainMenu() {
+    fun exitRwGameToMainMenu() = exitRwGame(isMultiplayer = false)
+
+    fun exitRwGame(isMultiplayer: Boolean) {
         warmupController.clear()
         pendingStartController.clear()
-        navigateTo(AppScreen.MainMenu)
-        refreshMainMenu()
+        navigateTo(gameExitDestination(isMultiplayer))
+        if (!isMultiplayer) refreshMainMenu()
     }
 
     fun returnRwGameToBattleRoom() {
