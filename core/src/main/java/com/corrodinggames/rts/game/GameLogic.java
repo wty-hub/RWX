@@ -1257,7 +1257,10 @@ public class GameLogic extends GameEngine {
                 this.gameUI.updateInput(float1);
                 this.clampCameraPosition();
                 TileMap.updateLayerBuffers();
-                if (this.networkEngine.networkGameActive) {
+                if (this.replayEngine.j() && this.replayEngine.isSeeking()) {
+                    this.accumulator = 0;
+                    this.replayEngine.advanceSeekSlice(this);
+                } else if (this.networkEngine.networkGameActive) {
                     float var29 = float1;
                     if (this.replayEngine.v != 1) {
                         var29 = float1 * this.replayEngine.v;
@@ -1359,7 +1362,7 @@ public class GameLogic extends GameEngine {
                     if (!this.shouldSkipUpdate(false)) {
                         this.accumulator += var30;
 
-                        while (this.accumulator > this.networkEngine.getCurrentStepRate()) {
+                        while (this.accumulator > this.networkEngine.getCurrentStepRate() && !this.replayEngine.isPlaybackEnded()) {
                             this.accumulator = this.accumulator - this.networkEngine.getCurrentStepRate();
                             if (this.networkEngine.shouldGameBePausedForPathfinding()) {
                                 break;
@@ -1476,6 +1479,7 @@ public class GameLogic extends GameEngine {
 
     /* JADX INFO: renamed from: a */
     public void update(float deltaSpeed) throws IOException {
+        if (this.replayEngine.isPlaybackEnded()) return;
         if (isInNetworkOrReplay() && deltaSpeed < 0.1f) {
             NetworkEngine.reportDesync("updateAllGame1: deltaSpeed:" + deltaSpeed + " frame:" + this.currentTick + " network.currentStepRate:" + this.networkEngine.getCurrentStepRate());
         }
@@ -1490,6 +1494,7 @@ public class GameLogic extends GameEngine {
         CommandQueue.drain();
         this.commandController.executeAllCommands();
         this.replayEngine.update(f);
+        if (this.replayEngine.isPlaybackEnded()) return;
         this.currentTick++;
         ModScheduler.tick();
         PlayerTeam.g(f);

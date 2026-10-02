@@ -48,6 +48,85 @@ public class GameInterfaceRenderer extends Serializable {
     private static final boolean DEBUG_SLICK_MENU = "1".equals(System.getenv("RWX_DEBUG_SLICK_MENU"));
 
     private static int debugHudCount = 0;
+    private final ReplayTimelineControls replayTimeline = new ReplayTimelineControls();
+    private final KoolPaint replayTimelinePaint = new KoolPaint();
+
+    private ReplayTimelineControls.Layout replayTimelineLayout() {
+        float scale = gameEngine.screenScale;
+        float iconHeight = fastTexture == null ? 32 * scale : fastTexture.q * scale * 1.6f;
+        float top = 7 + gameUI.unitRangePaint.k() + iconHeight + 22 * scale;
+        return ReplayTimelineControls.layout(gameEngine.currentScreenWidthPixels, scale, top);
+    }
+
+    public boolean isReplayTimelineAt(float x, float y) {
+        return gameEngine.replayEngine.j() && gameEngine.replayEngine.getDurationMillis() >= 0
+                && (replayTimeline.isCaptured() || replayTimelineLayout().contains(x, y));
+    }
+
+    public boolean updateReplayTimelineInput() {
+        if (!gameEngine.replayEngine.j() || gameUI.isDraggingSelection) {
+            replayTimeline.reset();
+            return false;
+        }
+        // A legacy/incomplete recording has no trustworthy end time. Keep its HUD readable,
+        // but let the normal map input path handle touches until the index is available.
+        if (gameEngine.replayEngine.getDurationMillis() < 0) {
+            replayTimeline.reset();
+            return false;
+        }
+        boolean down = gameEngine.isTouchDown() && gameEngine.getTouchPointerCount() == 1
+                && gameEngine.touchPointerEnabled[0];
+        boolean consumed = replayTimeline.handle(replayTimelineLayout(), down,
+                gameEngine.getTouchX(), gameEngine.getTouchY(),
+                Math.max(0, gameEngine.gameTimeMillis - gameEngine.replayEngine.getStartTimeMillis()),
+                gameEngine.replayEngine.getDurationMillis() < 0 ? -1
+                        : gameEngine.replayEngine.getDurationMillis() - gameEngine.replayEngine.getStartTimeMillis(),
+                target -> gameEngine.replayEngine.requestSeek(target + gameEngine.replayEngine.getStartTimeMillis()));
+        if (consumed) gameEngine.touchPointerEnabled[0] = false;
+        return consumed;
+    }
+
+    private void drawReplayTimeline() {
+        ReplayEngine replay = gameEngine.replayEngine;
+        ReplayTimelineControls.Layout layout = replayTimelineLayout();
+        float y = layout.centerY();
+        int duration = replay.getDurationMillis() < 0 ? -1 : replay.getDurationMillis() - replay.getStartTimeMillis();
+        int preview = replayTimeline.getPreviewMillis();
+        int displayed = preview >= 0 ? preview : Math.max(0, gameEngine.gameTimeMillis - replay.getStartTimeMillis());
+        replayTimelinePaint.b(KoolArgbColor.a(210, 25, 30, 36));
+        gameEngine.renderGraphicsEngine.a(new RectF(layout.left(), layout.top(),
+                layout.left() + layout.width(), layout.top() + layout.height()), replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a("−10s", layout.left() + layout.buttonWidth() / 2,
+                y + gameUI.unitRangePaint.k() / 3, gameUI.unitRangePaint);
+        gameEngine.renderGraphicsEngine.a("+10s", layout.left() + layout.width() - layout.buttonWidth() / 2,
+                y + gameUI.unitRangePaint.k() / 3, gameUI.unitRangePaint);
+        replayTimelinePaint.b(KoolArgbColor.a(255, 110, 120, 130));
+        gameEngine.renderGraphicsEngine.a(new RectF(layout.trackLeft(), y - 2,
+                layout.trackRight(), y + 2), replayTimelinePaint);
+        if (duration >= 0) {
+            float fraction = duration == 0 ? 0 : Math.max(0, Math.min(1, displayed / (float) duration));
+            float head = layout.trackLeft() + fraction * (layout.trackRight() - layout.trackLeft());
+            replayTimelinePaint.b(KoolArgbColor.a(255, 90, 200, 245));
+            gameEngine.renderGraphicsEngine.a(new RectF(layout.trackLeft(), y - 2, head, y + 2), replayTimelinePaint);
+            gameEngine.renderGraphicsEngine.a(new RectF(head - 3, y - 7, head + 3, y + 7), replayTimelinePaint);
+        }
+        String status = null;
+        if (replay.getSeekError() != null) status = Locale.get("replay.timeline.seekFailed");
+        else if (replay.isIndexing()) status = Locale.get("replay.timeline.reading");
+        else if (replay.getTimelineError() != null) status = Locale.get("replay.timeline.unavailable");
+        else if (replay.isSeeking()) status = Locale.get("replay.timeline.seeking") + " "
+                + Utility.formatDuration(Math.max(0, replay.getSeekTargetMillis() - replay.getStartTimeMillis()) / 1000)
+                + " (" + (int) (replay.getSeekProgress() * 100) + "%)";
+        else if (preview >= 0) status = Utility.formatDuration(preview / 1000);
+        if (status != null) {
+            KoolPaint text = new KoolPaint(gameUI.unitRangePaint);
+            float measured = text.a(status);
+            if (measured > layout.width()) text.b(text.k() * layout.width() / measured);
+            gameEngine.renderGraphicsEngine.a(status, layout.left() + layout.width() / 2,
+                    layout.top() + layout.height() + gameUI.unitRangePaint.k(), text);
+        }
+    }
+
 
     /* JADX INFO: renamed from: a */
     GameUI gameUI;
@@ -2383,6 +2462,7 @@ public class GameInterfaceRenderer extends Serializable {
         }
         this.gameUI.a(this.unitRect2);
         if (this.gameEngine.replayEngine.j()) {
+            if (boolean2) drawReplayTimeline();
             this.paintHealthBar.c(80);
             if (this.gameEngine.replayEngine.v != 1) {
                 this.paintHealthBar.c(200);
@@ -2391,7 +2471,10 @@ public class GameInterfaceRenderer extends Serializable {
             n2 = (int) (n * this.gameEngine.screenScale * 1.6f);
             n3 = (int) (this.gameEngine.currentScreenWidthPixels / 2.0f);
             n4 = 7 + (int) this.gameUI.unitRangePaint.k();
-            this.gameEngine.renderGraphicsEngine.a(Utility.formatDuration(this.gameEngine.gameTimeMillis / 1000), (float) n3, (float) n4, this.gameUI.unitRangePaint);
+            this.gameEngine.renderGraphicsEngine.a(Utility.formatDuration(Math.max(0, this.gameEngine.gameTimeMillis - this.gameEngine.replayEngine.getStartTimeMillis()) / 1000)
+                    + (this.gameEngine.replayEngine.getDurationMillis() >= 0
+                    ? " / " + Utility.formatDuration((this.gameEngine.replayEngine.getDurationMillis() - this.gameEngine.replayEngine.getStartTimeMillis()) / 1000) : ""),
+                    (float) n3, (float) n4, this.gameUI.unitRangePaint);
             if (GameInterfaceRenderer.debugHudCount++ % 180 == 0) {
                 GameEngine.log("HUDDBG", "timer n3=" + n3 + " n4=" + n4
                         + " currentScreenWidthPixels=" + this.gameEngine.currentScreenWidthPixels

@@ -126,7 +126,9 @@ public class SoundEngine {
 
     /* JADX INFO: renamed from: a */
     public boolean isVolumeEnabled(float f) {
-        if (f < 0.01f || this.soundDisabled) {
+        if (f < 0.01f || this.soundDisabled
+                || (GameEngine.getInstance() != null && GameEngine.getInstance().replayEngine != null
+                && GameEngine.getInstance().replayEngine.isSeeking())) {
             return false;
         }
         return areGameSoundsEnabled();

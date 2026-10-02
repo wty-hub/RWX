@@ -562,6 +562,7 @@ public final class GameUI extends Serializable {
     /* JADX INFO: renamed from: a */
     public boolean isWorldClickAllowedAt(float f, float f2) {
         GameEngine gameEngine = GameEngine.getInstance();
+        if (this.interfaceRenderer.isReplayTimelineAt(f, f2)) return false;
         if (!bO || this.interfaceRenderer.showInfoText) {
             return f < gameEngine.screenWidth - gameEngine.sidebarWidth;
         }
@@ -893,6 +894,14 @@ public final class GameUI extends Serializable {
         this.isKeyboardCtrlPressed = false;
         this.isKeyboardShiftPressed = gameEngine.getTouchX() > gameEngine.currentScreenWidthPixels;
         this.isSelectionBoxActive = !this.isMousePressed && this.isMouseOverUI;
+        if (this.interfaceRenderer.updateReplayTimelineInput()) {
+            resetMouseState();
+            this.isMouseOverUI = false;
+            this.isInputDisabled = false;
+            this.lastMouseX = 0;
+            this.lastMouseY = 0;
+            return;
+        }
         this.isRightClickDrag = this.isMousePressed && !this.isMouseOverUI;
         if (GameEngine.isPC() && gameEngine.settingsEngine.mouseSupport) {
             this.selectionBoxMinWidth = gameEngine.getTouchX();
@@ -4102,8 +4111,10 @@ public final class GameUI extends Serializable {
         if (gameEngine.gameTimeMillis < 1500 && gameEngine.gameUI.editorOrBuilder != null) {
             gameEngine.isContinuingAfterGameEnd = true;
         }
-        this.endGameScreen.update(0.0f);
-        this.endGameScreen.loadStats();
+        if (!gameEngine.replayEngine.isSeeking()) {
+            this.endGameScreen.update(0.0f);
+            this.endGameScreen.loadStats();
+        }
     }
 
     /* JADX INFO: renamed from: H */
@@ -4112,8 +4123,10 @@ public final class GameUI extends Serializable {
         GameEngine gameEngine = GameEngine.getInstance();
         gameEngine.hasLostGame = true;
         gameEngine.gameStatistics.c();
-        this.endGameScreen.update(0.0f);
-        this.endGameScreen.loadStats();
+        if (!gameEngine.replayEngine.isSeeking()) {
+            this.endGameScreen.update(0.0f);
+            this.endGameScreen.loadStats();
+        }
     }
 
     /* JADX INFO: renamed from: I */

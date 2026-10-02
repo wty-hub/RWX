@@ -12,6 +12,7 @@ import com.corrodinggames.rts.gameFramework.ui.Message
 import com.corrodinggames.rts.gameFramework.ui.MessageManager
 import io.github.rwx.diagnostics.GameStateTrace
 import io.github.rwx.benchmark.VanillaBattleBenchmark
+import io.github.rwx.benchmark.ReplaySeekAcceptanceHarness
 import io.github.rwx.benchmark.DriverParityHarness
 import io.github.rwx.benchmark.VanillaUnitSmokeHarness
 import io.github.rwx.benchmark.OwnerSessionAcceptanceHarness
@@ -156,7 +157,11 @@ object HeadlessMain {
         val engine = session.boot(graphics)
         val replayName = options.replay
         if (replayName != null) {
-            session.openReplay(resolveReplayName(replayName))
+            val resolved = resolveReplayName(replayName)
+            session.openReplay(resolved)
+            System.getenv("RWX_REPLAY_SEEK_OUTPUT")?.takeIf(String::isNotBlank)?.let { path ->
+                return if (ReplaySeekAcceptanceHarness.run(session, engine, resolved, File(path))) EXIT_OK else EXIT_FAILURE
+            }
         } else {
             session.openMap(options.map!!)
             System.getenv("RWX_VANILLA_SMOKE_OUTPUT")?.takeIf(String::isNotBlank)?.let {

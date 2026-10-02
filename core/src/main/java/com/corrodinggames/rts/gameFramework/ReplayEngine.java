@@ -12,6 +12,9 @@ import com.corrodinggames.rts.gameFramework.network.*;
 
 import java.io.*;
 import java.util.Iterator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /* JADX INFO: renamed from: com.corrodinggames.rts.gameFramework.ba */
 /* JADX INFO: loaded from: game-lib.jar:com/corrodinggames/rts/gameFramework/ba.class */
@@ -92,6 +95,219 @@ public class ReplayEngine {
     Object M = new Object();
     public boolean N = false;
 
+    private volatile ReplayTimelineIndex timelineIndex;
+    private volatile String timelineError;
+    private volatile String seekError;
+    private volatile boolean indexing;
+    private volatile long indexGeneration;
+    private Thread indexThread;
+    private File playbackFile;
+    private final AtomicReference<Integer> pendingSeek = new AtomicReference<>();
+    private volatile SeekSession seekSession;
+    private boolean restoringSeek;
+    private int initialTimeMillis;
+    // Only checkpoints whose enclosing simulation step was observed are safe shortcuts. A
+    // resync can change the step rate, so its saved new rate cannot reconstruct the preceding step.
+    private Map<Long, Float> observedResyncSteps = new HashMap<>();
+    private static long resyncKey(int tick, int time) { return ((long) tick << 32) | (time & 0xffffffffL); }
+
+
+    private static final class SeekSession {
+        int target;
+        int startTime;
+        final float speed, cameraX, cameraY, zoom, targetZoom;
+        final int observer;
+        SeekSession(GameEngine engine, int target) {
+            this.target = target;
+            this.startTime = engine.gameTimeMillis;
+            this.speed = engine.gameSpeed;
+            this.cameraX = engine.viewpointX;
+            this.cameraY = engine.viewpointY;
+            this.zoom = engine.zoom;
+            this.targetZoom = engine.targetZoom;
+            this.observer = engine.playerTeam == null ? Integer.MIN_VALUE : engine.playerTeam.teamId;
+        }
+    }
+
+    public int getStartTimeMillis() {
+        ReplayTimelineIndex index = timelineIndex;
+        int start = initialTimeMillis;
+        if (index != null && !index.checkpoints.isEmpty()) {
+            ReplayTimelineIndex.Checkpoint first = index.checkpoints.get(0);
+            if (first.commandsBefore() == 0) start = Math.max(start, first.timeMillis());
+        }
+        return start;
+    }
+
+    public int getCurrentTimeMillis() { return GameEngine.getInstance().gameTimeMillis; }
+    public int getDurationMillis() { return timelineIndex == null ? -1 : timelineIndex.durationMillis; }
+    public boolean isIndexing() { return indexing; }
+    public String getTimelineError() { return timelineError; }
+    public String getSeekError() { return seekError; }
+    public boolean isSeeking() { return restoringSeek || seekSession != null || pendingSeek.get() != null; }
+    public boolean isPlaybackEnded() { return j() && isStopped; }
+    public int getSeekTargetMillis() {
+        Integer pending = pendingSeek.get();
+        SeekSession session = seekSession;
+        return pending != null ? pending : session == null ? -1 : session.target;
+    }
+    public float getSeekProgress() {
+        SeekSession session = seekSession;
+        if (session == null) return 0;
+        int distance = session.target - session.startTime;
+        return distance <= 0 ? 1 : Math.max(0, Math.min(1,
+                (getCurrentTimeMillis() - session.startTime) / (float) distance));
+    }
+
+    /**
+     * Requests an absolute replay clock position in milliseconds. All simulation and state
+     * restoration happen on the engine owner thread; a newer request replaces the old target.
+     */
+    public void requestSeek(int targetTimeMillis) {
+        ReplayTimelineIndex index = timelineIndex;
+        if (!j() || index == null) return;
+        seekError = null;
+        pendingSeek.set(Math.max(getStartTimeMillis(), Math.min(index.durationMillis, targetTimeMillis)));
+    }
+
+    private void startTimelineIndex(File file) {
+        playbackFile = file;
+        long generation = indexGeneration;
+        indexing = true;
+        indexThread = new Thread(() -> {
+            try (InputStream input = FileHelper.openFile(file)) {
+                if (input == null) throw new IOException("Cannot open replay for indexing");
+                ReplayTimelineIndex index = ReplayTimelineIndex.scan(input,
+                        () -> generation != indexGeneration || Thread.currentThread().isInterrupted());
+                synchronized (M) { if (generation == indexGeneration) timelineIndex = index; }
+            } catch (IOException | RuntimeException error) {
+                synchronized (M) { if (generation == indexGeneration) timelineError = error.getMessage(); }
+            } finally {
+                synchronized (M) { if (generation == indexGeneration) indexing = false; }
+            }
+        }, "replay-timeline-index");
+        indexThread.setDaemon(true);
+        indexThread.start();
+    }
+
+    private void finishSeek(com.corrodinggames.rts.game.GameLogic engine, SeekSession session) {
+        engine.gameSpeed = isStopped ? 0 : session.speed;
+        engine.zoom = session.zoom;
+        engine.targetZoom = session.targetZoom;
+        engine.updateCameraSystem();
+        engine.setViewpoint(session.cameraX, session.cameraY);
+        if (session.observer != Integer.MIN_VALUE) {
+            PlayerTeam observer = PlayerTeam.k(session.observer);
+            if (observer != null) engine.playerTeam = observer;
+        }
+        engine.gameUI.clearSelection();
+        engine.gameUI.clearCurrentAction();
+        seekSession = null;
+        if (engine.hasWonGame || engine.hasLostGame) engine.gameUI.endGameScreen.loadStats();
+    }
+
+    private void restoreForSeek(com.corrodinggames.rts.game.GameLogic engine, SeekSession session) throws IOException {
+        ReplayTimelineIndex index = timelineIndex;
+        File file = playbackFile;
+        Map<Long, Float> observedSteps = observedResyncSteps;
+        int initialTime = initialTimeMillis;
+        ReplayTimelineIndex.Checkpoint checkpoint = null;
+        for (ReplayTimelineIndex.Checkpoint candidate : index.checkpoints) {
+            if (candidate.timeMillis() <= session.target
+                    && observedSteps.containsKey(resyncKey(candidate.tick(), candidate.timeMillis()))
+                    && (checkpoint == null || candidate.timeMillis() >= checkpoint.timeMillis())) checkpoint = candidate;
+        }
+        restoringSeek = true;
+        try {
+            if (checkpoint == null) {
+                String name = replayFilePath;
+                if (!a(name, file)) throw new IOException("Cannot restore replay initial state");
+                // Reload resets playback bookkeeping. Reuse the already validated independent index.
+                synchronized (M) {
+                    indexGeneration++;
+                    if (indexThread != null) indexThread.interrupt();
+                    timelineIndex = index;
+                    playbackFile = file;
+                    indexing = false;
+                    timelineError = null;
+                    initialTimeMillis = initialTime;
+                    observedResyncSteps = observedSteps;
+                }
+            } else {
+                if (fileInputStream != null) gameInputStreamClose();
+                fileInputStream = FileHelper.openFile(file);
+                if (fileInputStream == null) throw new IOException("Cannot reopen replay checkpoint");
+                bufferedInput = new BufferedInputStream(fileInputStream);
+                bufferedInput.skipNBytes(checkpoint.blockOffset());
+                dataInputStream = new DataInputStream(bufferedInput);
+                gameInputStream = new GameInputStream(dataInputStream);
+                gameInputStream.setProtocolVersion(replayVersion);
+                nextCommand = null;
+                lastLoggedCommand = null;
+                executedCommandCount = checkpoint.commandsBefore();
+                commandCount = executedCommandCount;
+                commandId = executedCommandCount;
+                isStopped = false;
+                // A resync is applied inside a simulation step during normal playback. Reproduce
+                // that boundary, including its post-load unit update, rather than loading between ticks.
+                engine.currentTick = checkpoint.issuedTick();
+                engine.gameSpeed = 0;
+                engine.update(observedSteps.get(resyncKey(checkpoint.tick(), checkpoint.timeMillis())));
+                if (seekError != null) throw new IOException(seekError);
+                engine.gameUI.messageManager.clear();
+            }
+            // Rewinding from the end screen must restore ordinary spectator playback. The
+            // serialized replay state contains the battle, while these UI flags are local state.
+            engine.hasWonGame = false;
+            engine.hasLostGame = false;
+            engine.isContinuingAfterGameEnd = false;
+            engine.shouldAdvanceAfterGameEnd = false;
+            seekSession = session;
+            engine.gameSpeed = 0;
+            engine.gameUI.clearSelection();
+            engine.gameUI.clearCurrentAction();
+            session.startTime = engine.gameTimeMillis;
+        } finally { restoringSeek = false; }
+    }
+
+    private void gameInputStreamClose() throws IOException {
+        dataInputStream.close();
+        bufferedInput.close();
+        fileInputStream.close();
+    }
+
+    /** One bounded catch-up slice, called even when ordinary playback is paused. */
+    public void advanceSeekSlice(com.corrodinggames.rts.game.GameLogic engine) {
+        if (!j()) return;
+        Integer target = pendingSeek.getAndSet(null);
+        SeekSession session = seekSession;
+        try {
+            if (target != null) {
+                if (session == null) session = new SeekSession(engine, target);
+                else session.target = target;
+                seekSession = session;
+                if (target < engine.gameTimeMillis || isStopped) {
+                    restoreForSeek(engine, session);
+                } else session.startTime = engine.gameTimeMillis;
+                engine.gameSpeed = 0;
+            }
+            if (session == null) return;
+            long deadline = System.nanoTime() + 8_000_000L;
+            while (!isStopped && engine.gameTimeMillis < session.target && System.nanoTime() < deadline) {
+                if (engine.networkEngine.shouldGameBePausedForPathfinding()) break;
+                engine.update(engine.networkEngine.getCurrentStepRate());
+                if (seekError != null) throw new IOException(seekError);
+            }
+            if (isStopped || engine.gameTimeMillis >= session.target) finishSeek(engine, session);
+        } catch (IOException | RuntimeException error) {
+            seekError = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            isStopped = true;
+            engine.gameSpeed = 0;
+            if (session != null) finishSeek(engine, session);
+            engine.gameUI.showHighPriorityMessage("Replay seek failed: " + seekError);
+        }
+    }
+
     public static void a(String str) {
         GameEngine.log("Replay: " + str);
     }
@@ -110,6 +326,7 @@ public class ReplayEngine {
 
     public void a() {
         GameEngine gameEngine = GameEngine.getInstance();
+        if (isSeeking() || isPlaybackEnded()) return;
         if (gameEngine.gameSpeed != 0.0f) {
             gameEngine.gameSpeed = 0.0f;
         } else {
@@ -119,6 +336,7 @@ public class ReplayEngine {
 
     public void b() {
         GameEngine gameEngine = GameEngine.getInstance();
+        if (isSeeking() || isPlaybackEnded()) return;
         if (gameEngine.gameSpeed == 1.0f) {
             gameEngine.gameSpeed = 2.0f;
             return;
@@ -249,6 +467,18 @@ public class ReplayEngine {
     /* JADX WARN: Finally extract failed */
     public void e() {
         synchronized (this.M) {
+            indexGeneration++;
+            if (indexThread != null) indexThread.interrupt();
+            indexThread = null;
+            indexing = false;
+            timelineIndex = null;
+            timelineError = null;
+            seekError = null;
+            playbackFile = null;
+            pendingSeek.set(null);
+            seekSession = null;
+            initialTimeMillis = 0;
+            observedResyncSteps = new HashMap<>();
             try {
                 try {
                     if (this.replayWriter != null) {
@@ -429,7 +659,9 @@ public class ReplayEngine {
             this.hasGameSetupRead = false;
             this.N = true;
             a("Loading replay initial save");
-            gameEngine.gameSaver.readSaveFromStream(this.gameInputStream, false, false, false);
+            if (!gameEngine.gameSaver.readSaveFromStream(this.gameInputStream, false, false, false)) {
+                throw new IOException("Cannot load replay initial save");
+            }
             this.N = false;
             this.gameInputStream.d("gamesave");
             if (!this.hasGameSetupRead) {
@@ -445,7 +677,7 @@ public class ReplayEngine {
             a("Unit cap: " + gameEngine.maxUnitCap);
             a(gameEngine.networkEngine.roomSettings.getSettingsSummary());
             a("Starting frame:" + gameEngine.currentTick);
-            if (!this.h) {
+            if (!this.h && !restoringSeek) {
                 for (int i3 = 0; i3 < PlayerTeam.TEAM_NEUTRAL; i3++) {
                     PlayerTeam playerTeamK = PlayerTeam.k(i3);
                     if (playerTeamK != null && playerTeamK.teamName != null) {
@@ -459,6 +691,8 @@ public class ReplayEngine {
                 gameEngine.isDebugTempMode = true;
                 gameEngine.isTriggerDebugMode = true;
             }
+            initialTimeMillis = gameEngine.gameTimeMillis;
+            if (!restoringSeek) startTimelineIndex(file);
             return true;
         } catch (IOException e2) {
             throw new RuntimeException(e2);
@@ -655,7 +889,14 @@ public class ReplayEngine {
             int i5 = this.gameInputStream.readInt();
             float f2 = this.gameInputStream.readFloat();
             float f3 = this.gameInputStream.readFloat();
-            gameEngine.gameSaver.readSaveFromStream(new GameInputStream(this.gameInputStream.readBytesWithLength()), true, true, true);
+            com.corrodinggames.rts.game.GameLogic logic = (com.corrodinggames.rts.game.GameLogic) gameEngine;
+            float enclosingStep = logic.lastDelta / logic.speedMultiplier;
+            if (!gameEngine.gameSaver.readSaveFromStream(new GameInputStream(this.gameInputStream.readBytesWithLength()), true, true, true)) {
+                throw new IOException("Cannot load replay resync save");
+            }
+            if (Float.isFinite(enclosingStep) && enclosingStep >= 0.1f) {
+                observedResyncSteps.put(resyncKey(i4, i5), enclosingStep);
+            }
             l();
             gameEngine.currentTick = i4;
             gameEngine.gameTimeMillis = i5;
@@ -681,20 +922,10 @@ public class ReplayEngine {
         }
         if ("end".equals(strStartBlockAndGetName)) {
             GameEngine.log("replay:updateGameFrame", "end of replay block found");
-            gameEngine.gameUI.messageManager.addMessage(VariableScope.nullOrMissingString, "Replay has ended");
-            if (!gameEngine.isGameStarted) {
-                this.isStopped = true;
-                gameEngine.gameSpeed = 0.25f;
-                GameEngine.getInstance().gameUI.startGameEndSequence();
-            } else {
-                this.isStopped = false;
-                this.P = false;
-                this.isReplaying = false;
-                EditorOrBuilder editorOrBuilder = gameEngine.gameUI.getEditorOrBuilder();
-                if (editorOrBuilder != null) {
-                    gameEngine.playerTeam = editorOrBuilder.team;
-                }
-            }
+            if (!isSeeking()) gameEngine.gameUI.messageManager.addMessage(VariableScope.nullOrMissingString, "Replay has ended");
+            this.isStopped = true;
+            gameEngine.gameSpeed = 0;
+            if (timelineIndex != null) gameEngine.gameTimeMillis = timelineIndex.durationMillis;
             this.gameInputStream.d("end");
             GameEngine.log("number of replay commands issued:" + this.executedCommandCount);
             return false;
@@ -723,7 +954,8 @@ public class ReplayEngine {
                 } catch (IOException e2) {
                     GameEngine.log("updateGameFrame", "IOException, read of replay?");
                     e2.printStackTrace();
-                    gameEngine.gameSpeed = 0.25f;
+                    gameEngine.gameSpeed = 0;
+                    seekError = "Replay ended unexpectedly: " + e2.getMessage();
                     if (!this.isStopped && this.P) {
                         gameEngine.gameUI.messageManager.addMessage(VariableScope.nullOrMissingString, "Replay ended (unexpected)");
                     }
@@ -773,7 +1005,7 @@ public class ReplayEngine {
                             }
                         } else if (this.nextCommand.chatMessage != null) {
                             ChatMessage chatMessage = this.nextCommand.chatMessage;
-                            boolean z = false;
+                            boolean z = isSeeking();
                             if (chatMessage.c == null) {
                                 z = true;
                             } else {

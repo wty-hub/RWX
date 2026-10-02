@@ -112,6 +112,7 @@ public class EndGameScreen {
     /* JADX INFO: renamed from: b */
     boolean isGameOver() {
         GameEngine gameEngine = GameEngine.getInstance();
+        if (gameEngine.replayEngine != null && gameEngine.replayEngine.isSeeking()) return false;
         if ((gameEngine.hasWonGame || gameEngine.hasLostGame) && !gameEngine.isContinuingAfterGameEnd) {
             return true;
         }
