@@ -26,6 +26,14 @@ internal class InputController(
     )
     private val legacyKeyboardSink = LegacyGameKeyboardSink(gameSession)
 
+    private val gameKeyboardHandler = GameKeyboardInputHandler(
+        isEnabled = {
+            shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolKeyboardInput) &&
+                !isModalOverlayOpen() && !PlatformTextInputBridge.isEditing()
+        },
+        sink = legacyKeyboardSink,
+    )
+
     val preparedComponentName: String
         get() = legacyPointerSink::class.simpleName ?: "LegacyGamePointerSink"
 
@@ -54,13 +62,6 @@ internal class InputController(
             { shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput) },
             legacyPointerSink,
         )
-        InputStack.defaultInputHandler.keyboardListeners += GatedKeyboardListener(
-            {
-                shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolKeyboardInput) &&
-                    !isModalOverlayOpen()
-            },
-            legacyKeyboardSink,
-        )
     }
 
     fun resetOnHostFocusLost() {
@@ -68,7 +69,8 @@ internal class InputController(
         legacyKeyboardSink.resetOnHostFocusLost()
     }
 
-    fun forwardPointerForFrame() {
+    fun forwardInputForFrame() {
+        gameKeyboardHandler.syncRegistration()
         if (shouldForwardKoolInputForScreen(currentScreen(), gameSession.acceptsKoolInput)) {
             legacyPointerSink.onPointer(PointerInput.pointerState.primaryPointer)
         }

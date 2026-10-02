@@ -22,13 +22,6 @@ class DesktopRenderBackendTest {
     }
 
     @Test
-    fun `macOS starts windowed even when fullscreen was saved`() {
-        assertFalse(KoolDesktopMain.desktopStartupFullscreen(true, "Mac OS X"))
-        assertTrue(KoolDesktopMain.desktopStartupFullscreen(true, "Linux"))
-        assertFalse(KoolDesktopMain.desktopStartupFullscreen(false, "Linux"))
-    }
-
-    @Test
     fun `only macOS uses the single window capture host`() {
         assertTrue(KoolDesktopMain.desktopSingleWindowCapture("Mac OS X", null))
         assertTrue(KoolDesktopMain.desktopSingleWindowCapture("macOS", null))

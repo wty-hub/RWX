@@ -64,7 +64,9 @@
 ```
 
 macOS 桌面版的**游戏画面默认也走 Vulkan**（Kool 桌面渲染器，经 MoltenVK 落到 Metal），进程里不再加载 OpenGL；
-即使保存了全屏设置，也会以窗口模式启动。桌面日志位于 `~/Library/Application Support/rwx/logs/rwx.log`。
+支持 macOS 绿色按钮的原生全屏，切换完成后恢复 Vulkan 渲染表面；保存的全屏设置会在启动时生效，
+也可在设置中切换，或按 `Control + Command + F` 进入/退出全屏。
+桌面日志位于 `~/Library/Application Support/rwx/logs/rwx.log`。
 
 要回退到旧的 Slick AWT OpenGL 画布（Apple 的 GL 只是 Metal 垫片，逐帧回读还有崩溃风险）：
 

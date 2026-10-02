@@ -73,11 +73,8 @@ object KoolDesktopMain : KoinComponent {
         val options = AppOptions.parseArgs(args, isDesktop = true)
         val renderBackend = selectedRenderBackend()
         val fullscreenRequested = SettingsEngine.getInstance().slick2dFullScreen
-        if (fullscreenRequested && isMacOs() && !koolRenderer) {
-            logger.warn("Starting in a window because macOS fullscreen crashes the AWT OpenGL game canvas")
-        }
         val swingHost = SwingKoolHost.create(
-            fullscreen = desktopStartupFullscreen(fullscreenRequested),
+            fullscreen = fullscreenRequested,
             useOpenGl = renderBackend == RenderBackendGl.Companion,
             singleWindowCapture = singleWindowCapture,
             useSlickCanvas = !koolRenderer,
@@ -91,6 +88,10 @@ object KoolDesktopMain : KoinComponent {
         // Kool only reads its frame-rate limits once, from the config, so keep them in step with the
         // settings screen the same way the Slick canvas does: it re-resolves its target every frame.
         context.onRender += { syncDesktopFrameRateLimit(context) }
+        context.onRender += {
+            swingHost.syncFullscreen(SettingsEngine.getInstance().slick2dFullScreen)
+            swingHost.recoverFullscreenSurface(context)
+        }
         System.getenv("RWX_DEBUG_AUTO_EXIT_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }?.let { seconds ->
             val exitAt = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(seconds)
             var requested = false
@@ -200,9 +201,6 @@ object KoolDesktopMain : KoinComponent {
         logger.info("Using Kool render backend: ${backend.displayName}")
         return backend
     }
-
-    internal fun desktopStartupFullscreen(requested: Boolean, osName: String = System.getProperty("os.name")): Boolean =
-        requested && !isMacOs(osName)
 
     internal fun desktopSingleWindowCapture(
         osName: String = System.getProperty("os.name"),

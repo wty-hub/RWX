@@ -47,7 +47,7 @@ internal class FrameDriver(
         val isExternalBattleRoomJoinPending = battleRoomJoinController.isPending &&
                 !gameSession.rendersIntoKoolCanvas
         val canResumeForFrame = !isExternalBattleRoomJoinPending && gameSession.canResume()
-        inputController.forwardPointerForFrame()
+        inputController.forwardInputForFrame()
         frameRenderController.render(
             screen = currentScreen(),
             isExternalBattleRoomJoinPending = isExternalBattleRoomJoinPending,

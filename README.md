@@ -63,7 +63,9 @@ Java 25 is required. Common release tasks:
 ```
 
 On macOS the game itself is drawn through the Kool renderer too, i.e. Vulkan with MoltenVK/Metal,
-so no OpenGL framework is loaded at all; the app starts in a window even if fullscreen was saved.
+so no OpenGL framework is loaded at all. Native macOS fullscreen, including the green window button,
+restores the Vulkan surface after each transition. Saved fullscreen settings apply at startup;
+toggle fullscreen in settings or with `Control + Command + F`.
 Desktop logs are written to `~/Library/Application Support/rwx/logs/rwx.log`.
 
 To fall back to the old Slick AWT OpenGL canvas (Apple's GL is a deprecated Metal shim there and

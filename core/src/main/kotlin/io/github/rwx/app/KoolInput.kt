@@ -190,8 +190,13 @@ class LegacyGameKeyboardSink(
 
     @Synchronized
     override fun handleKeyboard(keyEvents: List<KeyEvent>, ctx: KoolContext) {
+        forwardKeyEvents(keyEvents)
+    }
+
+    @Synchronized
+    internal fun forwardKeyEvents(keyEvents: List<KeyEvent>) {
         keyEvents.forEach { event ->
-            if (event.isCharTyped) {
+            if (event.isConsumed || event.isCharTyped) {
                 return@forEach
             }
             val androidKeyCode = event.androidKeyCode()
@@ -270,5 +275,35 @@ class GatedKeyboardListener(
         if (isEnabled()) {
             delegate.handleKeyboard(keyEvents, ctx)
         }
+    }
+}
+
+/** Battle keys must reach the engine even when a background HUD retains UI focus. */
+internal class GameKeyboardInputHandler(
+    private val isEnabled: () -> Boolean,
+    private val sink: LegacyGameKeyboardSink,
+) : InputStack.InputHandler("rwx-game-keyboard") {
+    private var registered = false
+
+    fun syncRegistration() {
+        // Apply pending HUD registrations before deciding which handler is on top.
+        InputStack.updateHandlerStack()
+        if (isEnabled()) {
+            InputStack.pushTop(this)
+            registered = true
+        } else if (registered) {
+            InputStack.handlerStack.stageRemove(this)
+            sink.resetOnHostFocusLost()
+            registered = false
+        }
+        InputStack.updateHandlerStack()
+    }
+
+    override fun handleKeyEvents(keyEvents: List<KeyEvent>, ctx: KoolContext) {
+        blockAllKeyboardInput = isEnabled()
+        if (!blockAllKeyboardInput) return
+        // Global navigation gets first refusal. Esc can pause the game before engine forwarding.
+        InputStack.defaultInputHandler.simpleKeyboardListener.handleKeyboard(keyEvents, ctx)
+        if (isEnabled()) sink.forwardKeyEvents(keyEvents)
     }
 }

@@ -1,5 +1,6 @@
 package io.github.rwx
 
+import com.corrodinggames.rts.gameFramework.SettingsEngine
 import de.fabmax.kool.math.Vec2i
 import de.fabmax.kool.platform.swing.KoolGlCanvas
 import de.fabmax.kool.platform.swing.SwingWindowSubsystem
@@ -35,6 +36,12 @@ class SwingKoolHost private constructor(
 ) : PlatformFilePickerHost {
     private val panel = JPanel(null)
     private val frame = JFrame(windowTitle())
+    private var macFullscreen: MacNativeFullscreen? = null
+    @Volatile private var requestedFullscreen: Boolean? = null
+    private val fullscreenSurfaceRecovery = AtomicBoolean(false)
+    // The first Metal surface is also attached after AWT's initial layout has completed.
+    private var fullscreenLayoutRefreshPending = isMacHost()
+    private var fullscreenShortcutDown = false
     private val overlayPanel = JPanel(BorderLayout())
     private val overlayWindow = if (singleWindowCapture) null else JWindow(frame)
     private val textInputController: DesktopTextInputController
@@ -56,11 +63,26 @@ class SwingKoolHost private constructor(
     private var cachedOverlayLocation: Point? = null
     private val keyboardFocusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
     private val koolTypedControlCharacterFilter = KeyEventDispatcher { event ->
-        event.source === koolCanvas && shouldSuppressKoolTypedCharacter(event)
+        if (macFullscreen != null && event.component?.let { SwingUtilities.getWindowAncestor(it) } === frame &&
+            event.keyCode == KeyEvent.VK_F) {
+            if (event.id == KeyEvent.KEY_RELEASED && fullscreenShortcutDown) {
+                fullscreenShortcutDown = false
+                true
+            } else if (event.id == KeyEvent.KEY_PRESSED && event.isControlDown && event.isMetaDown) {
+                if (!fullscreenShortcutDown) {
+                    val settings = SettingsEngine.getInstance()
+                    settings.slick2dFullScreen = !settings.slick2dFullScreen
+                    settings.save()
+                    syncFullscreen(settings.slick2dFullScreen)
+                }
+                fullscreenShortcutDown = true
+                true
+            } else false
+        } else event.source === koolCanvas && shouldSuppressKoolTypedCharacter(event)
     }
 
     init {
-        val preferredWindowSize = initialWindowSize(startupFullscreen)
+        val preferredWindowSize = initialWindowSize(startupFullscreen && !isMacHost())
         panel.background = Color.BLACK
         panel.preferredSize = Dimension(preferredWindowSize.x, preferredWindowSize.y)
         panel.minimumSize = Dimension(800, 600)
@@ -68,6 +90,12 @@ class SwingKoolHost private constructor(
         koolCanvas.name = KOOL_CARD
         koolCanvas.background = if (singleWindowCapture) Color.BLACK else TransparentCanvasColor
         koolCanvas.isFocusable = true
+        koolCanvas.focusTraversalKeysEnabled = false
+        koolCanvas.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(event: MouseEvent) {
+                focusVisibleCanvas()
+            }
+        })
         koolCanvas.ignoreRepaint = true
         if (singleWindowCapture) {
             koolCanvas.addKeyListener(object : KeyAdapter() {
@@ -127,13 +155,34 @@ class SwingKoolHost private constructor(
         overlayWindow?.let { configureKoolOverlayWindow(it, overlayPanel, koolCanvas) }
 
         frame.defaultCloseOperation = JFrame.DO_NOTHING_ON_CLOSE
-        frame.isUndecorated = startupFullscreen || System.getenv("RWX_BENCHMARK_UNITS") != null
+        frame.isUndecorated = (startupFullscreen && !isMacHost()) || System.getenv("RWX_BENCHMARK_UNITS") != null
         frame.background = Color.BLACK
         frame.contentPane.background = Color.BLACK
         frame.rootPane.background = Color.BLACK
         frame.layout = BorderLayout()
         frame.minimumSize = Dimension(800, 600)
         frame.add(panel, BorderLayout.CENTER)
+        if (isMacHost()) {
+            macFullscreen = MacNativeFullscreen(frame,
+                onTransitionStarted = { fullscreen ->
+                    logger.info { "macOS native fullscreen transition started: fullscreen=$fullscreen" }
+                    requestedFullscreen = fullscreen
+                    val settings = SettingsEngine.getInstance()
+                    settings.slick2dFullScreen = fullscreen
+                    settings.save()
+                },
+                onTransitionCompleted = {
+                    logger.info { "macOS native fullscreen transition completed; restoring Vulkan surface" }
+                    frame.validate()
+                    resizeCanvases()
+                    logger.info { "macOS fullscreen layout: frame=${frame.width}x${frame.height} " +
+                        "panel=${panel.width}x${panel.height} canvas=${koolCanvas.width}x${koolCanvas.height}" }
+                    fullscreenSurfaceRecovery.set(true)
+                    focusVisibleCanvas()
+                    SwingUtilities.invokeLater { focusVisibleCanvas() }
+                },
+            )
+        }
         frame.addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
                 requestClose()
@@ -142,6 +191,7 @@ class SwingKoolHost private constructor(
         if (singleWindowCapture) {
             frame.addWindowFocusListener(object : WindowAdapter() {
                 override fun windowLostFocus(e: WindowEvent) {
+                    fullscreenShortcutDown = false
                     SlickCanvasHost.notifyHostFocusLost()
                     hostFocusLostHandler?.invoke()
                 }
@@ -161,7 +211,7 @@ class SwingKoolHost private constructor(
             }
         })
         frame.pack()
-        if (startupFullscreen) {
+        if (startupFullscreen && macFullscreen == null) {
             applyStartupFullscreen()
         } else {
             frame.setLocationRelativeTo(null)
@@ -234,6 +284,7 @@ class SwingKoolHost private constructor(
         val bridge=getKoin().get<PlatformBridge>()
         bridge.filePickerHost=null
         keyboardFocusManager.removeKeyEventDispatcher(koolTypedControlCharacterFilter)
+        runOnEdt { macFullscreen?.close() }
         PlatformTextInputBridge.uninstall(textInputController)
         EmojiRasterizerBridge.uninstall(emojiRasterizer)
         textInputController.dispose()
@@ -255,6 +306,33 @@ class SwingKoolHost private constructor(
 
     fun setHostFocusLostHandler(handler: (() -> Unit)?) {
         hostFocusLostHandler = handler
+    }
+
+    /** Called by the render owner; native Cocoa requests and layout belong to the EDT. */
+    fun syncFullscreen(fullscreen: Boolean) {
+        if (macFullscreen == null || requestedFullscreen == fullscreen) return
+        requestedFullscreen = fullscreen
+        runOnEdt {
+            if (!closeRequested.get()) {
+                macFullscreen?.request(checkNotNull(requestedFullscreen))
+            }
+        }
+    }
+
+    /** Native fullscreen can replace the JAWT layer even if the canvas dimensions stay equal. */
+    fun recoverFullscreenSurface(context: de.fabmax.kool.platform.Lwjgl3Context) {
+        val backend = context.backend as? de.fabmax.kool.pipeline.backend.vk.RenderBackendVk ?: return
+        if (fullscreenLayoutRefreshPending) {
+            fullscreenLayoutRefreshPending = false
+            if (!closeRequested.get()) {
+                MacMetalLayerLayout.refresh(koolCanvas)
+                logger.info { "macOS fullscreen native layer bounds refreshed: ${koolCanvas.width}x${koolCanvas.height}" }
+            }
+        }
+        if (fullscreenSurfaceRecovery.getAndSet(false)) {
+            backend.recreateSurface()
+            fullscreenLayoutRefreshPending = true
+        }
     }
 
     /** Opt-in acceptance probe. The provided canvas controls the unmanaged Vulkan loop's visibility. */
@@ -445,7 +523,7 @@ class SwingKoolHost private constructor(
     }
 
     private fun fitInitialContentSize() {
-        if (startupFullscreen) return
+        if (startupFullscreen || macFullscreen?.isFullscreenOrTransitioning == true) return
         if (!initialContentFitPending || applyingInitialContentFit || !frame.isShowing) return
         val preferred = panel.preferredSize
         val needsFit = panel.width < preferred.width || panel.height < preferred.height
@@ -525,6 +603,13 @@ class SwingKoolHost private constructor(
             singleWindowCapture: Boolean = false,
             useSlickCanvas: Boolean = true,
         ): SwingKoolHost {
+            if (!SwingUtilities.isEventDispatchThread()) {
+                lateinit var host: SwingKoolHost
+                SwingUtilities.invokeAndWait {
+                    host = create(fullscreen, useOpenGl, singleWindowCapture, useSlickCanvas)
+                }
+                return host
+            }
             System.setProperty("org.lwjgl.opengl.contextAPI", "native")
             val koolCanvas = if (useOpenGl) {
                 KoolGlCanvas(
@@ -586,6 +671,8 @@ class SwingKoolHost private constructor(
                 ?.takeIf { it.isNotBlank() }
                 ?: System.getenv("RWX_WINDOW_TITLE")?.takeIf { it.isNotBlank() }
                 ?: "RWX Game"
+
+        private fun isMacHost(): Boolean = System.getProperty("os.name").startsWith("mac", ignoreCase = true)
 
         private fun runOnEdt(action: () -> Unit) {
             if (SwingUtilities.isEventDispatchThread()) {

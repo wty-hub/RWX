@@ -157,7 +157,13 @@ application {
         "--add-opens", "java.desktop/sun.awt=ALL-UNNAMED",
         "--add-opens", "java.desktop/sun.awt.im=ALL-UNNAMED",
         "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-    )
+    ) + if (targetPlatform.osName == "macos") listOf("--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED") else emptyList()
+}
+
+tasks.withType<Test>().configureEach {
+    if (hostPlatform.osName == "macos") {
+        jvmArgs("--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED")
+    }
 }
 
 distributions {
@@ -223,6 +229,7 @@ fun ShadowJar.configureRunnableJar() {
     exclude("META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.SF")
     manifest {
         attributes["Main-Class"] = application.mainClass.get()
+        attributes["Add-Exports"] = "java.desktop/com.apple.eawt"
     }
     from(rootProject.layout.projectDirectory.dir("assets")) {
         into("assets")
@@ -376,6 +383,7 @@ val createJpackageImage by tasks.registering(Exec::class) {
             "--java-options", "--add-opens=java.base/java.lang=ALL-UNNAMED",
         )
         val icon = if (targetPlatform.osName == "macos") {
+            args += listOf("--java-options", "--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED")
             generatedMacIcon.get().asFile
         } else {
             layout.projectDirectory.file("src/main/resources/icons/logo.${targetPlatform.iconExtension}").asFile
