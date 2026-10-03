@@ -63,18 +63,12 @@
 ./gradlew :android:assembleRelease
 ```
 
-macOS 桌面版的**游戏画面默认也走 Vulkan**（Kool 桌面渲染器，经 MoltenVK 落到 Metal），进程里不再加载 OpenGL；
-支持 macOS 绿色按钮的原生全屏，切换完成后恢复 Vulkan 渲染表面；保存的全屏设置会在启动时生效，
-也可在设置中切换，或按 `Control + Command + F` 进入/退出全屏。
+macOS / Linux / Windows 桌面版的**游戏画面都走 Kool 渲染器**（Windows 默认 Vulkan，macOS 经 MoltenVK 落到 Metal，Linux 默认 OpenGL），
+旧 Slick 游戏画布和逐帧回读已移除；可用 `RWX_KOOL_BACKEND=opengl` 显式选择 OpenGL。支持 macOS 绿色按钮的原生全屏，切换完成后恢复 Vulkan 渲染表面；
+保存的全屏设置会在启动时生效，也可在设置中切换，或按 `Control + Command + F` 进入/退出全屏。
 桌面日志位于 `~/Library/Application Support/rwx/logs/rwx.log`。
 
-要回退到旧的 Slick AWT OpenGL 画布（Apple 的 GL 只是 Metal 垫片，逐帧回读还有崩溃风险）：
-
-```bash
-./gradlew :desktop:run -PrwxDesktopRenderer=slick      # 或 -Drwx.desktop.renderer=slick / RWX_DESKTOP_RENDERER=slick
-```
-
-Linux / Windows 默认仍是 Slick。原理与实测见 [docs/desktop-performance.md](docs/desktop-performance.md) 第 11 节。
+原理与实测见 [docs/desktop-performance.md](docs/desktop-performance.md) 第 11 节。
 
 更多信息请参考 [CI/CD 配置](.github/workflows/ci.yml) 以及
 [文档站快速开始](https://rwx-docs.netlify.app/zh/tutorial/getting-started)。

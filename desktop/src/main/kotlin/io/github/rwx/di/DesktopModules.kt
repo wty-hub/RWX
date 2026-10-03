@@ -4,7 +4,6 @@ import io.github.rwx.*
 import io.github.rwx.kool.KoolDesktopGameSession
 import io.github.rwx.p2p.DesktopWebRtcTunnelProxy
 import io.github.rwx.p2p.WebRtcTunnelProxy
-import io.github.rwx.slick.SlickGameSession
 import org.koin.dsl.module
 
 val desktopModule = module {
@@ -15,12 +14,6 @@ val desktopModule = module {
     single<AppMetadata> { get<PlatformBridge>().appMetadata }
     single<AppLogger> { get<PlatformBridge>().logger }
     single<CrashReporter> { get<PlatformBridge>().crashReporter }
-    single { SlickGameSession(storage = get()) }
     single { KoolDesktopGameSession(storage = get()) }
-    single<io.github.rwx.session.GameSession> {
-        when (DesktopRendererSelection.resolve()) {
-            DesktopRendererKind.Slick -> get<SlickGameSession>()
-            DesktopRendererKind.Kool -> get<KoolDesktopGameSession>()
-        }
-    }
+    single<io.github.rwx.session.GameSession> { get<KoolDesktopGameSession>() }
 }

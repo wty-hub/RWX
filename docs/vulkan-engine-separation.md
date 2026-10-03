@@ -29,6 +29,11 @@ CPU 资源在注册时固定像素或编码字节，嵌套画面与位移效果�
 
 ## 验证证据与限制
 
+2026-10-03 的 Windows 复测补充见 [Vulkan 优化验证数据](verification/vulkan-optimization-windows-2026-10-03.json)。
+本次优化前后 1203 个原版引擎类字节一致，177 种变体的构造 / 绘制命令烟测及实际录制回放完整对照通过。
+存档恢复夹具存在旧包、新包相同的初始状态差异；无 GPU 会话夹具等待已呈现的重设相机时超时，旧包同样复现。
+下表记录此前的验收证据，不能替代这些当前 Windows 失败记录；本次没有修改原版逻辑或这些夹具。
+
 完整比较使用同一初始存档、输入顺序及预录外层间隔，比较完整原版保存数据、时钟与累积器、globalSeed、对象更新与选择顺序、命令队列字节、目标及实际执行时刻。诊断默认关闭，不依赖少量状态哈希。
 
 | 验证 | 当前证据 |
@@ -73,7 +78,7 @@ RWX_BENCHMARK_MODE=combat RWX_WINDOW_WIDTH=1920 RWX_WINDOW_HEIGHT=1080 \
 RWX_DESKTOP_TARGET_FPS=300 RWX_DEBUG_AUTO_EXIT_SECONDS=130 \
 RWX_FRAME_METRICS=build/frame.jsonl RWX_FRAME_TRACE=build/frame.csv \
 RWX_VK_METRICS=build/native.jsonl RWX_PERF_LOG=build/engine.log \
-./gradlew :desktop:run -PrwxDesktopRenderer=kool -PrwxKoolBackend=vulkan \
+./gradlew :desktop:run -PrwxKoolBackend=vulkan \
   -PrwxRunArgs='--screen=battleroom --auto-start-battleroom'
 ```
 

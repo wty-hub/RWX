@@ -51,6 +51,52 @@ class KoolCanvasBatchingTest {
     }
 
     @Test
+    fun `sprite instances preserve affine placement flipped UVs and clipping across frames`() {
+        val scene = Scene("canvas-sprite-placement-test")
+        val renderer = KoolCanvasFrameRenderer(store)
+        val command = sprite("static-body", state = KoolCanvasState(
+            transform = KoolCanvasTransform(scaleX = 2f, skewX = -1f, skewY = 0.5f, scaleY = 3f,
+                translateX = 10f, translateY = -5f),
+            clip = KoolCanvasRect(10f, 20f, 200f, 400f),
+        )).copy(source = KoolCanvasRect(2f, 0f, 0f, 2f), destination = KoolCanvasRect(3f, 4f, 7f, 9f))
+        repeat(2) {
+            renderer.render(scene, KoolCanvasFrame(viewport, listOf(command, command)))
+            val mesh = scene.children.filterIsInstance<Mesh<*>>().single { it.isVisible }
+            assertEquals(2, mesh.instances!!.numInstances)
+            val data = mesh.instances!!.instanceData
+            fun values(offset: Int) = FloatArray(4) { data.buffer.getFloat32(offset + it * 4) }
+            assertContentEquals(floatArrayOf(-948f, 531.5f, 8f, -2f),
+                values(KoolCanvasSpriteInstanceLayout.originAxisX.byteOffset))
+            assertContentEquals(floatArrayOf(-5f, -15f, 0f, 0f),
+                values(KoolCanvasSpriteInstanceLayout.axisYModeAmount.byteOffset))
+            assertContentEquals(floatArrayOf(4f / 2048f, 2f / 2048f, 2f / 2048f, 4f / 2048f),
+                values(KoolCanvasSpriteInstanceLayout.uv.byteOffset))
+            assertContentEquals(floatArrayOf(-950f, 140f, -760f, 520f),
+                values(KoolCanvasSpriteInstanceLayout.clip.byteOffset))
+            assertEquals(data.buffer.getFloat32(KoolCanvasSpriteInstanceLayout.originAxisX.byteOffset),
+                data.buffer.getFloat32(data.strideBytes + KoolCanvasSpriteInstanceLayout.originAxisX.byteOffset))
+        }
+    }
+
+    @Test
+    fun `atlas growth refreshes the texture of a reused batch`() {
+        val scene = Scene("canvas-atlas-growth-test")
+        val renderer = KoolCanvasFrameRenderer(store)
+        renderer.render(scene, KoolCanvasFrame(viewport, listOf(sprite("static-body"))))
+        val mesh = scene.children.filterIsInstance<Mesh<*>>().single { it.isVisible }
+        val shader = mesh.shader as KoolCanvasSpriteShader
+        val firstTexture = shader.colorMap
+        renderer.render(scene, KoolCanvasFrame(viewport, listOf(sprite("static-body"), sprite("static-turret"))))
+        assertSame(mesh, scene.children.filterIsInstance<Mesh<*>>().single { it.isVisible })
+        assertEquals(2, mesh.instances!!.numInstances)
+        assertNotSame(firstTexture, shader.colorMap)
+        val grownTexture = shader.colorMap
+        renderer.render(scene, KoolCanvasFrame(viewport, listOf(sprite("static-turret"))))
+        assertSame(grownTexture, shader.colorMap)
+        assertEquals(1, mesh.instances!!.numInstances)
+    }
+
+    @Test
     fun `primitive barrier preserves sprite command order`() {
         val scene = Scene("canvas-order-test")
         val line = KoolCanvasCommand.DrawLine(KoolCanvasPoint(0f, 0f), KoolCanvasPoint(20f, 20f),

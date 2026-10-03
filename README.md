@@ -62,21 +62,15 @@ Java 25 is required. Common release tasks:
 ./gradlew :android:assembleRelease
 ```
 
-On macOS the game itself is drawn through the Kool renderer too, i.e. Vulkan with MoltenVK/Metal,
-so no OpenGL framework is loaded at all. Native macOS fullscreen, including the green window button,
-restores the Vulkan surface after each transition. Saved fullscreen settings apply at startup;
-toggle fullscreen in settings or with `Control + Command + F`.
+On every desktop platform the game is drawn through the Kool renderer — Vulkan on Windows,
+Vulkan with MoltenVK/Metal on macOS, and OpenGL on Linux by default. The legacy Slick canvas and
+per-frame framebuffer readback have been removed. Set `RWX_KOOL_BACKEND=opengl` to select OpenGL explicitly.
+Native macOS fullscreen, including the green window button, restores the Vulkan
+surface after each transition. Saved fullscreen settings apply at startup; toggle fullscreen in
+settings or with `Control + Command + F`.
 Desktop logs are written to `~/Library/Application Support/rwx/logs/rwx.log`.
 
-To fall back to the old Slick AWT OpenGL canvas (Apple's GL is a deprecated Metal shim there and
-its per-frame readback has crashed in `glReadFramebufferData`):
-
-```bash
-./gradlew :desktop:run -PrwxDesktopRenderer=slick       # or -Drwx.desktop.renderer=slick / RWX_DESKTOP_RENDERER=slick
-```
-
-Linux and Windows still default to Slick. See section 11 of
-[docs/desktop-performance.md](docs/desktop-performance.md).
+See section 11 of [docs/desktop-performance.md](docs/desktop-performance.md).
 
 See the [workflow](.github/workflows/ci.yml) and the
 [getting started guide](https://rwx-docs.netlify.app/tutorial/getting-started) for more details.

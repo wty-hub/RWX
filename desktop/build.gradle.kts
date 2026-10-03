@@ -74,12 +74,6 @@ val packagingJava = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))
 }
 
-val slickNatives by configurations.creating {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-    isTransitive = false
-}
-
 val koolDesktopPatchSource by configurations.creating {
     isCanBeResolved = true
     isCanBeConsumed = false
@@ -92,19 +86,15 @@ val universalNatives by configurations.creating {
     isTransitive = false
 }
 
-val universalSlickNatives by configurations.creating {
-    isCanBeResolved = true
-    isCanBeConsumed = false
-    isTransitive = false
-}
-
 val assetListGeneration = AssetListGenerationSupport.register(project)
 
 dependencies {
     implementation(project(":mod-api"))
     implementation(project(":core"))
-    implementation(project(":slick2d-lwjgl3"))
     implementation(libs.httpclient)
+    // OGG/Vorbis decoding for the legacy desktop audio path (previously exposed by the Slick module).
+    implementation(files("libs/jogg-0.0.7.jar"))
+    implementation(files("libs/jorbis-0.0.15.jar"))
     implementation(libs.kool.core.desktop)
     koolDesktopPatchSource(libs.kool.core.desktop)
     implementation(libs.webrtc.java)
@@ -122,10 +112,8 @@ dependencies {
     val lwjglNativeModules = lwjglModules - "lwjgl-jawt"
     lwjglNativeModules.forEach { module ->
         runtimeOnly("org.lwjgl:$module:$lwjglVersion:${targetPlatform.lwjglClassifier}")
-        slickNatives("org.lwjgl:$module:$lwjglVersion:${targetPlatform.lwjglClassifier}")
         DesktopPlatform.entries.map { it.lwjglClassifier }.distinct().forEach { classifier ->
             universalNatives("org.lwjgl:$module:$lwjglVersion:$classifier")
-            universalSlickNatives("org.lwjgl:$module:$lwjglVersion:$classifier")
         }
     }
     implementation(libs.slf4j.api)
@@ -181,25 +169,9 @@ tasks.named<Copy>("processResources") {
     dependsOn(assetListGeneration.task)
 }
 
-val syncSlickNatives by tasks.registering(Sync::class) {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from({ slickNatives.map { file -> zipTree(file) } })
-    exclude("META-INF/**")
-    into(layout.buildDirectory.dir("slick-natives"))
-}
-
-val syncUniversalSlickNatives by tasks.registering(Sync::class) {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from({ universalSlickNatives.map { file -> zipTree(file) } })
-    exclude("META-INF/**")
-    into(layout.buildDirectory.dir("universal-slick-natives"))
-}
-
 tasks.named<JavaExec>("run") {
     workingDir = project.file("..")
-    configureSlickNatives()
     configureKoolRenderBackend()
-    configureDesktopRenderer()
     configureRunArgs()
 }
 
@@ -216,9 +188,6 @@ tasks.named("runShadow") {
     group = null
     enabled = false
 }
-
-val slickNativesDir = layout.buildDirectory.dir("slick-natives")
-val universalSlickNativesDir = layout.buildDirectory.dir("universal-slick-natives")
 
 fun ShadowJar.configureRunnableJar() {
     dependsOn(assetListGeneration.task)
@@ -276,15 +245,11 @@ fun ShadowJar.excludeNonTargetNativeResources(platform: DesktopPlatform) {
 
 tasks.named<ShadowJar>("shadowJar") {
     group = "build"
-    description = "Builds a runnable desktop fat jar with runtime assets and Linux, Windows, and macOS Slick natives."
+    description = "Builds a runnable desktop fat jar with runtime assets and natives for all supported desktop platforms."
     archiveBaseName = appName
     archiveClassifier = "all"
     configurations = listOf(project.configurations.runtimeClasspath.get(), universalNatives)
-    dependsOn(syncUniversalSlickNatives)
     configureRunnableJar()
-    from(universalSlickNativesDir) {
-        into("rwx/slick-natives")
-    }
 }
 
 val platformFatJar by tasks.registering(ShadowJar::class) {
@@ -293,12 +258,8 @@ val platformFatJar by tasks.registering(ShadowJar::class) {
     archiveBaseName = appName
     archiveClassifier = targetPlatform.id
     configurations = listOf(project.configurations.runtimeClasspath.get())
-    dependsOn(syncSlickNatives)
     configureRunnableJar()
     excludeNonTargetNativeResources(targetPlatform)
-    from(slickNativesDir) {
-        into("rwx/slick-natives")
-    }
 }
 
 tasks.register("multiPlatformFatJar") {
@@ -481,29 +442,11 @@ tasks.register<JavaExec>("bakeMsdfFonts") {
     workingDir = project.file("..")
 }
 
-fun JavaExec.configureSlickNatives() {
-    dependsOn(syncSlickNatives)
-    doFirst {
-        val nativesDir = layout.buildDirectory.dir("slick-natives").get().asFile.absolutePath
-        systemProperty("rwx.slick.nativesDir", nativesDir)
-        systemProperty("org.lwjgl.librarypath", nativesDir)
-        systemProperty("java.library.path", nativesDir)
-    }
-}
-
 fun JavaExec.configureKoolRenderBackend() {
     val backend = providers.gradleProperty("rwxKoolBackend")
         .orElse(providers.systemProperty("rwx.kool.backend"))
     if (backend.isPresent) {
         systemProperty("rwx.kool.backend", backend.get())
-    }
-}
-
-fun JavaExec.configureDesktopRenderer() {
-    val renderer = providers.gradleProperty("rwxDesktopRenderer")
-        .orElse(providers.systemProperty("rwx.desktop.renderer"))
-    if (renderer.isPresent) {
-        systemProperty("rwx.desktop.renderer", renderer.get())
     }
 }
 

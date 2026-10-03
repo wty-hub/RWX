@@ -2,7 +2,7 @@
 
 本文记录 RWXX Linux 桌面端从「选中圈卡、操作不跟手」到「约 2000 单位仍能稳住 60fps」的改动。目标是：**只改显示和平台层，仿真与原版铁锈 bit-exact，可以联机。**
 
-约束见 `.cursor/rules/rw-compatibility.mdc`：不改确定性仿真、网络包、存档/回放、地图模组解析结果、校验和、游戏规则。`core/src/main/java/com/corrodinggames/rts/**` 里凡走逻辑路径的行为必须与 `/home/wty/code/TuanHun/铁锈代码` 一致。性能工作放在 `desktop/.../slick`、`slick2d-lwjgl3` 和纯显示代码。
+约束见 `.cursor/rules/rw-compatibility.mdc`：不改确定性仿真、网络包、存档/回放、地图模组解析结果、校验和、游戏规则。`core/src/main/java/com/corrodinggames/rts/**` 里凡走逻辑路径的行为必须与 `/home/wty/code/TuanHun/铁锈代码` 一致。性能工作放在显示与平台层（`desktop/.../kool` 与纯显示代码）。旧的 `desktop/.../slick` 与 `slick2d-lwjgl3` 已删除，见第 11 节；下文提到它们的段落是当时的实测记录。
 
 ## 1. 问题是怎么定位的
 
@@ -41,7 +41,7 @@
 
 只改怎么画，不改哪些单位算被选中。
 
-### 3.2 `QuadBatch`：同状态几何一次提交
+### 3.2 `QuadBatch`：同状态几何一次提交（旧 Slick 路径，文件已删除）
 
 文件：`slick2d-lwjgl3/.../QuadBatch.java`。
 
@@ -49,7 +49,7 @@
 
 贴图切换时只 `submit()`（画出当前顶点、客户端数组保持开着），不要每次都拆掉数组状态。真正回到 Slick 立即模式时才 `flush()` 并 `TextureImpl.unbind()`。
 
-### 3.3 屏幕外裁剪和普通精灵快路径
+### 3.3 屏幕外裁剪和普通精灵快路径（旧 Slick 路径，文件已删除）
 
 文件：`desktop/.../slick/SlickGraphicsEngine.kt`。
 
@@ -153,16 +153,20 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 
 | 区域 | 主要文件 |
 |---|---|
-| 精灵/圈批次、多贴图、队伍色 | `slick2d-lwjgl3/.../QuadBatch.java`、`Graphics.java`、`TextureImpl.java` |
-| 裁剪、快路径、队伍色入口 | `desktop/.../slick/SlickGraphicsEngine.kt` |
+| 变换、裁剪、快路径、队伍色入口 | `core/.../render/canvas/KoolGraphicsEngine.kt` |
+| 贴图注册与像素外扩 | `core/.../render/canvas/KoolCanvasResources.kt` |
 | Kool 节奏、隐藏不 present | `PacedSwingWindowSubsystem.kt`、`SwingKoolHost.kt` |
-| 锁外同步、帧末冲批 | `EmbeddedSlickGameContainer.kt` |
-| 帧时间日志 | `SlickFrameTimeLog.kt` |
+| Kool 帧循环与游戏循环内联 | `desktop/.../kool/KoolDesktopGameSession.kt` |
+| 帧时间日志 | `desktop/.../kool/KoolFrameTimeLog.kt` |
 | 校验和 | `core/.../diagnostics/GameStateTrace.kt` |
 | 无头仿真 | `desktop/.../HeadlessMain.kt`、`headless/HeadlessGameSession.kt`、`headless/HeadlessGraphicsEngine.kt` |
 | 碰撞预过滤 | `UnitSpatialIndex.java`、`OrderableUnit.updateAllUnitCollisions` |
 | 折行缓存 | `core/.../ui/TextUtils.java` |
-| IME | `DesktopTextInputController.kt`、`SwingKoolHost.kt`、`SlickCanvasHost.kt` |
+| IME | `DesktopTextInputController.kt`、`SwingKoolHost.kt` |
+
+> 上表已去掉旧的 Slick 实现（`slick2d-lwjgl3/.../QuadBatch.java`、`desktop/.../slick/SlickGraphicsEngine.kt`、
+> `EmbeddedSlickGameContainer.kt`、`SlickFrameTimeLog.kt`、`SlickCanvasHost.kt`）：这些文件连同整条 Slick 渲染路径
+> 已删除，见第 11 节。
 
 ## 10. 明确没做的事
 
@@ -174,20 +178,24 @@ Kool 原来 `swapInterval=1`，在 `KoolGlCanvas.render()` 里等垂直同步，
 
 联机仍应与原版铁锈互为主机各测一轮 1000+ 单位房间。仿真路径未改，但最终以实机联机为准。
 
-## 11. Kool 桌面渲染器：macOS 上彻底不用 OpenGL
+## 11. Kool 桌面渲染器：唯一的桌面渲染路径
 
-macOS 的 OpenGL 已废弃，Apple 的实现本身就是 Metal 之上的一层垫片（崩溃栈里的 `AppleMetalOpenGLRenderer`）。
-旧路径里 Slick 画布是离屏 CGL FBO，每帧 `glReadPixels` 整帧回读再上传给 Kool 覆盖层，
-`hs_err` 已经崩在 `gldReadFramebufferData` 里；3800×1782 时这一趟 CPU 拷贝本身也要几毫秒。
+`desktop` 现在只有一条渲染路径：`KoolDesktopGameSession` 在 Kool 渲染循环里内联跑 `gameLoop`，把
+`KoolGraphicsEngine.snapshot()` 交给 Kool 画布，`SwingKoolHost` 提供唯一的窗口表面。macOS 走 Kool 的
+Vulkan 后端（LWJGL 自带的 `libMoltenVK.dylib`，即 MoltenVK → Metal）；Windows 默认使用原生 Vulkan，Linux 默认使用 Kool 的 OpenGL 后端。可用 `RWX_KOOL_BACKEND=opengl` 显式选择 OpenGL。
+
+历史上还有第二条路径，现已全部删除（`desktop/.../slick`、`slick2d-lwjgl3` 模块以及 `-Drwx.desktop.renderer` 开关）：
+
+- macOS 的 OpenGL 已废弃，Apple 的实现本身就是 Metal 之上的一层垫片（崩溃栈里的 `AppleMetalOpenGLRenderer`）。
+  那条路径里 Slick 画布是离屏 CGL FBO，每帧 `glReadPixels` 整帧回读再上传给 Kool 覆盖层，
+  `hs_err` 已经崩在 `gldReadFramebufferData` 里；3800×1782 时这一趟 CPU 拷贝本身也要几毫秒。
+- Linux / Windows 上它是「Slick AWT 画布 + Kool 分层覆盖窗」的双窗口结构：实测整屏纯黑（可见画面全部来自
+  覆盖层，Slick 画布没有可见输出），并且会破坏进程堆，最终以 `0xC0000374`（`STATUS_HEAP_CORRUPTION`）被系统终止。
+- 旧路径用到的 OGG 解码（`jogg` / `jorbis`）保留下来了，现在直接放在 `desktop/libs`。
 
 没有可直接切换的 Metal 后端：LWJGL 3.3.6 没有 Metal 绑定，Kool 0.19.0 JVM 只有 `gl` / `vk` 两个后端，
-而 macOS 上 Kool 的 GL 后端根本起不来（要求 3.3，系统给 2.1）。所以「改用 Metal」的落地方式是让**整个窗口**
-走 Kool 的 Vulkan 后端——macOS 上就是 LWJGL 自带的 `libMoltenVK.dylib`，即 MoltenVK → Metal。
+而 macOS 上 Kool 的 GL 后端根本起不来（要求 3.3，系统给 2.1）。所以在 macOS 上只能落到 Vulkan。
 
-- 开关：`-Drwx.desktop.renderer=slick`（或环境变量 `RWX_DESKTOP_RENDERER=slick`；`./gradlew :desktop:run -PrwxDesktopRenderer=slick`）。
-  **macOS 默认 `kool`**（即 Vulkan/MoltenVK），Linux / Windows 默认 `slick`，两条路径并存，随时可互切。
-- `KoolDesktopGameSession` 在 Kool 渲染循环里内联跑 `gameLoop`，把 `KoolGraphicsEngine.snapshot()` 交给 Kool 画布；
-  `SwingKoolHost` 在该模式下不创建 AWT OpenGL 画布（`useSlickCanvas=false`），Kool 画布就是唯一的窗口表面。
 - 因此进程里不再有 `OpenGL.framework` / `GLEngine` / `AppleMetalOpenGLRenderer`，也没有逐帧回读。
 
 ### 11.1 必须让「alpha 外扩」按需执行
@@ -338,3 +346,48 @@ in-flight 的缓冲更危险。
 
 **仍未做的部分（b）**：把 gameLoop 从呈现循环里拆出来（Slick 那样离屏渲染 + 自己节流）。
 另外 `recreateSwapchain` 里还有 `device.waitForIdle()`，GPU 真挂起时它同样会阻塞，这条没动。
+
+### 11.7 Windows 默认 Vulkan 与通用批次优化（2026-10-03）
+
+Windows 现在默认选择 Vulkan；macOS 继续使用 Vulkan / MoltenVK，Linux 继续默认 OpenGL。显式的
+`RWX_KOOL_BACKEND=opengl` 或 `-Drwx.kool.backend=opengl` 仍可选择 OpenGL。最终 Windows 包已验证
+无后端参数时实际使用 Vulkan，OpenGL 显式选择也完成了可见交换和新画面产生的启动烟测。
+
+通用优化复用连续精灵批次的材质及网格查找结果，每批次设置一次图集纹理，并直接写入仿射坐标、
+翻转 UV 和裁剪值，减少临时对象。命令顺序、队伍染色、透明度和算术顺序保持一致。
+独立的 JFR / 画布诊断窗口中，2250 单位场景的画布重放加权平均从 **14.01 ms 降到 9.78 ms**，
+约减少 **30.2%**。该诊断开启了额外采样，不能直接用它的帧率替代正式性能对照。
+
+正式对照在 Intel Iris Xe / i5-1145G7 上进行，交流供电、1920×1080、4 倍 MSAA、关闭垂直同步、
+300 帧上限，友军闲置综合混编且全部选择。每进程预热 30 秒，随后连续采样 90 秒。所有进程使用
+同一份设置，实际存活数为 741 或 2250（请求 661 / 2000 时会产生附属单位）。以下均保留整段采样及异常帧：
+
+| 场景 / 版本 | 新画面率（次/秒） | 接受呈现（次/秒） | 呈现间隔 p95 / p99（ms） |
+|---|---:|---:|---:|
+| 2250，旧版 | 61.70 | 63.55 | 21.62 / 24.14 |
+| 2250，通用优化首轮 | 65.33 | 67.06 | 20.11 / 23.82 |
+| 2250，Windows 同步候选 | 62.97 | 64.85 | 20.75 / 23.80 |
+| 2250，通用优化复测 | 59.77 | 61.73 | 20.83 / 26.24 |
+| 2250，最终包默认启动复测 | 67.08 | 69.01 | 19.61 / 22.70 |
+| 741，旧版 | 121.57 | 125.77 | 10.96 / 12.42 |
+| 741，最终包默认启动 | 107.31 | 111.00 | 10.79 / 14.16 |
+| 741，旧版复测 | 96.15 | 100.85 | 13.63 / 15.74 |
+
+2250 场景首轮和最终复测分别提高约 5.9% / 8.7%，但一次复测的中间窗口出现 256.9 ms p99，
+741 新版本也出现长帧；同一旧包复测则下降约 20.9%。因此可以报告 CPU 重放开销减少，
+**目前不能宣称整机帧率有稳定提升**。接受呈现和新画面率不等于 60 Hz 显示器的物理扫描帧率。
+
+Windows 专用候选仅缩小纯顶点 / 索引缓冲的上传依赖，保留先前读取与连续 transfer 写入的依赖，
+混合用途和其他平台仍用原同步。正式结果没有稳定优势，已撤回，最终包保留原有 Vulkan 同步。
+
+兼容性验证中，优化前后 **1203 个 `com/corrodinggames/` 引擎类字节完全一致**。最终 42 项画布测试、
+91 项桌面测试及 3 项 Python 分析测试通过；177 种单位变体的构造 / 受损 / 死亡 / 绘制命令烟测通过。
+实际录制回放的 120 外层帧 / 123 tick / 24 命令完整状态对照通过，涵盖步长变化、暂停及倍速。
+
+完整核心测试为 133 / 134 通过，剩余一项缺少本地回放样本。存档恢复对照及无 GPU 的会话相机
+夹具也仍失败，旧包复现同样的初始状态差异 / 重设视口等待超时；本次没有修改这些夹具或原版逻辑。
+不能据此宣称所有存档、网络互通和 GPU 图像等价场景都已验收。退出仍存在基线已有的保留资源清理警告。
+
+完整原始指标、包 SHA256、所有重复采样及失败记录见
+[Windows Vulkan 优化验证数据](verification/vulkan-optimization-windows-2026-10-03.json)。
+复测命令和工具见 [Windows 后端对照工具](../desktop/tools/README.md#windows-后端及优化前后对照)。

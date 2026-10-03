@@ -4,16 +4,11 @@ import io.github.rwx.render.RendererMode
 
 internal enum class DesktopRendererMode(
     override val id: String,
-) : RendererMode{
-    Slick(
-        "desktop-slick"
-    ),
-
+) : RendererMode {
     /**
-     * Renders the game world through the Kool canvas (Vulkan, i.e. MoltenVK/Metal on macOS)
-     * instead of the AWT OpenGL canvas. No GL context and no per-frame framebuffer readback.
+     * Renders the game world through the Kool canvas: Vulkan by default on Windows and macOS
+     * (MoltenVK/Metal), OpenGL by default on Linux. The legacy Slick canvas and per-frame
+     * framebuffer readback have been removed.
      */
-    Kool(
-        "desktop-kool"
-    ),
+    Kool("desktop-kool"),
 }

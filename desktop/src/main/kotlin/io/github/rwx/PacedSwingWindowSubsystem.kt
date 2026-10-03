@@ -88,6 +88,7 @@ class PacedSwingWindowSubsystem(
                         // KoolGlCanvas.paintGL swaps before render() returns. Hidden back-buffer
                         // rendering below deliberately has no presentation acknowledgement.
                         io.github.rwx.render.canvas.CanvasFramePresentation.presented(true)
+                        io.github.rwx.render.canvas.CanvasFrameMetrics.presented()
                     } else {
                         renderWithoutPresenting(canvas)
                     }

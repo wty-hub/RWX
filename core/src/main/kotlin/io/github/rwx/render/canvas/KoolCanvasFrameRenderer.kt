@@ -114,6 +114,8 @@ class KoolCanvasFrameRenderer(
     private val spriteMeshes = linkedMapOf<SpriteMeshKey, SpriteMeshEntry>()
     private val spriteShaders = mutableMapOf<SpriteMaterialKey, KoolCanvasSpriteShader>()
     private val usedSpriteMeshKeys = mutableSetOf<SpriteMeshKey>()
+    private var lastSpriteMeshKey: SpriteMeshKey? = null
+    private var lastSpriteMeshEntry: SpriteMeshEntry? = null
     private val meshLastUsed = java.util.IdentityHashMap<Mesh<*>, Long>()
     private var renderSequence = 0L
     private val adaptiveVisuals = KoolCanvasAdaptiveVisuals()
@@ -343,6 +345,8 @@ class KoolCanvasFrameRenderer(
         currentFrameTextureRevision = frameTextureRevisionStore?.frameTextureRevision ?: Int.MIN_VALUE
         activeBatchIndex = -1
         activeBatchKey = null
+        lastSpriteMeshKey = null
+        lastSpriteMeshEntry = null
         activeOrderingSegment = 0
         pendingOrderingSegmentAdvance = false
         projectedOrderingSegmentAdvances = 0
@@ -668,15 +672,19 @@ class KoolCanvasFrameRenderer(
     private fun addAtlasSprite(scene: Scene, viewport: KoolCanvasViewport, command: KoolCanvasCommand.DrawTexture): Boolean {
         if (frameProjectionDepth != 0 || command.paint.isRenderNoOp) return false
         val slot = spriteAtlas.slot(command) ?: return false
-        val material = SpriteMaterialKey(slot.page.serial, command.paint.textureFilter, command.paint.renderBlend)
-        val batch = CanvasBatchKey.Sprite(material)
-        if (activeBatchKey != batch) {
+        val activeMaterial = (activeBatchKey as? CanvasBatchKey.Sprite)?.material
+        val material = activeMaterial?.takeIf {
+            it.pageSerial == slot.page.serial && it.filter == command.paint.textureFilter && it.blend == command.paint.renderBlend
+        } ?: SpriteMaterialKey(slot.page.serial, command.paint.textureFilter, command.paint.renderBlend)
+        if (activeMaterial !== material) {
             if (pendingOrderingSegmentAdvance) advanceOrderingSegmentIfAllowed()
             activeBatchIndex++
-            activeBatchKey = batch
+            activeBatchKey = CanvasBatchKey.Sprite(material)
         }
-        val key = SpriteMeshKey(activeBatchIndex, material)
-        val entry = spriteMeshes.getOrPut(key) {
+        val cachedKey = lastSpriteMeshKey
+        val key = cachedKey?.takeIf { it.batchIndex == activeBatchIndex && it.material == material }
+            ?: SpriteMeshKey(activeBatchIndex, material)
+        val entry = if (key === cachedKey) checkNotNull(lastSpriteMeshEntry) else spriteMeshes.getOrPut(key) {
             val shader = spriteShaders.getOrPut(material) {
                 KoolCanvasSpriteShader(PipelineConfig(
                     blendMode = material.blend.textureBlendMode,
@@ -696,28 +704,41 @@ class KoolCanvasFrameRenderer(
             mesh.geometry.addTriIndices(0, 2, 3)
             SpriteMeshEntry(mesh, instances, shader)
         }
-        entry.shader.colorMap = spriteAtlas.texture(slot.page, material.filter)
-        if (usedSpriteMeshKeys.add(key)) placeBatchNode(scene, entry.mesh, activeBatchIndex)
+        if (key !== cachedKey) {
+            lastSpriteMeshKey = key
+            lastSpriteMeshEntry = entry
+            entry.shader.colorMap = spriteAtlas.texture(slot.page, material.filter)
+            if (usedSpriteMeshKeys.add(key)) placeBatchNode(scene, entry.mesh, activeBatchIndex)
+        }
         val d = command.destination
-        val transform = command.state.transform
-        val p0 = transform.map(KoolCanvasPoint(d.left, d.top))
-        val px = transform.map(KoolCanvasPoint(d.right, d.top))
-        val py = transform.map(KoolCanvasPoint(d.left, d.bottom))
-        val uv = slot.uv(command.source)
+        val t = command.state.transform
+        // Preserve map()'s arithmetic order while writing instance scalars directly.
+        val x0 = t.scaleX * d.left + t.skewX * d.top + t.translateX
+        val y0 = t.skewY * d.left + t.scaleY * d.top + t.translateY
+        val xx = t.scaleX * d.right + t.skewX * d.top + t.translateX
+        val yx = t.skewY * d.right + t.scaleY * d.top + t.translateY
+        val xy = t.scaleX * d.left + t.skewX * d.bottom + t.translateX
+        val yy = t.skewY * d.left + t.scaleY * d.bottom + t.translateY
+        val source = command.source
         val tint = command.paint.toRenderColor()
         val effect = command.paint.textureEffect as? KoolCanvasTextureEffect.TeamColor
         val mode = effect?.mode?.let { it.ordinal + 1 }?.toFloat() ?: 0f
         val team = effect?.color?.toKoolColor() ?: Color.WHITE
-        val clip = command.state.clip.toWorldClip(viewport)
+        val clip = command.state.clip
+        val halfWidth = viewport.width * 0.5f
+        val halfHeight = viewport.height * 0.5f
         entry.instances.addInstances(1) { data ->
             data.put { layout ->
-                set(layout.originAxisX, p0.x - currentViewportHalfWidth, currentViewportHalfHeight - p0.y,
-                    px.x - p0.x, -(px.y - p0.y))
-                set(layout.axisYModeAmount, py.x - p0.x, -(py.y - p0.y), mode, effect?.amount ?: 0f)
-                set(layout.uv, uv.left, uv.top, uv.right, uv.bottom)
+                set(layout.originAxisX, x0 - currentViewportHalfWidth, currentViewportHalfHeight - y0,
+                    xx - x0, -(yx - y0))
+                set(layout.axisYModeAmount, xy - x0, -(yy - y0), mode, effect?.amount ?: 0f)
+                set(layout.uv, (slot.x + source.left) / slot.page.size, (slot.y + source.top) / slot.page.size,
+                    (slot.x + source.right) / slot.page.size, (slot.y + source.bottom) / slot.page.size)
                 set(layout.tint, tint.r, tint.g, tint.b, tint.a)
                 set(layout.team, team.r, team.g, team.b, team.a)
-                set(layout.clip, clip)
+                set(layout.clip, (clip?.left ?: 0f) - halfWidth,
+                    halfHeight - (clip?.bottom ?: viewport.height.toFloat()),
+                    (clip?.right ?: viewport.width.toFloat()) - halfWidth, halfHeight - (clip?.top ?: 0f))
             }
         }
         markOrderingBarrier()

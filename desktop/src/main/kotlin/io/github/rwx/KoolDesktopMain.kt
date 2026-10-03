@@ -17,9 +17,7 @@ import io.github.rwx.app.installApp
 import io.github.rwx.di.coreModule
 import io.github.rwx.di.desktopModule
 import io.github.rwx.i18n.LocaleSettings
-import io.github.rwx.render.canvas.KoolCanvasTextureRegistry
 import io.github.rwx.settings.GameSettingsRepository
-import io.github.rwx.slick.desktopOpaqueFramePacker
 import io.github.rwx.ui.UiTheme
 import io.github.rwx.ui.host.LoadingSceneHost
 import io.github.rwx.ui.model.SettingsModel
@@ -59,25 +57,13 @@ object KoolDesktopMain : KoinComponent {
         initializeLegacyPreferences()
         LocaleSettings.initialize()
 
-        val rendererKind = DesktopRendererSelection.resolve()
-        val koolRenderer = rendererKind == DesktopRendererKind.Kool
-        // The Kool renderer draws the game into the Kool canvas itself, so that canvas must fill
-        // the window on every OS (on macOS the Slick host already needs the same single-window
-        // layout because a visible AWT OpenGL canvas cannot be composited there).
-        val singleWindowCapture = desktopSingleWindowCapture() || koolRenderer
-        logger.info("Using desktop renderer: {}", rendererKind.name)
-        KoolCanvasTextureRegistry.setCompleteFramePixelPacker(
-            if (singleWindowCapture) desktopOpaqueFramePacker else null,
-        )
-        configureKoolOverlayFramebuffer(singleWindowCapture)
+        configureKoolFramebuffer()
         val options = AppOptions.parseArgs(args, isDesktop = true)
         val renderBackend = selectedRenderBackend()
         val fullscreenRequested = SettingsEngine.getInstance().slick2dFullScreen
         val swingHost = SwingKoolHost.create(
             fullscreen = fullscreenRequested,
             useOpenGl = renderBackend == RenderBackendGl.Companion,
-            singleWindowCapture = singleWindowCapture,
-            useSlickCanvas = !koolRenderer,
         )
         val bridge=get<PlatformBridge>()
         bridge.filePickerHost=swingHost
@@ -86,7 +72,7 @@ object KoolDesktopMain : KoinComponent {
         swingHost.scheduleVisibilityProbe(context)
         context.onShutdown += { io.github.rwx.render.canvas.CanvasFrameMetrics.close() }
         // Kool only reads its frame-rate limits once, from the config, so keep them in step with the
-        // settings screen the same way the Slick canvas does: it re-resolves its target every frame.
+        // settings screen, which re-resolves the desktop target frame rate every frame.
         context.onRender += { syncDesktopFrameRateLimit(context) }
         context.onRender += {
             swingHost.syncFullscreen(SettingsEngine.getInstance().slick2dFullScreen)
@@ -176,13 +162,13 @@ object KoolDesktopMain : KoinComponent {
         System.getProperty(RENDER_BACKEND_PROPERTY) ?: System.getenv(RENDER_BACKEND_ENV),
     )
 
-    /** macOS needs Vulkan for the Kool overlay: its AWT OpenGL path can call Cocoa off the main thread. */
+    /** Windows and macOS default to Vulkan; an explicit backend selection still takes precedence. */
     internal fun resolveDesktopRenderBackend(
         requestedBackend: String?,
         osName: String = System.getProperty("os.name"),
     ): BackendProvider {
         val backend = when (requestedBackend?.lowercase()) {
-            null, "" -> if (isMacOs(osName)) {
+            null, "" -> if (isMacOs(osName) || osName.startsWith("Windows", ignoreCase = true)) {
                 RenderBackendVk.Companion
             } else {
                 RenderBackendGl.Companion
@@ -200,20 +186,6 @@ object KoolDesktopMain : KoinComponent {
         }
         logger.info("Using Kool render backend: ${backend.displayName}")
         return backend
-    }
-
-    internal fun desktopSingleWindowCapture(
-        osName: String = System.getProperty("os.name"),
-        requested: String? = System.getProperty(SINGLE_WINDOW_CAPTURE_PROPERTY),
-    ): Boolean {
-        if (!isMacOs(osName)) return false
-        return when (requested?.trim()?.lowercase()) {
-            null, "", "true" -> true
-            "false" -> false
-            else -> throw IllegalArgumentException(
-                "Invalid $SINGLE_WINDOW_CAPTURE_PROPERTY value '$requested'; expected true or false",
-            )
-        }
     }
 
     private fun isMacOs(osName: String = System.getProperty("os.name")): Boolean =
@@ -240,12 +212,12 @@ object KoolDesktopMain : KoinComponent {
         get<GameSettingsRepository>().saveFrom(model)
     }
 
-    private fun configureKoolOverlayFramebuffer(singleWindowCapture: Boolean) {
-        System.setProperty(KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY, (!singleWindowCapture).toString())
+    /** The Kool canvas is the only surface, so its framebuffer must be opaque. */
+    private fun configureKoolFramebuffer() {
+        System.setProperty(KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY, "false")
     }
 
     private const val KOOL_TRANSPARENT_FRAMEBUFFER_PROPERTY: String = "kool.transparentFramebuffer"
-    private const val SINGLE_WINDOW_CAPTURE_PROPERTY: String = "rwx.capture.singleWindow"
     private const val LWJGL_CONTEXT_API_PROPERTY: String = "org.lwjgl.opengl.contextAPI"
     private const val LWJGL_NATIVE_CONTEXT_API: String = "native"
     private const val RENDER_BACKEND_PROPERTY: String = "rwx.kool.backend"

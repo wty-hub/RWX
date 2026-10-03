@@ -10,10 +10,10 @@ import java.io.File
  * Frame-time statistics for the Kool desktop renderer, enabled with `RWX_PERF_LOG=1` (log) or
  * `RWX_PERF_LOG=/path/file` (append to a file).
  *
- * Mirrors [io.github.rwx.slick.SlickFrameTimeLog] so both desktop renderers can be compared on the
- * same replay: the Kool renderer drives the game loop from the Kool frame callback, so the phases
- * measured here are the frame interval, the legacy game work (`update` + `draw`), the visible layer
- * buffer redraw and the command-buffer snapshot handed to the Kool canvas.
+ * Measures the same phases on the same replay every run: the Kool renderer drives the game loop
+ * from the Kool frame callback, so the phases measured here are the frame interval, the legacy game
+ * work (`update` + `draw`), the visible layer buffer redraw and the command-buffer snapshot handed
+ * to the Kool canvas.
  */
 internal class KoolFrameTimeLog private constructor(private val output: File?) {
     private val intervals = LongArray(MAX_SAMPLES)

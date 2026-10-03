@@ -28,3 +28,17 @@ python3 -m unittest discover -s desktop/tools -p 'test_*.py'
 需要测试未锁定帧率时，先在游戏设置中关闭垂直同步。运行器保留原有显示设置，并记录实际呈现模式；环境中的 `RWX_DESKTOP_TARGET_FPS` 不能绕过 FIFO 模式或平台的原生 drawable 等待。
 
 Kool 原有默认画质使用 4 倍 MSAA，继续保持该默认值。`--msaa-samples 1` 或 `--msaa-samples 2` 可用于单独研究 GPU 成本；运行器显式指定采样数，原生日志记录实际采样数。直接启动游戏时也可用 `RWX_KOOL_MSAA_SAMPLES=1` 或 `-Drwx.kool.msaaSamples=1`，只接受 1／2／4。降低 MSAA 只影响渲染，但仍需要检查选择标记、线条、字体及特殊效果的画面质量；帧率提高不能替代视觉验收。
+
+## Windows 后端及优化前后对照
+
+`windows_backend_comparison.py` 为每次启动创建独立设置目录，固定 1920×1080、4 倍 MSAA、关闭垂直同步、300 帧上限，并记录机器、供电状态及包的 SHA256。不会改写工作目录中的游戏设置。默认依次比较两种后端的 661 / 2000 单位闲置场景和 2000 单位交战场景；附属单位会使实际存活数高于请求数，以采样记录为准。
+
+```powershell
+python desktop/tools/windows_backend_comparison.py `
+  --jar desktop/build/libs/RWXX-1.0.5-windows-x64.jar `
+  --output build/rwx-benchmark/windows-comparison
+```
+
+优化前后测试分别传入冻结的旧包、新包，使用不同的 `--output`，并指定相同的 `--only 2000-vulkan-idle`。每个进程预热 30 秒，然后记录三个连续的 30 秒窗口；这三个窗口不是三次独立启动。测试期间不要同时运行构建或其他测试。`--default-backend` 与 Vulkan 的 `--only` 场景配合，可验证没有显式后端选择时的 Windows 启动。
+
+`--diagnostics` 同时记录 JFR、画布重放耗时及 Vulkan 原生指标，会增加运行开销，应独立用于瓶颈定位。正式性能对照使用未开启该选项的结果。OpenGL 的指标取可见交换返回时间，Vulkan 取成功接受呈现的时间；新画面率和接受呈现率均不代表显示器的物理扫描帧率。

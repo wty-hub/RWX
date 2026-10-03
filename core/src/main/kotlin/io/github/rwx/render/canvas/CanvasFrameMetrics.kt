@@ -43,7 +43,7 @@ object CanvasFrameMetrics {
         chosenSequence = sequence; chosenGeneration = generation
     }
 
-    /** Invoked only after vkQueuePresent returns SUCCESS or SUBOPTIMAL, including repeated snapshots. */
+    /** Invoked after an accepted Vulkan present or a visible OpenGL swap, including repeated snapshots. */
     @JvmStatic @Synchronized fun presented() {
         if (chosenSequence < 0) return
         val now = System.nanoTime()
