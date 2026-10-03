@@ -86,29 +86,81 @@ public class GameInterfaceRenderer extends Serializable {
         return consumed;
     }
 
+    private void drawReplayTimelineRoundedRect(float left, float top, float right, float bottom,
+                                               float radius, int color) {
+        replayTimelinePaint.b(color);
+        radius = Math.min(radius, Math.min(right - left, bottom - top) / 2);
+        if (radius <= 0) return;
+        if ((color >>> 24) < 255) {
+            // Non-overlapping strips keep translucent corners and the center equally transparent.
+            gameEngine.renderGraphicsEngine.a(new RectF(left, top + radius, right, bottom - radius), replayTimelinePaint);
+            int bands = (int) Math.ceil(radius);
+            float bandHeight = radius / bands;
+            for (int i = 0; i < bands; i++) {
+                float offset = i * bandHeight;
+                float dy = radius - offset - bandHeight / 2;
+                float inset = radius - (float) Math.sqrt(radius * radius - dy * dy);
+                gameEngine.renderGraphicsEngine.a(new RectF(left + inset, top + offset,
+                        right - inset, top + offset + bandHeight), replayTimelinePaint);
+                gameEngine.renderGraphicsEngine.a(new RectF(left + inset, bottom - offset - bandHeight,
+                        right - inset, bottom - offset), replayTimelinePaint);
+            }
+            return;
+        }
+        gameEngine.renderGraphicsEngine.a(new RectF(left + radius, top, right - radius, bottom), replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a(new RectF(left, top + radius, right, bottom - radius), replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a(left + radius, top + radius, radius, replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a(right - radius, top + radius, radius, replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a(left + radius, bottom - radius, radius, replayTimelinePaint);
+        gameEngine.renderGraphicsEngine.a(right - radius, bottom - radius, radius, replayTimelinePaint);
+    }
+
     private void drawReplayTimeline() {
         ReplayEngine replay = gameEngine.replayEngine;
         ReplayTimelineControls.Layout layout = replayTimelineLayout();
         float y = layout.centerY();
+        float scale = layout.unit();
         int duration = replay.getDurationMillis() < 0 ? -1 : replay.getDurationMillis() - replay.getStartTimeMillis();
         int preview = replayTimeline.getPreviewMillis();
         int displayed = preview >= 0 ? preview : Math.max(0, gameEngine.gameTimeMillis - replay.getStartTimeMillis());
-        replayTimelinePaint.b(KoolArgbColor.a(210, 25, 30, 36));
-        gameEngine.renderGraphicsEngine.a(new RectF(layout.left(), layout.top(),
-                layout.left() + layout.width(), layout.top() + layout.height()), replayTimelinePaint);
-        gameEngine.renderGraphicsEngine.a("−10s", layout.left() + layout.buttonWidth() / 2,
-                y + gameUI.unitRangePaint.k() / 3, gameUI.unitRangePaint);
-        gameEngine.renderGraphicsEngine.a("+10s", layout.left() + layout.width() - layout.buttonWidth() / 2,
-                y + gameUI.unitRangePaint.k() / 3, gameUI.unitRangePaint);
-        replayTimelinePaint.b(KoolArgbColor.a(255, 110, 120, 130));
-        gameEngine.renderGraphicsEngine.a(new RectF(layout.trackLeft(), y - 2,
-                layout.trackRight(), y + 2), replayTimelinePaint);
+        drawReplayTimelineRoundedRect(layout.left(), layout.top(), layout.left() + layout.width(),
+                layout.top() + layout.height(), 10 * scale, KoolArgbColor.a(155, 22, 29, 39));
+        drawReplayTimelineRoundedRect(layout.trackLeft(), y - 3 * scale, layout.trackRight(),
+                y + 3 * scale, 3 * scale, KoolArgbColor.a(255, 65, 79, 95));
+        KoolPaint text = new KoolPaint(gameUI.unitRangePaint);
+        text.b(12 * scale);
+        text.b(KoolArgbColor.a(255, 162, 179, 197));
+        int intervals = layout.width() / scale >= 360 ? 4 : 2;
+        for (int i = 0; i <= intervals; i++) {
+            float x = layout.trackLeft() + (layout.trackRight() - layout.trackLeft()) * i / intervals;
+            replayTimelinePaint.b(KoolArgbColor.a(255, 100, 119, 140));
+            gameEngine.renderGraphicsEngine.a(new RectF(x - .5f * scale, y + 8 * scale,
+                    x + .5f * scale, y + 12 * scale), replayTimelinePaint);
+            text.a(i == 0 ? KoolPaint.Align.LEFT : i == intervals ? KoolPaint.Align.RIGHT : KoolPaint.Align.CENTER);
+            String label = duration < 0 ? (i == 0 ? "0:00" : "--:--")
+                    : Utility.formatDuration((int) ((long) duration * i / intervals / 1000));
+            gameEngine.renderGraphicsEngine.a(label, x, layout.top() + 47 * scale, text);
+        }
+        text.a(KoolPaint.Align.CENTER);
+        text.b(14 * scale);
+        text.b(KoolArgbColor.a(255, 218, 231, 243));
+        for (int direction : new int[]{-1, 1}) {
+            drawReplayTimelineRoundedRect(layout.buttonLeft(direction), layout.buttonTop(),
+                    layout.buttonLeft(direction) + layout.buttonWidth(), layout.buttonBottom(),
+                    6 * scale, KoolArgbColor.a(150, 43, 57, 73));
+            gameEngine.renderGraphicsEngine.a(direction < 0 ? "−10s" : "+10s",
+                    layout.buttonLeft(direction) + layout.buttonWidth() / 2,
+                    (layout.buttonTop() + layout.buttonBottom()) / 2 + 5 * scale, text);
+        }
         if (duration >= 0) {
             float fraction = duration == 0 ? 0 : Math.max(0, Math.min(1, displayed / (float) duration));
             float head = layout.trackLeft() + fraction * (layout.trackRight() - layout.trackLeft());
-            replayTimelinePaint.b(KoolArgbColor.a(255, 90, 200, 245));
-            gameEngine.renderGraphicsEngine.a(new RectF(layout.trackLeft(), y - 2, head, y + 2), replayTimelinePaint);
-            gameEngine.renderGraphicsEngine.a(new RectF(head - 3, y - 7, head + 3, y + 7), replayTimelinePaint);
+            drawReplayTimelineRoundedRect(layout.trackLeft(), y - 3 * scale, head, y + 3 * scale,
+                    3 * scale, KoolArgbColor.a(255, 78, 190, 239));
+            replayTimelinePaint.b(KoolArgbColor.a(255, 78, 190, 239));
+            gameEngine.renderGraphicsEngine.a(head, y, 7 * scale, replayTimelinePaint);
+            replayTimelinePaint.b(KoolArgbColor.a(255, 232, 247, 255));
+            gameEngine.renderGraphicsEngine.a(head, y, 3 * scale, replayTimelinePaint);
         }
         String status = null;
         if (replay.getSeekError() != null) status = Locale.get("replay.timeline.seekFailed");
@@ -119,7 +171,7 @@ public class GameInterfaceRenderer extends Serializable {
                 + " (" + (int) (replay.getSeekProgress() * 100) + "%)";
         else if (preview >= 0) status = Utility.formatDuration(preview / 1000);
         if (status != null) {
-            KoolPaint text = new KoolPaint(gameUI.unitRangePaint);
+            text.b(13 * scale);
             float measured = text.a(status);
             if (measured > layout.width()) text.b(text.k() * layout.width() / measured);
             gameEngine.renderGraphicsEngine.a(status, layout.left() + layout.width() / 2,
