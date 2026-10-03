@@ -5,6 +5,53 @@ import kotlin.test.assertEquals
 
 class SmartFactoryProductionTest {
     @Test
+    fun `all factories receive one order and shortest queues spend first`() {
+        val slots = chooseFactorySlots(
+            candidates = listOf(
+                factory(id = 1, idle = false, total = 5),
+                factory(id = 2, idle = false, total = 1),
+                factory(id = 3, idle = true, total = 0),
+            ),
+            count = 1,
+            cancel = false,
+            singleUnit = false,
+        )
+
+        assertEquals(listOf(2, 1, 0), slots)
+    }
+
+    @Test
+    fun `all factories get each batch round before another round starts`() {
+        val slots = chooseFactorySlots(
+            candidates = listOf(
+                factory(id = 9, idle = false, total = 2),
+                factory(id = 4, idle = false, total = 2),
+                factory(id = 3, idle = true, total = 0),
+            ),
+            count = 2,
+            cancel = false,
+            singleUnit = false,
+        )
+
+        assertEquals(listOf(2, 1, 0, 2, 1, 0), slots)
+    }
+
+    @Test
+    fun `all factories cancel one unit per factory per round`() {
+        val slots = chooseFactorySlots(
+            candidates = listOf(
+                factory(id = 1, idle = false, total = 4),
+                factory(id = 2, idle = false, total = 1),
+            ),
+            count = 1,
+            cancel = true,
+            singleUnit = false,
+        )
+
+        assertEquals(listOf(1, 0), slots)
+    }
+
+    @Test
     fun `an idle factory is used before a busy one`() {
         val slots = chooseFactorySlots(
             candidates = listOf(

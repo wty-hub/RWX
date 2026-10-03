@@ -173,6 +173,7 @@ public class SettingsEngine {
     public String externalSAFPathExtra;
 
     public boolean smartSelection_v2;
+    public boolean singleUnitProduction;
     public boolean replayTracing;
     Preference prefs;
     static SettingsEngine settingsEngine = null;
@@ -421,6 +422,7 @@ public class SettingsEngine {
         this.externalSAFPathShown = getStringPref("externalSAFPathShown", null);
         this.externalSAFPathExtra = getStringPref("externalSAFPathExtra", null);
         this.smartSelection_v2 = getBooleanPref("smartSelection_v2", true);
+        this.singleUnitProduction = getBooleanPref("singleUnitProduction", false);
         this.mouseOrders = getIntPref("mouseOrders", 1);
         this.mousePlacement = getIntPref("mousePlacement", 1);
         this.autosaving = getBooleanPref("autosaving", true);
@@ -588,6 +590,7 @@ public class SettingsEngine {
         editorEdit.putString("externalSAFPathShown", this.externalSAFPathShown);
         editorEdit.putString("externalSAFPathExtra", this.externalSAFPathExtra);
         editorEdit.putBoolean("smartSelection_v2", this.smartSelection_v2);
+        editorEdit.putBoolean("singleUnitProduction", this.singleUnitProduction);
         editorEdit.putInt("mouseOrders", this.mouseOrders);
         editorEdit.putInt("mousePlacement", this.mousePlacement);
         editorEdit.putBoolean("autosaving", this.autosaving);

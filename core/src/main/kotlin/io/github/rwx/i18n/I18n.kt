@@ -1676,6 +1676,30 @@ object I18n {
                 ),
             )
 
+            val factoryProduction = entry(
+                key = "settings.gameplay.factoryProduction",
+                translations = linkedMapOf(
+                    "en" to "Factory production per click",
+                    "zh-CN" to "点击出兵模式",
+                ),
+            )
+
+            val allFactoriesProduction = entry(
+                key = "settings.gameplay.allFactoriesProduction",
+                translations = linkedMapOf(
+                    "en" to "One unit from each selected factory",
+                    "zh-CN" to "所有选中的工厂各出一个兵",
+                ),
+            )
+
+            val singleUnitProduction = entry(
+                key = "settings.gameplay.singleUnitProduction",
+                translations = linkedMapOf(
+                    "en" to "One unit total (prefer idle factories)",
+                    "zh-CN" to "总共出一个兵（优先空闲工厂）",
+                ),
+            )
+
             val udpInMultiplayer = entry(
                 key = "settings.gameplay.udpInMultiplayer",
                 translations = linkedMapOf(

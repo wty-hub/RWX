@@ -21,15 +21,24 @@ data class FactoryProductionCandidate(
 /**
  * Picks which selected factory receives each unit in one production click.
  *
- * Idle factories come first. A batch (shift / ctrl) is spread across them before anyone gets a
- * second unit. The commands themselves are still the original single-factory build commands.
+ * Single-unit mode spreads a batch (shift / ctrl) across the least busy factories.
+ * All-factories mode visits each factory once per round, shortest queues first, so those factories
+ * spend the available resources first when the player cannot afford the entire round.
+ * The commands themselves are still the original single-factory build commands.
  */
 fun chooseFactorySlots(
     candidates: List<FactoryProductionCandidate>,
     count: Int,
     cancel: Boolean,
+    singleUnit: Boolean = true,
 ): List<Int> {
     if (candidates.isEmpty() || count <= 0) return emptyList()
+    if (!singleUnit) {
+        val ordered = candidates.indices.sortedWith(
+            compareBy<Int> { candidates[it].totalQueue }.thenBy { candidates[it].id },
+        )
+        return List(count) { ordered }.flatten()
+    }
     val idle = candidates.map { it.idle }.toBooleanArray()
     val total = candidates.map { it.totalQueue }.toIntArray()
     val action = candidates.map { it.actionQueue }.toIntArray()
@@ -62,8 +71,9 @@ fun chooseFactorySlots(
 object SmartFactoryProduction {
     /**
      * Factories that should receive this click, one entry per ordered unit.
-     * Returns null when fewer than two eligible factories are selected, so the caller keeps the
-     * original "every selected factory builds one" behavior.
+     * All-factories mode is the default and orders factories by queue length before spending.
+     * Returns null when fewer than two eligible factories are selected or the action is not
+     * factory production, so the caller keeps the original behavior.
      */
     @JvmStatic
     fun productionTargets(
@@ -72,9 +82,10 @@ object SmartFactoryProduction {
         count: Int,
         cancel: Boolean,
     ): List<OrderableUnit>? {
+        val engine = GameEngine.getInstance() ?: return null
         if (!action.isHighPriority || action.isOnlyOneUnitAtATime || count <= 0) return null
         val actionId = action.actionId ?: return null
-        val gameUi = GameEngine.getInstance()?.gameUI ?: return null
+        val gameUi = engine.gameUI ?: return null
         val eligible = ArrayList<Pair<OrderableUnit, FactoryProductionCandidate>>()
         for (unit in selected) {
             if (unit !is OrderableUnit || !unit.isSelected || !gameUi.canControlUnit(unit)) continue
@@ -90,6 +101,8 @@ object SmartFactoryProduction {
             )
         }
         if (eligible.size < 2) return null
-        return chooseFactorySlots(eligible.map { it.second }, count, cancel).map { eligible[it].first }
+        return chooseFactorySlots(
+            eligible.map { it.second }, count, cancel, engine.settingsEngine.singleUnitProduction,
+        ).map { eligible[it].first }
     }
 }

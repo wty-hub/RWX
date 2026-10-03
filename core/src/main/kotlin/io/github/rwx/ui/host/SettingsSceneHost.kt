@@ -131,6 +131,17 @@ class SettingsSceneHost(
                         }
                     }
 
+                    SettingsScrollRow.FactoryProduction -> {
+                        SettingsFactoryProductionCard(
+                            singleUnit = model.singleUnitProduction.use(),
+                            theme = theme,
+                            contentWidth = metrics.rowWidth,
+                        ) { singleUnit ->
+                            model.singleUnitProduction.value = singleUnit
+                            dispatch(SettingsAction.ApplyChanges)
+                        }
+                    }
+
                     is SettingsScrollRow.KeyBinding -> {
                         SettingsKeyBindingCard(
                             row = row.row,
@@ -183,6 +194,7 @@ class SettingsSceneHost(
                         is SettingsPageItem.Toggle -> rows.add(SettingsScrollRow.Toggle(item.toggle))
                         is SettingsPageItem.Slider -> rows.add(SettingsScrollRow.Slider(item.slider))
                         SettingsPageItem.MaxFrameRate -> rows.add(SettingsScrollRow.MaxFrameRate)
+                        SettingsPageItem.FactoryProduction -> rows.add(SettingsScrollRow.FactoryProduction)
                         is SettingsPageItem.ColorSchemeSelector -> Unit
                         is SettingsPageItem.StorageLocation -> rows.add(
                             SettingsScrollRow.StorageLocation(item.selectedType)

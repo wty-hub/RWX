@@ -27,6 +27,7 @@ sealed interface SettingsPageItem {
     data class Toggle(val toggle: SettingToggle) : SettingsPageItem
     data class Slider(val slider: SettingSlider) : SettingsPageItem
     data object MaxFrameRate : SettingsPageItem
+    data object FactoryProduction : SettingsPageItem
     data class ColorSchemeSelector(val item: SettingColorSchemeItem, val selected: Boolean) : SettingsPageItem
     data class StorageLocation(val selectedType: Int) : SettingsPageItem
 }
@@ -37,6 +38,7 @@ sealed interface SettingsScrollRow {
     data class Toggle(val toggle: SettingToggle) : SettingsScrollRow
     data class Slider(val slider: SettingSlider) : SettingsScrollRow
     data object MaxFrameRate : SettingsScrollRow
+    data object FactoryProduction : SettingsScrollRow
     data class KeyBinding(val row: SettingKeyBindingRow) : SettingsScrollRow
     data class ColorSchemeSelector(val item: SettingColorSchemeItem, val selected: Boolean) : SettingsScrollRow
     data class StorageLocation(val selectedType: Int) : SettingsScrollRow
@@ -168,6 +170,7 @@ class SettingsModel {
     val showPlayerChatInGame: MutableStateValue<Boolean> = mutableStateOf(true)
     val showChatAndPingShortcuts: MutableStateValue<Boolean> = mutableStateOf(true)
     val smartSelection: MutableStateValue<Boolean> = mutableStateOf(true)
+    val singleUnitProduction: MutableStateValue<Boolean> = mutableStateOf(false)
     val autosaving: MutableStateValue<Boolean> = mutableStateOf(true)
     val udpInMultiplayer: MutableStateValue<Boolean> = mutableStateOf(false)
     val saveMultiplayerReplays: MutableStateValue<Boolean> = mutableStateOf(true)
@@ -342,7 +345,8 @@ class SettingsViewModel(val model: SettingsModel) {
 
                 SettingsPage.Gameplay -> SettingsPageContent(
                     page = page,
-                    items = gameplayToggles().map { SettingsPageItem.Toggle(it) },
+                    items = listOf(SettingsPageItem.FactoryProduction) +
+                            gameplayToggles().map { SettingsPageItem.Toggle(it) },
                 )
 
                 SettingsPage.KeyBindings -> SettingsPageContent(

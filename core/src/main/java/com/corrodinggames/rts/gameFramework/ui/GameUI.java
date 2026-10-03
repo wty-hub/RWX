@@ -3462,8 +3462,9 @@ public final class GameUI extends Serializable {
     }
 
     /**
-     * With several factories selected, each produced unit is queued on one idle factory.
-     * Returns false when this click should keep the original all-factories behavior.
+     * With several factories selected, applies the configured production mode. All-factories
+     * mode orders the shortest queues first; single-unit mode distributes the requested count.
+     * Returns false when this click should keep the original action behavior.
      */
     public boolean issueSmartFactoryProduction(AbstractUnitAction action, int count, boolean cancel) {
         List<OrderableUnit> targets = SmartFactoryProduction.productionTargets(

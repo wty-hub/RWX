@@ -192,6 +192,41 @@ fun UiScope.SettingsMaxFrameRateCard(
     }
 }
 
+fun UiScope.SettingsFactoryProductionCard(
+    singleUnit: Boolean,
+    theme: ColorSchemeDefinition,
+    contentWidth: Dp = UiTheme.Layout.settingsContentWidth,
+    onSelected: (Boolean) -> Unit,
+) {
+    val innerWidth = contentWidth.remainingAfter(Dp(UiTheme.Spacing.md.value * 2f), Dp(240f))
+    Column(width = contentWidth) {
+        modifier
+            .margin(bottom = UiTheme.Spacing.xs)
+            .padding(UiTheme.Spacing.md)
+            .background(RoundRectBackground(theme.palette.surfaceSunken, theme.smallCornerRadius))
+            .border(RoundRectBorder(theme.palette.borderSubtle, theme.smallCornerRadius, Dp(1f)))
+        Text(I18n.settings.gameplay.factoryProduction()) {
+            modifier
+                .font(UiTheme.Fonts.bodySmall)
+                .textColor(theme.palette.textPrimary)
+                .margin(bottom = UiTheme.Spacing.xs)
+        }
+        for (mode in listOf(false, true)) {
+            val selected = singleUnit == mode
+            val label = if (mode) I18n.settings.gameplay.singleUnitProduction()
+                        else I18n.settings.gameplay.allFactoriesProduction()
+            TextIconButton(
+                label = label,
+                icon = if (selected) Icon.Apply else Icon.Gameplay,
+                width = innerWidth,
+                theme = theme,
+                emphasized = selected,
+                font = UiTheme.Fonts.bodySmall,
+            ) { onSelected(mode) }
+        }
+    }
+}
+
 fun UiScope.SettingsStorageLocationCard(
     selected: AndroidStoragePreference,
     theme: ColorSchemeDefinition,
