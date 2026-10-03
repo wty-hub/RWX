@@ -172,9 +172,18 @@ class KoolGraphicsEngine private constructor(
 
     override fun a(i: Int, z: Boolean): Texture {
         val drawableName = drawableNamesById[i]
-        val assetPath = drawableName?.let(::drawableAssetPath)
-        val imageBytes = assetPath?.let(::readAssetBytes)
-        val decodedImage = imageBytes?.let { bytes -> decodeImage(bytes, assetPath) }
+        // Packaged desktop assets can live in the platform's extracted resource directory,
+        // outside the working directory. Resolve through the injected loader before deciding
+        // that a drawable is missing, and retain the bytes we used to select the extension.
+        val asset = drawableName?.let { name ->
+            imageFileNames(name).firstNotNullOfOrNull { fileName ->
+                val path = "drawable/$fileName"
+                readAssetBytes(path)?.let { path to it }
+            }
+        }
+        val assetPath = asset?.first
+        val imageBytes = asset?.second
+        val decodedImage = asset?.let { (path, bytes) -> decodeImage(bytes, path) }
         val size = decodedImage?.let { it.width to it.height }
             ?: imageBytes
                 ?.inputStream()

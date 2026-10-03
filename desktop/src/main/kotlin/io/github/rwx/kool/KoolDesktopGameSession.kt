@@ -34,7 +34,10 @@ internal class KoolDesktopGameSession(
 
     override val usesIndependentEngineLoop: Boolean = true
     private val cpuTextures = KoolCanvasCpuTextureStore()
-    private val graphicsEngine = KoolGraphicsEngine(textureStore = cpuTextures)
+    private val graphicsEngine = KoolGraphicsEngine(
+        textureStore = cpuTextures,
+        assetBytes = storage::readAssetBytes,
+    )
     private val mailbox = LatestFrameMailbox()
     override val canvasPresentationTracker = CanvasFramePresentationTracker()
     @Volatile private var selectedEnvelope: FrameEnvelope? = null
